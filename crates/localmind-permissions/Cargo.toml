@@ -1,0 +1,7 @@
+[package]
+name = "localmind-permissions"
+version = "0.1.0"
+edition = "2021"
+description = "Filesystem permission policy enforcement for LocalMind"
+
+[dependencies]

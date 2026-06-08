@@ -1,0 +1,9 @@
+[package]
+name = "localmind-db"
+version = "0.1.0"
+edition = "2021"
+description = "SQLite migrations and query helpers for LocalMind"
+
+[dependencies]
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+dirs = "5"
