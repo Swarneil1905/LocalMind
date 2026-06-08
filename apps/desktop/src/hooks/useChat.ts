@@ -30,19 +30,25 @@ export function useChat(modelMode: ModelMode) {
   // Set up persistent Tauri event listeners. These live for the lifetime of
   // the hook (i.e. the app), not per-message, so they don't miss early tokens.
   useEffect(() => {
+    // `cancelled` guards against React StrictMode's double-invoke of effects.
+    // StrictMode runs cleanup before the listen() Promise resolves, so without
+    // this flag the first listener would never be removed and every token would
+    // fire twice.
+    let cancelled = false;
     let unlistenToken: (() => void) | undefined;
     let unlistenDone: (() => void) | undefined;
 
     listen<ChatTokenPayload>("chat-token", (event) => {
       const id = streamingIdRef.current;
-      if (!id) return; // stopStreaming() was called; ignore this token
+      if (!id) return;
       setMessages((prev) =>
         prev.map((m) =>
           m.id === id ? { ...m, content: m.content + event.payload.content } : m
         )
       );
     }).then((fn) => {
-      unlistenToken = fn;
+      if (cancelled) fn(); // cleanup already ran — unlisten immediately
+      else unlistenToken = fn;
     });
 
     listen<ChatDonePayload>("chat-done", (event) => {
@@ -60,10 +66,12 @@ export function useChat(modelMode: ModelMode) {
         );
       }
     }).then((fn) => {
-      unlistenDone = fn;
+      if (cancelled) fn();
+      else unlistenDone = fn;
     });
 
     return () => {
+      cancelled = true;
       unlistenToken?.();
       unlistenDone?.();
     };

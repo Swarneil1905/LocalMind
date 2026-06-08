@@ -16,9 +16,10 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { Composer } from "./components/Composer";
 import { MessageList } from "./components/MessageList";
+import { SettingsPage } from "./components/SettingsPage";
 import { useChat } from "./hooks/useChat";
 import { useOllama } from "./hooks/useOllama";
-import { ModelMode } from "./types";
+import { ModelMode, MODEL_MAP } from "./types";
 import "./App.css";
 
 // ---------------------------------------------------------------------------
@@ -73,6 +74,8 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activePage, setActivePage] = useState<PageId>("chats");
   const [modelMode, setModelMode] = useState<ModelMode>("balanced");
+  const [speedModel, setSpeedModel] = useState(MODEL_MAP.speed);
+  const [balancedModel, setBalancedModel] = useState(MODEL_MAP.balanced);
 
   const ollamaStatus = useOllama();
   const { messages, isStreaming, sendMessage, stopStreaming } = useChat(modelMode);
@@ -98,10 +101,14 @@ export default function App() {
         messages={messages}
         isStreaming={isStreaming}
         modelMode={modelMode}
-        ollamaRunning={ollamaStatus?.running ?? null}
+        ollamaStatus={ollamaStatus}
+        speedModel={speedModel}
+        balancedModel={balancedModel}
         onSend={sendMessage}
         onStop={stopStreaming}
         onModelModeChange={setModelMode}
+        onSpeedModelChange={setSpeedModel}
+        onBalancedModelChange={setBalancedModel}
       />
       <RightPanel />
     </div>
@@ -284,10 +291,14 @@ interface MainAreaProps {
   messages: ReturnType<typeof useChat>["messages"];
   isStreaming: boolean;
   modelMode: ModelMode;
-  ollamaRunning: boolean | null;
+  ollamaStatus: ReturnType<typeof useOllama>;
+  speedModel: string;
+  balancedModel: string;
   onSend: (text: string) => void;
   onStop: () => void;
   onModelModeChange: (mode: ModelMode) => void;
+  onSpeedModelChange: (model: string) => void;
+  onBalancedModelChange: (model: string) => void;
 }
 
 function MainArea({
@@ -295,11 +306,17 @@ function MainArea({
   messages,
   isStreaming,
   modelMode,
-  ollamaRunning,
+  ollamaStatus,
+  speedModel,
+  balancedModel,
   onSend,
   onStop,
   onModelModeChange,
+  onSpeedModelChange,
+  onBalancedModelChange,
 }: MainAreaProps) {
+  const ollamaRunning = ollamaStatus?.running ?? null;
+
   return (
     <main
       style={{
@@ -310,7 +327,7 @@ function MainArea({
         backgroundColor: "var(--bg)",
       }}
     >
-      {/* Chat header */}
+      {/* Header — always visible */}
       <div
         style={{
           height: 48,
@@ -333,21 +350,36 @@ function MainArea({
           {activePage}
         </span>
 
-        <ModelModeSelector
-          value={modelMode}
-          onChange={onModelModeChange}
-          ollamaRunning={ollamaRunning}
-        />
+        {/* Model selector is only shown on chat pages */}
+        {activePage !== "settings" && (
+          <ModelModeSelector
+            value={modelMode}
+            onChange={onModelModeChange}
+            ollamaRunning={ollamaRunning}
+          />
+        )}
       </div>
 
-      <MessageList messages={messages} isStreaming={isStreaming} />
-
-      <Composer
-        onSend={onSend}
-        onStop={onStop}
-        isStreaming={isStreaming}
-        disabled={ollamaRunning === false}
-      />
+      {/* Page content */}
+      {activePage === "settings" ? (
+        <SettingsPage
+          ollamaStatus={ollamaStatus}
+          speedModel={speedModel}
+          balancedModel={balancedModel}
+          onSpeedModelChange={onSpeedModelChange}
+          onBalancedModelChange={onBalancedModelChange}
+        />
+      ) : (
+        <>
+          <MessageList messages={messages} isStreaming={isStreaming} />
+          <Composer
+            onSend={onSend}
+            onStop={onStop}
+            isStreaming={isStreaming}
+            disabled={ollamaRunning === false}
+          />
+        </>
+      )}
     </main>
   );
 }
