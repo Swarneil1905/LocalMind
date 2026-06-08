@@ -1,5 +1,5 @@
 // Spec reference: Section 14 (Chat UI), Section 15 (All Application Screens)
-// Phase 0: static shell only — no functionality, correct layout and design tokens.
+// Phase 1: functional chat, Ollama detection, model mode selector.
 
 import { useState } from "react";
 import {
@@ -14,6 +14,11 @@ import {
   ChevronRight,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { Composer } from "./components/Composer";
+import { MessageList } from "./components/MessageList";
+import { useChat } from "./hooks/useChat";
+import { useOllama } from "./hooks/useOllama";
+import { ModelMode } from "./types";
 import "./App.css";
 
 // ---------------------------------------------------------------------------
@@ -36,7 +41,7 @@ interface NavItem {
 }
 
 // ---------------------------------------------------------------------------
-// Constants — Section 14 (Left Navigation Sidebar)
+// Constants
 // ---------------------------------------------------------------------------
 
 const NAV_ITEMS: NavItem[] = [
@@ -49,7 +54,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: "settings",  label: "Settings",  Icon: Settings        },
 ];
 
-// Right panel sections — Section 14 (Right Context Panel)
 const RIGHT_PANEL_SECTIONS = [
   "Used memory",
   "Sources",
@@ -68,6 +72,10 @@ const SIDEBAR_COLLAPSED = 48;
 export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activePage, setActivePage] = useState<PageId>("chats");
+  const [modelMode, setModelMode] = useState<ModelMode>("balanced");
+
+  const ollamaStatus = useOllama();
+  const { messages, isStreaming, sendMessage, stopStreaming } = useChat(modelMode);
 
   return (
     <div
@@ -81,10 +89,20 @@ export default function App() {
       <Sidebar
         collapsed={sidebarCollapsed}
         activePage={activePage}
+        ollamaRunning={ollamaStatus?.running ?? null}
         onNavigate={setActivePage}
         onToggle={() => setSidebarCollapsed((c) => !c)}
       />
-      <MainArea activePage={activePage} />
+      <MainArea
+        activePage={activePage}
+        messages={messages}
+        isStreaming={isStreaming}
+        modelMode={modelMode}
+        ollamaRunning={ollamaStatus?.running ?? null}
+        onSend={sendMessage}
+        onStop={stopStreaming}
+        onModelModeChange={setModelMode}
+      />
       <RightPanel />
     </div>
   );
@@ -97,12 +115,33 @@ export default function App() {
 interface SidebarProps {
   collapsed: boolean;
   activePage: PageId;
+  ollamaRunning: boolean | null;
   onNavigate: (page: PageId) => void;
   onToggle: () => void;
 }
 
-function Sidebar({ collapsed, activePage, onNavigate, onToggle }: SidebarProps) {
+function Sidebar({
+  collapsed,
+  activePage,
+  ollamaRunning,
+  onNavigate,
+  onToggle,
+}: SidebarProps) {
   const width = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED;
+
+  const dotColor =
+    ollamaRunning === null
+      ? "var(--text-3)"
+      : ollamaRunning
+      ? "#22c55e"
+      : "#ef4444";
+
+  const ollamaLabel =
+    ollamaRunning === null
+      ? "Ollama: checking"
+      : ollamaRunning
+      ? "Ollama: running"
+      : "Ollama: not found";
 
   return (
     <aside
@@ -113,7 +152,6 @@ function Sidebar({ collapsed, activePage, onNavigate, onToggle }: SidebarProps) 
         flexDirection: "column",
         backgroundColor: "var(--surface)",
         borderRight: "1px solid var(--border)",
-        // Section 16 (Animation): sidebar width transition is the only permitted sidebar animation
         transition: "width 200ms ease-in-out, min-width 200ms ease-in-out",
         overflow: "hidden",
         flexShrink: 0,
@@ -186,7 +224,6 @@ function Sidebar({ collapsed, activePage, onNavigate, onToggle }: SidebarProps) 
                 justifyContent: collapsed ? "center" : "flex-start",
                 color: active ? "var(--text)" : "var(--text-2)",
                 backgroundColor: active ? "var(--surface-2)" : "transparent",
-                // Section 14: active state has a left border accent
                 borderLeft: `2px solid ${active ? "var(--accent)" : "transparent"}`,
                 fontSize: 13,
                 whiteSpace: "nowrap",
@@ -200,7 +237,7 @@ function Sidebar({ collapsed, activePage, onNavigate, onToggle }: SidebarProps) 
         })}
       </nav>
 
-      {/* Footer: status indicators — Section 14 */}
+      {/* Footer */}
       <div
         style={{
           borderTop: "1px solid var(--border)",
@@ -212,26 +249,24 @@ function Sidebar({ collapsed, activePage, onNavigate, onToggle }: SidebarProps) 
           alignItems: collapsed ? "center" : "flex-start",
         }}
       >
-        {/* Ollama health indicator */}
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <span
             style={{
               width: 7,
               height: 7,
               borderRadius: "50%",
-              backgroundColor: "var(--text-3)",
+              backgroundColor: dotColor,
               flexShrink: 0,
               display: "block",
+              transition: "background-color 300ms",
             }}
           />
           {!collapsed && (
             <span style={{ fontSize: 11, color: "var(--text-3)", whiteSpace: "nowrap" }}>
-              Ollama: checking
+              {ollamaLabel}
             </span>
           )}
         </div>
-
-        {/* Version */}
         {!collapsed && (
           <span style={{ fontSize: 11, color: "var(--text-3)" }}>v0.1.0</span>
         )}
@@ -244,7 +279,27 @@ function Sidebar({ collapsed, activePage, onNavigate, onToggle }: SidebarProps) 
 // Main area
 // ---------------------------------------------------------------------------
 
-function MainArea({ activePage }: { activePage: PageId }) {
+interface MainAreaProps {
+  activePage: PageId;
+  messages: ReturnType<typeof useChat>["messages"];
+  isStreaming: boolean;
+  modelMode: ModelMode;
+  ollamaRunning: boolean | null;
+  onSend: (text: string) => void;
+  onStop: () => void;
+  onModelModeChange: (mode: ModelMode) => void;
+}
+
+function MainArea({
+  activePage,
+  messages,
+  isStreaming,
+  modelMode,
+  ollamaRunning,
+  onSend,
+  onStop,
+  onModelModeChange,
+}: MainAreaProps) {
   return (
     <main
       style={{
@@ -255,7 +310,7 @@ function MainArea({ activePage }: { activePage: PageId }) {
         backgroundColor: "var(--bg)",
       }}
     >
-      {/* Chat header — Section 14 */}
+      {/* Chat header */}
       <div
         style={{
           height: 48,
@@ -272,51 +327,93 @@ function MainArea({ activePage }: { activePage: PageId }) {
             fontSize: 13,
             color: "var(--text-2)",
             textTransform: "capitalize",
+            flex: 1,
           }}
         >
           {activePage}
         </span>
+
+        <ModelModeSelector
+          value={modelMode}
+          onChange={onModelModeChange}
+          ollamaRunning={ollamaRunning}
+        />
       </div>
 
-      {/* Message area placeholder */}
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "var(--text-3)",
-          fontSize: 13,
-        }}
-      >
-        Select a conversation to begin
-      </div>
+      <MessageList messages={messages} isStreaming={isStreaming} />
 
-      {/* Composer placeholder — Section 14 */}
-      <div
-        style={{
-          borderTop: "1px solid var(--border)",
-          padding: "12px 16px",
-          flexShrink: 0,
-        }}
-      >
-        <div
-          style={{
-            backgroundColor: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            padding: "10px 14px",
-            fontSize: 13,
-            color: "var(--text-3)",
-            minHeight: 48,
-            display: "flex",
-            alignItems: "center",
-          }}
-        >
-          Message LocalMind
-        </div>
-      </div>
+      <Composer
+        onSend={onSend}
+        onStop={onStop}
+        isStreaming={isStreaming}
+        disabled={ollamaRunning === false}
+      />
     </main>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Model mode selector — Section 14 (Chat header)
+// ---------------------------------------------------------------------------
+
+const MODE_LABELS: Record<ModelMode, string> = {
+  speed: "Speed",
+  balanced: "Balanced",
+  boost: "Boost",
+};
+
+const MODES: ModelMode[] = ["speed", "balanced", "boost"];
+
+interface ModelModeSelectorProps {
+  value: ModelMode;
+  onChange: (mode: ModelMode) => void;
+  ollamaRunning: boolean | null;
+}
+
+function ModelModeSelector({ value, onChange, ollamaRunning }: ModelModeSelectorProps) {
+  return (
+    <div
+      role="group"
+      aria-label="Model mode"
+      style={{
+        display: "flex",
+        backgroundColor: "var(--surface-2)",
+        borderRadius: 5,
+        padding: 2,
+        gap: 2,
+      }}
+    >
+      {MODES.map((mode) => {
+        const active = value === mode;
+        const boostDisabled = mode === "boost";
+        return (
+          <button
+            key={mode}
+            onClick={() => !boostDisabled && onChange(mode)}
+            disabled={boostDisabled || ollamaRunning === false}
+            title={boostDisabled ? "Boost requires an API key (Phase 2)" : undefined}
+            style={{
+              fontSize: 11,
+              fontWeight: active ? 600 : 400,
+              padding: "3px 10px",
+              borderRadius: 3,
+              backgroundColor: active ? "var(--surface)" : "transparent",
+              color: boostDisabled
+                ? "var(--text-3)"
+                : active
+                ? "var(--text)"
+                : "var(--text-2)",
+              cursor: boostDisabled ? "not-allowed" : "pointer",
+              transition: "background-color 150ms",
+              border: active ? "1px solid var(--border)" : "1px solid transparent",
+              opacity: boostDisabled ? 0.5 : 1,
+            }}
+          >
+            {MODE_LABELS[mode]}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -357,13 +454,7 @@ function RightPanel() {
           >
             {section}
           </span>
-          <div
-            style={{
-              marginTop: 8,
-              fontSize: 12,
-              color: "var(--text-3)",
-            }}
-          >
+          <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-3)" }}>
             No data
           </div>
         </div>

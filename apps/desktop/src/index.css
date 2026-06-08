@@ -98,3 +98,37 @@ button {
   font-family: inherit;
   cursor: pointer;
 }
+
+/* Streaming cursor animation */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+/* Markdown prose resets inside assistant messages */
+.assistant-message p {
+  margin: 0 0 8px;
+}
+.assistant-message p:last-child {
+  margin-bottom: 0;
+}
+.assistant-message ul,
+.assistant-message ol {
+  margin: 4px 0 8px;
+  padding-left: 20px;
+}
+.assistant-message li {
+  margin-bottom: 2px;
+}
+.assistant-message h1,
+.assistant-message h2,
+.assistant-message h3 {
+  margin: 12px 0 6px;
+  color: var(--text);
+}
+.assistant-message blockquote {
+  border-left: 3px solid var(--border);
+  margin: 8px 0;
+  padding: 4px 12px;
+  color: var(--text-2);
+}
