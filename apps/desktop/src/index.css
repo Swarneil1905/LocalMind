@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* -----------------------------------------------------------------------
+   Design system tokens
+   Spec reference: Section 16 (Design System — Color System)
+
+   Dark mode is the default. :root holds dark-mode values.
+   Adding the .light class to <html> switches to light mode.
+   ----------------------------------------------------------------------- */
+
+:root {
+  --bg:            #0F0F0F;
+  --surface:       #1A1A1A;
+  --surface-2:     #242424;
+  --surface-3:     #2E2E2E;
+  --border:        #333333;
+  --border-subtle: #252525;
+  --text:          #E8E8E8;
+  --text-2:        #999999;
+  --text-3:        #666666;
+  --accent:        #4F8EF7;
+  --accent-hover:  #6BA3F9;
+  --accent-dim:    rgba(79, 142, 247, 0.15);
+  --success:       #4CAF82;
+  --warning:       #D4942A;
+  --error:         #D45A5A;
+  --info:          #4F8EF7;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.light {
+  --bg:            #FAFAFA;
+  --surface:       #FFFFFF;
+  --surface-2:     #F5F5F5;
+  --surface-3:     #EEEEEE;
+  --border:        #E0E0E0;
+  --border-subtle: #EBEBEB;
+  --text:          #111111;
+  --text-2:        #555555;
+  --text-3:        #888888;
+  --accent:        #2B6FD8;
+  --accent-hover:  #1A5FC4;
+  --accent-dim:    rgba(43, 111, 216, 0.12);
+  --success:       #2E7D56;
+  --warning:       #B5770E;
+  --error:         #B83232;
+  --info:          #2B6FD8;
+}
+
+/* -----------------------------------------------------------------------
+   Base reset
+   ----------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  /* Inter is bundled in production. Falls back to system-ui in dev.
+     Do not load from Google Fonts or any CDN. */
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  background-color: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Monospace — used for code blocks, file paths, and the audit log */
+code,
+pre,
+kbd,
+.mono {
+  font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+}
+
+/* Button reset — components style their own buttons */
+button {
+  background: none;
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+}
