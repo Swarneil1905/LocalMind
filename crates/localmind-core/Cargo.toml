@@ -1,0 +1,10 @@
+[package]
+name = "localmind-core"
+version = "0.1.0"
+edition = "2021"
+description = "Window management, sidecar lifecycle, secrets, permissions, and audit log for LocalMind"
+
+[dependencies]
+rand = "0.8"
+tokio = { version = "1", features = ["time"] }
+reqwest = "0.12"
