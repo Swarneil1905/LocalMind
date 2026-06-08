@@ -1,0 +1,47 @@
+# Node
+node_modules/
+.pnpm-store/
+dist/
+.turbo/
+
+# Rust / Cargo
+target/
+# Cargo.lock is intentionally tracked — this is an application, not a library
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+*.egg-info/
+dist/
+build/
+
+# Tauri
+apps/desktop/src-tauri/target/
+
+# SQLite
+*.db
+*.db-shm
+*.db-wal
+
+# IDE
+.vscode/settings.json
+.idea/
+*.suo
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+coverage/
+.coverage
+htmlcov/

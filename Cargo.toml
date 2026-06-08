@@ -1,5 +1,5 @@
 [workspace]
 resolver = "2"
 members = [
-    "apps/desktop/src-tauri",
+    "apps/desktop/src-tauri", "crates/localmind-core", "crates/localmind-db", "crates/localmind-permissions",
 ]
