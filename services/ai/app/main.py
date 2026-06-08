@@ -11,7 +11,7 @@ import os
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.api.routes import health
+from app.api.routes import chat, health, models
 
 app = FastAPI(title="LocalMind AI Service", version="0.1.0", docs_url=None, redoc_url=None)
 
@@ -26,3 +26,5 @@ async def verify_bearer_token(request: Request, call_next):  # type: ignore[no-u
 
 
 app.include_router(health.router)
+app.include_router(chat.router)
+app.include_router(models.router)
