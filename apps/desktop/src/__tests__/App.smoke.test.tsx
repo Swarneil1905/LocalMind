@@ -16,8 +16,9 @@ describe("App smoke test", () => {
     expect(screen.getByText("LocalMind")).toBeDefined();
   });
 
-  it("renders the composer placeholder text", () => {
+  it("renders the composer textarea", () => {
     render(<App />);
-    expect(screen.getByText("Message LocalMind")).toBeDefined();
+    // Placeholder is a textarea attribute, not a text node — use getByPlaceholderText
+    expect(screen.getByPlaceholderText("Message LocalMind")).toBeDefined();
   });
 });

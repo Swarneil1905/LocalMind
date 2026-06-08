@@ -12,7 +12,7 @@ export default defineConfig({
     // Make vitest globals (describe, it, expect) available without importing
     globals: true,
     // Run setup file before each test suite (adds jest-dom matchers if needed later)
-    setupFiles: [],
+    setupFiles: ["src/test-setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
   },
 });
