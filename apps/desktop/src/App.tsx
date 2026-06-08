@@ -18,6 +18,7 @@ import { Composer } from "./components/Composer";
 import { MessageList } from "./components/MessageList";
 import { SettingsPage } from "./components/SettingsPage";
 import { useChat } from "./hooks/useChat";
+import { useMemory } from "./hooks/useMemory";
 import { useOllama } from "./hooks/useOllama";
 import { ModelMode, MODEL_MAP } from "./types";
 import "./App.css";
@@ -76,9 +77,15 @@ export default function App() {
   const [modelMode, setModelMode] = useState<ModelMode>("balanced");
   const [speedModel, setSpeedModel] = useState(MODEL_MAP.speed);
   const [balancedModel, setBalancedModel] = useState(MODEL_MAP.balanced);
+  const [memoryEnabled, setMemoryEnabled] = useState(true);
 
   const ollamaStatus = useOllama();
-  const { messages, isStreaming, sendMessage, stopStreaming } = useChat(modelMode);
+  const { memories, deleteMemory } = useMemory();
+  const { messages, isStreaming, sendMessage, stopStreaming } = useChat({
+    modelMode,
+    speedModel,
+    memoryEnabled,
+  });
 
   return (
     <div
@@ -104,13 +111,15 @@ export default function App() {
         ollamaStatus={ollamaStatus}
         speedModel={speedModel}
         balancedModel={balancedModel}
+        memoryEnabled={memoryEnabled}
         onSend={sendMessage}
         onStop={stopStreaming}
         onModelModeChange={setModelMode}
         onSpeedModelChange={setSpeedModel}
         onBalancedModelChange={setBalancedModel}
+        onMemoryToggle={() => setMemoryEnabled((v) => !v)}
       />
-      <RightPanel />
+      <RightPanel memories={memories} onDeleteMemory={deleteMemory} />
     </div>
   );
 }
@@ -294,11 +303,13 @@ interface MainAreaProps {
   ollamaStatus: ReturnType<typeof useOllama>;
   speedModel: string;
   balancedModel: string;
+  memoryEnabled: boolean;
   onSend: (text: string) => void;
   onStop: () => void;
   onModelModeChange: (mode: ModelMode) => void;
   onSpeedModelChange: (model: string) => void;
   onBalancedModelChange: (model: string) => void;
+  onMemoryToggle: () => void;
 }
 
 function MainArea({
@@ -309,11 +320,13 @@ function MainArea({
   ollamaStatus,
   speedModel,
   balancedModel,
+  memoryEnabled,
   onSend,
   onStop,
   onModelModeChange,
   onSpeedModelChange,
   onBalancedModelChange,
+  onMemoryToggle,
 }: MainAreaProps) {
   const ollamaRunning = ollamaStatus?.running ?? null;
 
@@ -377,6 +390,8 @@ function MainArea({
             onStop={onStop}
             isStreaming={isStreaming}
             disabled={ollamaRunning === false}
+            memoryEnabled={memoryEnabled}
+            onMemoryToggle={onMemoryToggle}
           />
         </>
       )}
@@ -453,7 +468,15 @@ function ModelModeSelector({ value, onChange, ollamaRunning }: ModelModeSelector
 // Right panel
 // ---------------------------------------------------------------------------
 
-function RightPanel() {
+import { Memory } from "./hooks/useMemory";
+import { X } from "lucide-react";
+
+interface RightPanelProps {
+  memories: Memory[];
+  onDeleteMemory: (id: string) => void;
+}
+
+function RightPanel({ memories, onDeleteMemory }: RightPanelProps) {
   return (
     <aside
       style={{
@@ -467,7 +490,65 @@ function RightPanel() {
         overflowY: "auto",
       }}
     >
-      {RIGHT_PANEL_SECTIONS.map((section) => (
+      {/* Used Memory — active in Phase 2 */}
+      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: "var(--text-3)",
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+          }}
+        >
+          Used Memory
+        </span>
+        <div style={{ marginTop: 8 }}>
+          {memories.length === 0 ? (
+            <p style={{ fontSize: 12, color: "var(--text-3)" }}>No memories yet</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {memories.map((m) => (
+                <div
+                  key={m.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 6,
+                    backgroundColor: "var(--surface-2)",
+                    borderRadius: 4,
+                    padding: "6px 8px",
+                  }}
+                >
+                  <span style={{ fontSize: 12, color: "var(--text-2)", flex: 1, lineHeight: 1.4 }}>
+                    {m.content}
+                  </span>
+                  <button
+                    onClick={() => onDeleteMemory(m.id)}
+                    title="Delete memory"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: 16,
+                      height: 16,
+                      borderRadius: 3,
+                      color: "var(--text-3)",
+                      flexShrink: 0,
+                      marginTop: 1,
+                    }}
+                  >
+                    <X size={10} strokeWidth={1.5} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Remaining sections — placeholder until later phases */}
+      {RIGHT_PANEL_SECTIONS.filter((s) => s !== "Used memory").map((section) => (
         <div
           key={section}
           style={{

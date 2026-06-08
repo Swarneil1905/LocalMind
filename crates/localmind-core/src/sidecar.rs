@@ -137,10 +137,19 @@ impl SidecarHandle {
             script.display()
         );
 
+        // Resolve the platform data directory so Python can persist files there.
+        // Windows:  %APPDATA%\LocalMind
+        // macOS:    ~/Library/Application Support/LocalMind
+        // Linux:    ~/.local/share/LocalMind
+        let data_dir = dirs::data_dir()
+            .map(|d| d.join("LocalMind"))
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+
         let child = Command::new(python_exe())
             .arg(&script)
             .env("LOCALMIND_PORT", port.to_string())
             .env("LOCALMIND_TOKEN", &token)
+            .env("LOCALMIND_DATA_DIR", data_dir.to_string_lossy().as_ref())
             .stderr(Stdio::inherit())
             .spawn()
             .map_err(SidecarError::Spawn)?;

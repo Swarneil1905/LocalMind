@@ -4,7 +4,8 @@
 //   1. sendMessage() adds user + empty assistant messages, calls chat_stream command.
 //   2. Rust emits "chat-token" events; we append each token to the assistant message.
 //   3. Rust emits "chat-done" when streaming ends (or errors).
-//   4. stopStreaming() resets streaming state; in-flight tokens are ignored.
+//   4. After a successful reply, if memoryEnabled, calls extract_memories in the background.
+//   5. stopStreaming() resets streaming state; in-flight tokens are ignored.
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -19,21 +20,26 @@ interface ChatDonePayload {
   error: string | null;
 }
 
-export function useChat(modelMode: ModelMode) {
+interface UseChatOptions {
+  modelMode: ModelMode;
+  speedModel: string;
+  memoryEnabled: boolean;
+}
+
+export function useChat({ modelMode, speedModel, memoryEnabled }: UseChatOptions) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
 
-  // We track the ID of the assistant message being streamed so that concurrent
-  // state updates from different event callbacks all target the right message.
   const streamingIdRef = useRef<string | null>(null);
+  // Track the last user message so we can pass it to extraction after the reply
+  const lastUserMessageRef = useRef<string>("");
+  // Keep memoryEnabled and speedModel in refs so the done-handler closure sees current values
+  const memoryEnabledRef = useRef(memoryEnabled);
+  const speedModelRef = useRef(speedModel);
+  memoryEnabledRef.current = memoryEnabled;
+  speedModelRef.current = speedModel;
 
-  // Set up persistent Tauri event listeners. These live for the lifetime of
-  // the hook (i.e. the app), not per-message, so they don't miss early tokens.
   useEffect(() => {
-    // `cancelled` guards against React StrictMode's double-invoke of effects.
-    // StrictMode runs cleanup before the listen() Promise resolves, so without
-    // this flag the first listener would never be removed and every token would
-    // fire twice.
     let cancelled = false;
     let unlistenToken: (() => void) | undefined;
     let unlistenDone: (() => void) | undefined;
@@ -47,23 +53,42 @@ export function useChat(modelMode: ModelMode) {
         )
       );
     }).then((fn) => {
-      if (cancelled) fn(); // cleanup already ran — unlisten immediately
+      if (cancelled) fn();
       else unlistenToken = fn;
     });
 
     listen<ChatDonePayload>("chat-done", (event) => {
-      const id = streamingIdRef.current;
+      const assistantId = streamingIdRef.current;
       streamingIdRef.current = null;
       setIsStreaming(false);
 
-      if (event.payload.error && id) {
+      if (event.payload.error && assistantId) {
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === id
+            m.id === assistantId
               ? { ...m, content: event.payload.error!, error: true }
               : m
           )
         );
+        return;
+      }
+
+      // Trigger background memory extraction after a successful reply.
+      // We read the final assistant content via a no-op state update so we
+      // have access to the latest messages snapshot.
+      if (memoryEnabledRef.current && assistantId) {
+        const userMsg = lastUserMessageRef.current;
+        setMessages((prev) => {
+          const assistantMsg = prev.find((m) => m.id === assistantId);
+          if (assistantMsg?.content) {
+            invoke("extract_memories", {
+              userMessage: userMsg,
+              assistantMessage: assistantMsg.content,
+              speedModel: speedModelRef.current,
+            }).catch(() => {});
+          }
+          return prev; // no state change — purely a read
+        });
       }
     }).then((fn) => {
       if (cancelled) fn();
@@ -94,7 +119,6 @@ export function useChat(modelMode: ModelMode) {
         content: "",
       };
 
-      // Snapshot history before adding the new messages
       const history = messages.map((m) => ({
         role: m.role,
         content: m.content,
@@ -103,16 +127,16 @@ export function useChat(modelMode: ModelMode) {
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
       setIsStreaming(true);
       streamingIdRef.current = assistantMsg.id;
+      lastUserMessageRef.current = trimmed;
 
       try {
         await invoke("chat_stream", {
           message: trimmed,
           model: MODEL_MAP[modelMode],
           history,
+          memoryEnabled,
         });
       } catch (e) {
-        // invoke() only rejects on Rust-side errors (not sidecar stream errors,
-        // those come through chat-done). Handle the rare Rust error here.
         const id = streamingIdRef.current;
         streamingIdRef.current = null;
         setIsStreaming(false);
@@ -127,12 +151,9 @@ export function useChat(modelMode: ModelMode) {
         }
       }
     },
-    [isStreaming, messages, modelMode]
+    [isStreaming, messages, modelMode, memoryEnabled]
   );
 
-  // UI-level stop: stop updating state with new tokens.
-  // The in-flight HTTP request will complete in the background but tokens
-  // will be ignored because streamingIdRef is cleared.
   const stopStreaming = useCallback(() => {
     streamingIdRef.current = null;
     setIsStreaming(false);

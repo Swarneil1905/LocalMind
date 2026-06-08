@@ -6,16 +6,18 @@
 // - Stop button appears only while streaming
 
 import { useCallback, useEffect, useRef } from "react";
-import { Square, Send } from "lucide-react";
+import { Brain, Send, Square } from "lucide-react";
 
 interface ComposerProps {
   onSend: (text: string) => void;
   onStop: () => void;
   isStreaming: boolean;
   disabled: boolean;
+  memoryEnabled: boolean;
+  onMemoryToggle: () => void;
 }
 
-export function Composer({ onSend, onStop, isStreaming, disabled }: ComposerProps) {
+export function Composer({ onSend, onStop, isStreaming, disabled, memoryEnabled, onMemoryToggle }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-resize the textarea as the user types
@@ -105,11 +107,35 @@ export function Composer({ onSend, onStop, isStreaming, disabled }: ComposerProp
           style={{
             display: "flex",
             alignItems: "center",
-            justifyContent: "flex-end",
+            justifyContent: "space-between",
             padding: "4px 8px 8px",
             gap: 6,
           }}
         >
+          {/* Memory toggle — left side */}
+          <button
+            onClick={onMemoryToggle}
+            title={memoryEnabled ? "Memory on — click to disable" : "Memory off — click to enable"}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              height: 24,
+              padding: "0 8px",
+              borderRadius: 4,
+              backgroundColor: memoryEnabled ? "var(--accent-dim)" : "transparent",
+              border: `1px solid ${memoryEnabled ? "var(--accent)" : "var(--border)"}`,
+              color: memoryEnabled ? "var(--accent)" : "var(--text-3)",
+              fontSize: 11,
+              cursor: "pointer",
+            }}
+          >
+            <Brain size={12} strokeWidth={1.5} />
+            Memory
+          </button>
+
+          {/* Send / Stop — right side */}
+          <div style={{ display: "flex", gap: 6 }}>
           {isStreaming ? (
             // Stop button — square icon, shown only while streaming
             <button
@@ -150,6 +176,7 @@ export function Composer({ onSend, onStop, isStreaming, disabled }: ComposerProp
               <Send size={14} strokeWidth={1.5} />
             </button>
           )}
+          </div>
         </div>
       </div>
 
