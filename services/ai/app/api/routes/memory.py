@@ -27,24 +27,27 @@ OLLAMA_BASE = "http://127.0.0.1:11434"
 EXTRACT_TIMEOUT = httpx.Timeout(connect=5.0, read=60.0, write=5.0, pool=5.0)
 
 EXTRACT_PROMPT = """\
-Read the following conversation exchange and extract 0 to 3 facts about the user that are worth remembering for future conversations.
-Only extract facts that are personal, preferential, or highly specific to the user.
-Return ONLY a valid JSON array of short strings (max 20 words each). Nothing else.
-If nothing is worth remembering, return [].
+Task: extract 0-2 personal facts about the USER from the conversation below.
 
-Examples of good facts:
-- "User is building a Tauri desktop app called LocalMind"
-- "User prefers Python over Rust for quick scripts"
-- "User's GPU is an NVIDIA RTX 4050 with 6 GB VRAM"
+STRICT rules - violating any rule means return []:
+1. Facts must be about the USER only, never about the assistant.
+2. Each fact must be a full sentence of at least 6 words.
+3. Only extract concrete facts: user's name, job, tools, preferences, projects, skills, or explicit opinions.
+4. NEVER extract: single words, generic phrases, greetings, topics the assistant listed, or anything the assistant said.
+5. If the user message is a greeting, a status question, or contains no personal facts, return [].
+6. Return ONLY a raw JSON array of strings. No markdown, no explanation.
 
-Examples of bad facts (too generic, skip these):
-- "User asked about medieval history"
-- "User greeted the assistant"
+Good examples (only if the user actually stated these):
+["User is building a Tauri desktop app named LocalMind in Rust"]
+["User prefers Python over Rust for writing quick scripts"]
 
-User: {user_message}
-Assistant: {assistant_message}
+Bad examples - NEVER return these:
+["Memory Management", "project management", "Hello", "as usual", "to assist", "User is asking a question"]
 
-JSON array:"""
+User said: {user_message}
+Assistant said: {assistant_message}
+
+JSON:"""
 
 
 class ExtractRequest(BaseModel):
@@ -103,7 +106,7 @@ async def extract_memories(request: ExtractRequest) -> dict:
             raw = data.get("message", {}).get("content", "")
             extracted = _parse_json_array(raw)
     except Exception:
-        # Extraction failure is non-fatal — just return empty
+        # Extraction failure is non-fatal - just return empty
         pass
 
     new_rows = mem_db.insert_memories(extracted)

@@ -112,10 +112,10 @@ export function Composer({ onSend, onStop, isStreaming, disabled, memoryEnabled,
             gap: 6,
           }}
         >
-          {/* Memory toggle — left side */}
+          {/* Memory toggle - left side */}
           <button
             onClick={onMemoryToggle}
-            title={memoryEnabled ? "Memory on — click to disable" : "Memory off — click to enable"}
+            title={memoryEnabled ? "Memory on - click to disable" : "Memory off - click to enable"}
             style={{
               display: "flex",
               alignItems: "center",
@@ -134,10 +134,10 @@ export function Composer({ onSend, onStop, isStreaming, disabled, memoryEnabled,
             Memory
           </button>
 
-          {/* Send / Stop — right side */}
+          {/* Send / Stop - right side */}
           <div style={{ display: "flex", gap: 6 }}>
           {isStreaming ? (
-            // Stop button — square icon, shown only while streaming
+            // Stop button - square icon, shown only while streaming
             <button
               onClick={onStop}
               title="Stop generation"

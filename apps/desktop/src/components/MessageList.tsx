@@ -1,4 +1,4 @@
-// Spec reference: Section 14 (Main Chat Area — Message list)
+// Spec reference: Section 14 (Main Chat Area - Message list)
 //
 // User messages:   right-aligned, surface-2 background, 14px
 // Assistant msgs:  left-aligned, no background, Markdown rendered
@@ -60,7 +60,7 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
           <MessageBubble key={msg.id} message={msg} />
         ))}
 
-        {/* Streaming cursor — shown while the last assistant message is being generated */}
+        {/* Streaming cursor - shown while the last assistant message is being generated */}
         {isStreaming && messages[messages.length - 1]?.role === "assistant" && (
           <StreamingCursor />
         )}
@@ -116,7 +116,7 @@ function MessageBubble({ message }: { message: Message }) {
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
-              // Code blocks — dark surface, monospace font
+              // Code blocks - dark surface, monospace font
               code({ className, children, ...props }) {
                 const isBlock = className?.startsWith("language-");
                 return isBlock ? (

@@ -1,4 +1,4 @@
-// Smoke test — Phase 0
+// Smoke test - Phase 0
 // Verifies the App component mounts without throwing and renders key landmarks.
 // No behaviour is tested here; that belongs to Phase 2+.
 
@@ -18,7 +18,7 @@ describe("App smoke test", () => {
 
   it("renders the composer textarea", () => {
     render(<App />);
-    // Placeholder is a textarea attribute, not a text node — use getByPlaceholderText
+    // Placeholder is a textarea attribute, not a text node - use getByPlaceholderText
     expect(screen.getByPlaceholderText("Message LocalMind")).toBeDefined();
   });
 });

@@ -53,7 +53,7 @@ struct MemoriesUpdatedPayload {
 }
 
 // ---------------------------------------------------------------------------
-// Helper — build a sidecar URL
+// Helper - build a sidecar URL
 // ---------------------------------------------------------------------------
 
 fn sidecar_url(state: &SidecarState, path: &str) -> Result<(String, String), String> {
@@ -84,8 +84,8 @@ async fn get_ollama_status(
 /// prepends them to the system prompt.
 ///
 /// Emits two event types to the frontend window:
-///   "chat-token"  — {content: "<chunk>"}   for each token
-///   "chat-done"   — {error: null | "msg"}  on finish or error
+///   "chat-token"  - {content: "<chunk>"}   for each token
+///   "chat-done"   - {error: null | "msg"}  on finish or error
 #[tauri::command]
 async fn chat_stream(
     message: String,
@@ -234,7 +234,7 @@ async fn extract_memories(
         .map_err(|e| e.to_string())?;
 
     if !resp.status().is_success() {
-        // Extraction failure is non-fatal — swallow quietly
+        // Extraction failure is non-fatal - swallow quietly
         return Ok(());
     }
 

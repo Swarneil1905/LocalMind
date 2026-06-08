@@ -1,8 +1,8 @@
 """
 Model listing and status routes.
 
-GET /models/list   — returns all models currently available in Ollama
-GET /models/status — returns whether Ollama is reachable and what version
+GET /models/list   - returns all models currently available in Ollama
+GET /models/status - returns whether Ollama is reachable and what version
 """
 
 import httpx

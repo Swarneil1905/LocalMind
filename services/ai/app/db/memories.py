@@ -59,18 +59,36 @@ def _ensure_schema() -> sqlite3.Connection:
 # ---------------------------------------------------------------------------
 
 def insert_memories(contents: list[str]) -> list[dict]:
-    """Insert a batch of memory strings. Returns the inserted rows."""
+    """Insert a batch of memory strings, skipping near-duplicates and junk.
+
+    A memory is skipped if:
+    - It is shorter than 6 words (too vague)
+    - Its lowercased text already exists in the DB
+    """
     if not contents:
         return []
     conn = _ensure_schema()
+
+    # Load existing content for dedup check
+    existing_lower = {
+        row["content"].lower()
+        for row in conn.execute("SELECT content FROM memories").fetchall()
+    }
+
     now = datetime.now(timezone.utc).isoformat()
     rows = []
     for content in contents:
+        content = content.strip()
+        if len(content.split()) < 6:
+            continue  # too short - likely a fragment or single word
+        if content.lower() in existing_lower:
+            continue  # duplicate
         mid = str(uuid.uuid4())
         conn.execute(
             "INSERT INTO memories (id, content, created_at) VALUES (?, ?, ?)",
             (mid, content, now),
         )
+        existing_lower.add(content.lower())
         rows.append({"id": mid, "content": content, "created_at": now})
     conn.commit()
     conn.close()

@@ -30,7 +30,7 @@ export function useMemory() {
       .then((list) => {
         if (!cancelled) setMemories(list);
       })
-      .catch(() => {}); // sidecar may not be ready yet — silently skip
+      .catch(() => {}); // sidecar may not be ready yet - silently skip
 
     listen<MemoriesUpdatedPayload>("memories-updated", (event) => {
       setMemories(event.payload.memories);
@@ -49,7 +49,7 @@ export function useMemory() {
     try {
       await invoke("delete_memory", { memoryId: id });
     } catch {
-      // swallow — UI will sync on next memories-updated event
+      // swallow - UI will sync on next memories-updated event
     }
   }, []);
 

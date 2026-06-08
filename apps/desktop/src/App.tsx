@@ -12,13 +12,15 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Composer } from "./components/Composer";
 import { MessageList } from "./components/MessageList";
+import { MemoryPage } from "./components/MemoryPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { useChat } from "./hooks/useChat";
-import { useMemory } from "./hooks/useMemory";
+import { Memory, useMemory } from "./hooks/useMemory";
 import { useOllama } from "./hooks/useOllama";
 import { ModelMode, MODEL_MAP } from "./types";
 import "./App.css";
@@ -112,12 +114,14 @@ export default function App() {
         speedModel={speedModel}
         balancedModel={balancedModel}
         memoryEnabled={memoryEnabled}
+        memories={memories}
         onSend={sendMessage}
         onStop={stopStreaming}
         onModelModeChange={setModelMode}
         onSpeedModelChange={setSpeedModel}
         onBalancedModelChange={setBalancedModel}
         onMemoryToggle={() => setMemoryEnabled((v) => !v)}
+        onDeleteMemory={deleteMemory}
       />
       <RightPanel memories={memories} onDeleteMemory={deleteMemory} />
     </div>
@@ -304,12 +308,14 @@ interface MainAreaProps {
   speedModel: string;
   balancedModel: string;
   memoryEnabled: boolean;
+  memories: Memory[];
   onSend: (text: string) => void;
   onStop: () => void;
   onModelModeChange: (mode: ModelMode) => void;
   onSpeedModelChange: (model: string) => void;
   onBalancedModelChange: (model: string) => void;
   onMemoryToggle: () => void;
+  onDeleteMemory: (id: string) => void;
 }
 
 function MainArea({
@@ -321,12 +327,14 @@ function MainArea({
   speedModel,
   balancedModel,
   memoryEnabled,
+  memories,
   onSend,
   onStop,
   onModelModeChange,
   onSpeedModelChange,
   onBalancedModelChange,
   onMemoryToggle,
+  onDeleteMemory,
 }: MainAreaProps) {
   const ollamaRunning = ollamaStatus?.running ?? null;
 
@@ -340,7 +348,7 @@ function MainArea({
         backgroundColor: "var(--bg)",
       }}
     >
-      {/* Header — always visible */}
+      {/* Header - always visible */}
       <div
         style={{
           height: 48,
@@ -364,7 +372,7 @@ function MainArea({
         </span>
 
         {/* Model selector is only shown on chat pages */}
-        {activePage !== "settings" && (
+        {activePage !== "settings" && activePage !== "memory" && (
           <ModelModeSelector
             value={modelMode}
             onChange={onModelModeChange}
@@ -382,6 +390,8 @@ function MainArea({
           onSpeedModelChange={onSpeedModelChange}
           onBalancedModelChange={onBalancedModelChange}
         />
+      ) : activePage === "memory" ? (
+        <MemoryPage memories={memories ?? []} onDelete={onDeleteMemory} />
       ) : (
         <>
           <MessageList messages={messages} isStreaming={isStreaming} />
@@ -400,7 +410,7 @@ function MainArea({
 }
 
 // ---------------------------------------------------------------------------
-// Model mode selector — Section 14 (Chat header)
+// Model mode selector - Section 14 (Chat header)
 // ---------------------------------------------------------------------------
 
 const MODE_LABELS: Record<ModelMode, string> = {
@@ -468,9 +478,6 @@ function ModelModeSelector({ value, onChange, ollamaRunning }: ModelModeSelector
 // Right panel
 // ---------------------------------------------------------------------------
 
-import { Memory } from "./hooks/useMemory";
-import { X } from "lucide-react";
-
 interface RightPanelProps {
   memories: Memory[];
   onDeleteMemory: (id: string) => void;
@@ -490,7 +497,7 @@ function RightPanel({ memories, onDeleteMemory }: RightPanelProps) {
         overflowY: "auto",
       }}
     >
-      {/* Used Memory — active in Phase 2 */}
+      {/* Used Memory - active in Phase 2 */}
       <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
         <span
           style={{
@@ -547,7 +554,7 @@ function RightPanel({ memories, onDeleteMemory }: RightPanelProps) {
         </div>
       </div>
 
-      {/* Remaining sections — placeholder until later phases */}
+      {/* Remaining sections - placeholder until later phases */}
       {RIGHT_PANEL_SECTIONS.filter((s) => s !== "Used memory").map((section) => (
         <div
           key={section}

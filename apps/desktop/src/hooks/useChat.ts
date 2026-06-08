@@ -87,7 +87,7 @@ export function useChat({ modelMode, speedModel, memoryEnabled }: UseChatOptions
               speedModel: speedModelRef.current,
             }).catch(() => {});
           }
-          return prev; // no state change — purely a read
+          return prev; // no state change - purely a read
         });
       }
     }).then((fn) => {
