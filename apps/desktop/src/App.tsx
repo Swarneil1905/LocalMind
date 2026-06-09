@@ -18,6 +18,7 @@ import type { LucideIcon } from "lucide-react";
 import { Composer } from "./components/Composer";
 import { MessageList } from "./components/MessageList";
 import { MemoryPage } from "./components/MemoryPage";
+import { PlaceholderPage } from "./components/PlaceholderPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { useChat } from "./hooks/useChat";
 import { Memory, useMemory } from "./hooks/useMemory";
@@ -337,6 +338,8 @@ function MainArea({
   onDeleteMemory,
 }: MainAreaProps) {
   const ollamaRunning = ollamaStatus?.running ?? null;
+  const activeLabel =
+    NAV_ITEMS.find((n) => n.id === activePage)?.label ?? activePage;
 
   return (
     <main
@@ -364,15 +367,14 @@ function MainArea({
           style={{
             fontSize: 13,
             color: "var(--text-2)",
-            textTransform: "capitalize",
             flex: 1,
           }}
         >
-          {activePage}
+          {activeLabel}
         </span>
 
-        {/* Model selector is only shown on chat pages */}
-        {activePage !== "settings" && activePage !== "memory" && (
+        {/* Model selector shown only on Chats page */}
+        {activePage === "chats" && (
           <ModelModeSelector
             value={modelMode}
             onChange={onModelModeChange}
@@ -392,7 +394,7 @@ function MainArea({
         />
       ) : activePage === "memory" ? (
         <MemoryPage memories={memories ?? []} onDelete={onDeleteMemory} />
-      ) : (
+      ) : activePage === "chats" ? (
         <>
           <MessageList messages={messages} isStreaming={isStreaming} />
           <Composer
@@ -404,7 +406,35 @@ function MainArea({
             onMemoryToggle={onMemoryToggle}
           />
         </>
-      )}
+      ) : activePage === "knowledge" ? (
+        <PlaceholderPage
+          Icon={NAV_ITEMS.find((n) => n.id === "knowledge")!.Icon}
+          title="Knowledge"
+          description="Index local files and documents for semantic search and document Q&A."
+          phase="Coming in Phase 3"
+        />
+      ) : activePage === "projects" ? (
+        <PlaceholderPage
+          Icon={NAV_ITEMS.find((n) => n.id === "projects")!.Icon}
+          title="Projects"
+          description="Organize chats, memory, and files by project context."
+          phase="Coming in Phase 4"
+        />
+      ) : activePage === "today" ? (
+        <PlaceholderPage
+          Icon={NAV_ITEMS.find((n) => n.id === "today")!.Icon}
+          title="Today"
+          description="Your daily digest - open tasks, recent context, and suggested actions."
+          phase="Coming in Phase 5"
+        />
+      ) : activePage === "tasks" ? (
+        <PlaceholderPage
+          Icon={NAV_ITEMS.find((n) => n.id === "tasks")!.Icon}
+          title="Tasks"
+          description="Track and manage tasks with AI-assisted capture and follow-up."
+          phase="Coming in Phase 5"
+        />
+      ) : null}
     </main>
   );
 }
