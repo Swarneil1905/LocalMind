@@ -13,7 +13,9 @@ describe("App smoke test", () => {
 
   it("renders the LocalMind brand name in the sidebar", () => {
     render(<App />);
-    expect(screen.getByText("LocalMind")).toBeDefined();
+    // "LocalMind" now appears in both the sidebar header and the chat empty
+    // state, so use getAllByText and assert at least one match exists.
+    expect(screen.getAllByText("LocalMind").length).toBeGreaterThan(0);
   });
 
   it("renders the composer textarea", () => {
