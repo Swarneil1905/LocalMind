@@ -1,6 +1,7 @@
 // Spec reference: Section 14 (Chat UI), Section 15 (All Application Screens)
 // Phase 1: functional chat, Ollama detection, model mode selector.
 // Phase 3.5: conversation persistence wired in.
+// Phase 4: Projects wired in, project selector in chat header.
 
 import { useCallback, useState } from "react";
 import {
@@ -14,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  FolderOpen as FolderIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Composer } from "./components/Composer";
@@ -22,11 +24,13 @@ import { KnowledgePage } from "./components/KnowledgePage";
 import { MessageList } from "./components/MessageList";
 import { MemoryPage } from "./components/MemoryPage";
 import { PlaceholderPage } from "./components/PlaceholderPage";
+import { ProjectsPage } from "./components/ProjectsPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { useChat } from "./hooks/useChat";
 import { ConversationMessage, useConversations } from "./hooks/useConversations";
 import { Memory, useMemory } from "./hooks/useMemory";
 import { useOllama } from "./hooks/useOllama";
+import { useProjects } from "./hooks/useProjects";
 import { Message, ModelMode, MODEL_MAP } from "./types";
 import "./App.css";
 
@@ -114,6 +118,10 @@ export default function App() {
     renameConversation,
   } = useConversations();
 
+  // Top-level useProjects instance drives the chat-header project selector.
+  // ProjectsPage has its own instance; both stay in sync via Tauri events.
+  const { projects, assignConversation } = useProjects();
+
   // Called by useChat after each successful reply.
   const handleTurnComplete = useCallback(
     (userContent: string, assistantContent: string, assistantThinking: string | null) => {
@@ -141,7 +149,6 @@ export default function App() {
   // Create a new conversation and clear the chat pane.
   const handleNewConversation = useCallback(async () => {
     clearMessages();
-    // Title will be auto-updated to the first message later; for now use placeholder.
     await createConversation("New chat").catch(() => {});
   }, [clearMessages, createConversation]);
 
@@ -158,13 +165,20 @@ export default function App() {
   const handleSend = useCallback(
     async (text: string) => {
       if (!activeConvId) {
-        // Derive a short title from the first user message (max 40 chars)
         const title = text.trim().slice(0, 40) || "New chat";
         await createConversation(title).catch(() => {});
       }
       sendMessage(text);
     },
     [activeConvId, createConversation, sendMessage]
+  );
+
+  const handleAssignProject = useCallback(
+    (projectId: string | null) => {
+      if (!activeConvId) return;
+      assignConversation(activeConvId, projectId).catch(() => {});
+    },
+    [activeConvId, assignConversation]
   );
 
   return (
@@ -196,6 +210,7 @@ export default function App() {
         memories={memories}
         conversations={conversations}
         activeConvId={activeConvId}
+        projects={projects}
         onSend={handleSend}
         onStop={stopStreaming}
         onModelModeChange={setModelMode}
@@ -208,6 +223,7 @@ export default function App() {
         onSelectConversation={handleSelectConversation}
         onDeleteConversation={deleteConversation}
         onRenameConversation={renameConversation}
+        onAssignProject={handleAssignProject}
       />
       <RightPanel memories={memories} onDeleteMemory={deleteMemory} />
     </div>
@@ -398,6 +414,7 @@ interface MainAreaProps {
   memories: Memory[];
   conversations: ReturnType<typeof useConversations>["conversations"];
   activeConvId: string | null;
+  projects: ReturnType<typeof useProjects>["projects"];
   onSend: (text: string) => void;
   onStop: () => void;
   onModelModeChange: (mode: ModelMode) => void;
@@ -410,6 +427,7 @@ interface MainAreaProps {
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
   onRenameConversation: (id: string, title: string) => void;
+  onAssignProject: (projectId: string | null) => void;
 }
 
 function MainArea({
@@ -425,6 +443,7 @@ function MainArea({
   memories,
   conversations,
   activeConvId,
+  projects,
   onSend,
   onStop,
   onModelModeChange,
@@ -437,6 +456,7 @@ function MainArea({
   onSelectConversation,
   onDeleteConversation,
   onRenameConversation,
+  onAssignProject,
 }: MainAreaProps) {
   const ollamaRunning = ollamaStatus?.running ?? null;
   const activeLabel =
@@ -474,13 +494,22 @@ function MainArea({
           {activeLabel}
         </span>
 
-        {/* Model selector shown only on Chats page */}
+        {/* Controls shown only on Chats page */}
         {activePage === "chats" && (
-          <ModelModeSelector
-            value={modelMode}
-            onChange={onModelModeChange}
-            ollamaRunning={ollamaRunning}
-          />
+          <>
+            {/* Project selector - assign current conversation to a project */}
+            {activeConvId && projects.length > 0 && (
+              <ProjectSelector
+                projects={projects}
+                onAssign={onAssignProject}
+              />
+            )}
+            <ModelModeSelector
+              value={modelMode}
+              onChange={onModelModeChange}
+              ollamaRunning={ollamaRunning}
+            />
+          </>
         )}
       </div>
 
@@ -523,12 +552,7 @@ function MainArea({
       ) : activePage === "knowledge" ? (
         <KnowledgePage embedModel={EMBED_MODEL} />
       ) : activePage === "projects" ? (
-        <PlaceholderPage
-          Icon={NAV_ITEMS.find((n) => n.id === "projects")!.Icon}
-          title="Projects"
-          description="Organize chats, memory, and files by project context."
-          phase="Coming in Phase 4"
-        />
+        <ProjectsPage />
       ) : activePage === "today" ? (
         <PlaceholderPage
           Icon={NAV_ITEMS.find((n) => n.id === "today")!.Icon}
@@ -545,6 +569,102 @@ function MainArea({
         />
       ) : null}
     </main>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Project selector - shown in chat header when a conversation is active
+// ---------------------------------------------------------------------------
+
+interface ProjectSelectorProps {
+  projects: ReturnType<typeof useProjects>["projects"];
+  onAssign: (projectId: string | null) => void;
+}
+
+function ProjectSelector({ projects, onAssign }: ProjectSelectorProps) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        title="Assign conversation to a project"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 5,
+          fontSize: 11,
+          padding: "3px 10px",
+          borderRadius: 4,
+          backgroundColor: "var(--surface-2)",
+          color: "var(--text-2)",
+          border: "1px solid var(--border)",
+        }}
+      >
+        <FolderIcon size={13} strokeWidth={1.5} />
+        Project
+      </button>
+
+      {open && (
+        <>
+          {/* Backdrop */}
+          <div
+            onClick={() => setOpen(false)}
+            style={{ position: "fixed", inset: 0, zIndex: 10 }}
+          />
+          {/* Dropdown */}
+          <div
+            style={{
+              position: "absolute",
+              top: "calc(100% + 6px)",
+              right: 0,
+              zIndex: 11,
+              backgroundColor: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 6,
+              boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
+              minWidth: 180,
+              maxHeight: 260,
+              overflowY: "auto",
+              padding: 4,
+            }}
+          >
+            <button
+              onClick={() => { onAssign(null); setOpen(false); }}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                fontSize: 12,
+                padding: "7px 10px",
+                borderRadius: 4,
+                color: "var(--text-3)",
+              }}
+            >
+              No project
+            </button>
+            <div style={{ height: 1, backgroundColor: "var(--border-subtle)", margin: "2px 0" }} />
+            {projects.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => { onAssign(p.id); setOpen(false); }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  fontSize: 12,
+                  padding: "7px 10px",
+                  borderRadius: 4,
+                  color: "var(--text-2)",
+                }}
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

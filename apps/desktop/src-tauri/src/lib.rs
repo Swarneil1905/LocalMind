@@ -20,14 +20,12 @@ struct OllamaState(Mutex<Option<OllamaStatus>>);
 // Shared types
 // ---------------------------------------------------------------------------
 
-/// A single turn in the conversation history sent from the UI.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct HistoryEntry {
     pub role: String,
     pub content: String,
 }
 
-/// A single memory row returned from the Python sidecar.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct MemoryEntry {
     pub id: String,
@@ -35,7 +33,6 @@ pub struct MemoryEntry {
     pub created_at: String,
 }
 
-/// A knowledge source (indexed folder or file).
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct KnowledgeSource {
     pub id: String,
@@ -47,7 +44,6 @@ pub struct KnowledgeSource {
     pub created_at: String,
 }
 
-/// A single retrieved chunk from the knowledge base.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct KnowledgeChunk {
     pub id: String,
@@ -57,7 +53,6 @@ pub struct KnowledgeChunk {
     pub content: String,
 }
 
-/// A persisted conversation (sidebar entry).
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Conversation {
     pub id: String,
@@ -66,7 +61,6 @@ pub struct Conversation {
     pub updated_at: String,
 }
 
-/// A single message row from a persisted conversation.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ConversationMessage {
     pub id: String,
@@ -77,38 +71,63 @@ pub struct ConversationMessage {
     pub created_at: String,
 }
 
-/// Payload emitted for every token chunk while streaming.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Project {
+    pub id: String,
+    pub name: String,
+    pub path: Option<String>,
+    pub summary: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Task {
+    pub id: String,
+    pub project_id: String,
+    pub title: String,
+    pub status: String,
+    pub due_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+// ---------------------------------------------------------------------------
+// Event payloads
+// ---------------------------------------------------------------------------
+
 #[derive(Clone, Serialize)]
 struct ChatTokenPayload {
     content: String,
 }
 
-/// Payload emitted when generation finishes or an error occurs.
 #[derive(Clone, Serialize)]
 struct ChatDonePayload {
     error: Option<String>,
 }
 
-/// Payload emitted when the memory list changes.
 #[derive(Clone, Serialize)]
 struct MemoriesUpdatedPayload {
     memories: Vec<MemoryEntry>,
 }
 
-/// Payload emitted when knowledge sources change.
 #[derive(Clone, Serialize)]
 struct KnowledgeUpdatedPayload {
     sources: Vec<KnowledgeSource>,
 }
 
-/// Payload emitted when the conversation list changes.
 #[derive(Clone, Serialize)]
 struct ConversationsUpdatedPayload {
     conversations: Vec<Conversation>,
 }
 
+#[derive(Clone, Serialize)]
+struct ProjectsUpdatedPayload {
+    projects: Vec<Project>,
+}
+
 // ---------------------------------------------------------------------------
-// Helper - build a sidecar URL
+// Helper
 // ---------------------------------------------------------------------------
 
 fn sidecar_url(state: &SidecarState, path: &str) -> Result<(String, String), String> {
@@ -120,10 +139,9 @@ fn sidecar_url(state: &SidecarState, path: &str) -> Result<(String, String), Str
 }
 
 // ---------------------------------------------------------------------------
-// Tauri commands
+// Ollama command
 // ---------------------------------------------------------------------------
 
-/// Return the current Ollama status (performs a live check).
 #[tauri::command]
 async fn get_ollama_status(
     state: tauri::State<'_, OllamaState>,
@@ -133,17 +151,10 @@ async fn get_ollama_status(
     Ok(status)
 }
 
-/// Stream a chat turn to Ollama through the Python sidecar.
-///
-/// If `memory_enabled` is true, fetches all stored memories first and
-/// prepends them to the system prompt.
-///
-/// If `knowledge_enabled` is true and indexed sources exist, runs a
-/// semantic search on the user message and injects relevant chunks.
-///
-/// Emits two event types to the frontend window:
-///   "chat-token"  - {content: "<chunk>"}   for each token
-///   "chat-done"   - {error: null | "msg"}  on finish or error
+// ---------------------------------------------------------------------------
+// Chat command
+// ---------------------------------------------------------------------------
+
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 async fn chat_stream(
@@ -159,7 +170,6 @@ async fn chat_stream(
     let (url, token) = sidecar_url(&sidecar_state, "/chat/stream")?;
     let client = reqwest::Client::new();
 
-    // Build system prompt, injecting memories when enabled
     let mut system_prompt = if memory_enabled {
         let (list_url, list_token) = sidecar_url(&sidecar_state, "/memory/list")?;
         let memories: Vec<MemoryEntry> = match client
@@ -168,13 +178,12 @@ async fn chat_stream(
             .send()
             .await
         {
-            Ok(resp) if resp.status().is_success() => {
-                resp.json::<serde_json::Value>()
-                    .await
-                    .ok()
-                    .and_then(|v| serde_json::from_value(v["memories"].clone()).ok())
-                    .unwrap_or_default()
-            }
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<serde_json::Value>()
+                .await
+                .ok()
+                .and_then(|v| serde_json::from_value(v["memories"].clone()).ok())
+                .unwrap_or_default(),
             _ => vec![],
         };
         build_system_prompt(&memories)
@@ -182,7 +191,6 @@ async fn chat_stream(
         default_system_prompt()
     };
 
-    // Inject knowledge context when enabled
     if knowledge_enabled {
         let (search_url, search_token) = sidecar_url(&sidecar_state, "/knowledge/search")?;
         let search_body = serde_json::json!({
@@ -208,7 +216,7 @@ async fn chat_stream(
                             .collect::<Vec<_>>()
                             .join("\n\n---\n\n");
                         system_prompt = format!(
-                            "{system_prompt}\n\nRelevant context from the user's knowledge base:\n\n{context}"
+                            "{system_prompt}\n\nRelevant context from the user knowledge base:\n\n{context}"
                         );
                     }
                 }
@@ -236,7 +244,6 @@ async fn chat_stream(
         return Err(format!("Sidecar returned HTTP {status}"));
     }
 
-    // Parse the SSE stream line by line
     let mut stream = resp.bytes_stream();
     let mut buffer = String::new();
 
@@ -253,11 +260,9 @@ async fn chat_stream(
                 let Some(json_str) = line.strip_prefix("data: ") else {
                     continue;
                 };
-
                 let Ok(value) = serde_json::from_str::<serde_json::Value>(json_str) else {
                     continue;
                 };
-
                 match value.get("type").and_then(|t| t.as_str()) {
                     Some("token") => {
                         let content = value
@@ -265,14 +270,10 @@ async fn chat_stream(
                             .and_then(|c| c.as_str())
                             .unwrap_or("")
                             .to_string();
-                        app_handle
-                            .emit("chat-token", ChatTokenPayload { content })
-                            .ok();
+                        app_handle.emit("chat-token", ChatTokenPayload { content }).ok();
                     }
                     Some("done") => {
-                        app_handle
-                            .emit("chat-done", ChatDonePayload { error: None })
-                            .ok();
+                        app_handle.emit("chat-done", ChatDonePayload { error: None }).ok();
                         return Ok(());
                     }
                     Some("error") => {
@@ -292,15 +293,14 @@ async fn chat_stream(
         }
     }
 
-    app_handle
-        .emit("chat-done", ChatDonePayload { error: None })
-        .ok();
-
+    app_handle.emit("chat-done", ChatDonePayload { error: None }).ok();
     Ok(())
 }
 
-/// Extract memories from the last exchange and emit "memories-updated".
-/// Called by the UI after each assistant reply when memory is enabled.
+// ---------------------------------------------------------------------------
+// Memory commands
+// ---------------------------------------------------------------------------
+
 #[tauri::command]
 async fn extract_memories(
     user_message: String,
@@ -310,13 +310,11 @@ async fn extract_memories(
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<(), String> {
     let (url, token) = sidecar_url(&sidecar_state, "/memory/extract")?;
-
     let body = serde_json::json!({
         "user_message": user_message,
         "assistant_message": assistant_message,
         "speed_model": speed_model,
     });
-
     let client = reqwest::Client::new();
     let resp = client
         .post(&url)
@@ -325,30 +323,21 @@ async fn extract_memories(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-
     if !resp.status().is_success() {
-        // Extraction failure is non-fatal - swallow quietly
         return Ok(());
     }
-
     let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let memories: Vec<MemoryEntry> = serde_json::from_value(data["memories"].clone())
-        .unwrap_or_default();
-
-    app_handle
-        .emit("memories-updated", MemoriesUpdatedPayload { memories })
-        .ok();
-
+    let memories: Vec<MemoryEntry> =
+        serde_json::from_value(data["memories"].clone()).unwrap_or_default();
+    app_handle.emit("memories-updated", MemoriesUpdatedPayload { memories }).ok();
     Ok(())
 }
 
-/// Return all stored memories.
 #[tauri::command]
 async fn list_memories(
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<Vec<MemoryEntry>, String> {
     let (url, token) = sidecar_url(&sidecar_state, "/memory/list")?;
-
     let client = reqwest::Client::new();
     let resp = client
         .get(&url)
@@ -356,15 +345,10 @@ async fn list_memories(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-
     let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let memories: Vec<MemoryEntry> = serde_json::from_value(data["memories"].clone())
-        .unwrap_or_default();
-
-    Ok(memories)
+    Ok(serde_json::from_value(data["memories"].clone()).unwrap_or_default())
 }
 
-/// Delete a single memory by id, then emit "memories-updated" with the new list.
 #[tauri::command]
 async fn delete_memory(
     memory_id: String,
@@ -372,7 +356,6 @@ async fn delete_memory(
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<(), String> {
     let (url, token) = sidecar_url(&sidecar_state, &format!("/memory/{memory_id}"))?;
-
     let client = reqwest::Client::new();
     client
         .delete(&url)
@@ -380,8 +363,6 @@ async fn delete_memory(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-
-    // Fetch updated list and notify UI
     let (list_url, list_token) = sidecar_url(&sidecar_state, "/memory/list")?;
     let resp = client
         .get(&list_url)
@@ -389,15 +370,10 @@ async fn delete_memory(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-
     let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let memories: Vec<MemoryEntry> = serde_json::from_value(data["memories"].clone())
-        .unwrap_or_default();
-
-    app_handle
-        .emit("memories-updated", MemoriesUpdatedPayload { memories })
-        .ok();
-
+    let memories: Vec<MemoryEntry> =
+        serde_json::from_value(data["memories"].clone()).unwrap_or_default();
+    app_handle.emit("memories-updated", MemoriesUpdatedPayload { memories }).ok();
     Ok(())
 }
 
@@ -405,27 +381,16 @@ async fn delete_memory(
 // Knowledge commands
 // ---------------------------------------------------------------------------
 
-/// Open a native folder picker dialog and return the chosen path.
-/// Returns None if the user cancels.
 #[tauri::command]
 async fn pick_folder(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
-    // tauri-plugin-dialog uses a one-shot channel pattern for async results
     let (tx, rx) = tokio::sync::oneshot::channel::<Option<String>>();
-
-    app_handle
-        .dialog()
-        .file()
-        .pick_folder(move |path| {
-            // FilePath implements Display; use to_string() for conversion
-            let result = path.map(|p| p.to_string());
-            tx.send(result).ok();
-        });
-
+    app_handle.dialog().file().pick_folder(move |path| {
+        let result = path.map(|p| p.to_string());
+        tx.send(result).ok();
+    });
     rx.await.map_err(|e| e.to_string())
 }
 
-/// Trigger background indexing of a folder or file.
-/// Emits "knowledge-updated" when indexing completes.
 #[tauri::command]
 async fn index_knowledge(
     path: String,
@@ -434,12 +399,7 @@ async fn index_knowledge(
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<(), String> {
     let (url, token) = sidecar_url(&sidecar_state, "/knowledge/index")?;
-
-    let body = serde_json::json!({
-        "path": path,
-        "embed_model": embed_model,
-    });
-
+    let body = serde_json::json!({ "path": path, "embed_model": embed_model });
     let client = reqwest::Client::new();
     client
         .post(&url)
@@ -449,19 +409,13 @@ async fn index_knowledge(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Poll until the source transitions from "indexing" to "ready"/"error"
-    // (background task on Python side), then emit the updated list.
-    // Extract port and token as owned Strings before dropping the lock -
-    // SidecarHandle is not Clone so we cannot clone the guard directly.
     let sidecar_port_token: Option<(u16, String)> = {
         let guard = sidecar_state.0.lock().map_err(|e| e.to_string())?;
         guard.as_ref().map(|s| (s.port, s.token.clone()))
     };
     let app_clone = app_handle.clone();
-
     if let Some((port, list_token)) = sidecar_port_token {
         let list_url = format!("http://127.0.0.1:{port}/knowledge/sources");
-
         tauri::async_runtime::spawn(async move {
             let client = reqwest::Client::new();
             let mut attempts = 0u32;
@@ -469,9 +423,8 @@ async fn index_knowledge(
                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
                 attempts += 1;
                 if attempts > 200 {
-                    break; // give up after 10 minutes
+                    break;
                 }
-
                 let Ok(resp) = client
                     .get(&list_url)
                     .header("Authorization", format!("Bearer {list_token}"))
@@ -480,37 +433,28 @@ async fn index_knowledge(
                 else {
                     continue;
                 };
-
                 let Ok(data) = resp.json::<serde_json::Value>().await else {
                     continue;
                 };
-
                 let sources: Vec<KnowledgeSource> =
                     serde_json::from_value(data["sources"].clone()).unwrap_or_default();
-
-                // Emit on every poll so the UI shows live progress
                 app_clone
                     .emit("knowledge-updated", KnowledgeUpdatedPayload { sources: sources.clone() })
                     .ok();
-
-                // Stop polling once no source is still indexing
                 if sources.iter().all(|s| s.status != "indexing") {
                     break;
                 }
             }
         });
     }
-
     Ok(())
 }
 
-/// Return all indexed knowledge sources.
 #[tauri::command]
 async fn list_knowledge_sources(
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<Vec<KnowledgeSource>, String> {
     let (url, token) = sidecar_url(&sidecar_state, "/knowledge/sources")?;
-
     let client = reqwest::Client::new();
     let resp = client
         .get(&url)
@@ -518,15 +462,10 @@ async fn list_knowledge_sources(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-
     let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let sources: Vec<KnowledgeSource> =
-        serde_json::from_value(data["sources"].clone()).unwrap_or_default();
-
-    Ok(sources)
+    Ok(serde_json::from_value(data["sources"].clone()).unwrap_or_default())
 }
 
-/// Delete a knowledge source and all its chunks. Emits "knowledge-updated".
 #[tauri::command]
 async fn delete_knowledge_source(
     source_id: String,
@@ -534,7 +473,6 @@ async fn delete_knowledge_source(
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<(), String> {
     let (url, token) = sidecar_url(&sidecar_state, &format!("/knowledge/source/{source_id}"))?;
-
     let client = reqwest::Client::new();
     client
         .delete(&url)
@@ -542,8 +480,6 @@ async fn delete_knowledge_source(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-
-    // Fetch updated sources and emit
     let (list_url, list_token) = sidecar_url(&sidecar_state, "/knowledge/sources")?;
     let resp = client
         .get(&list_url)
@@ -551,20 +487,13 @@ async fn delete_knowledge_source(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-
     let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
     let sources: Vec<KnowledgeSource> =
         serde_json::from_value(data["sources"].clone()).unwrap_or_default();
-
-    app_handle
-        .emit("knowledge-updated", KnowledgeUpdatedPayload { sources })
-        .ok();
-
+    app_handle.emit("knowledge-updated", KnowledgeUpdatedPayload { sources }).ok();
     Ok(())
 }
 
-/// Search the knowledge base and return the top matching chunks.
-/// Used by the KnowledgePage search bar.
 #[tauri::command]
 async fn search_knowledge(
     query: String,
@@ -573,13 +502,11 @@ async fn search_knowledge(
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<Vec<KnowledgeChunk>, String> {
     let (url, token) = sidecar_url(&sidecar_state, "/knowledge/search")?;
-
     let body = serde_json::json!({
         "query": query,
         "limit": limit.unwrap_or(5),
         "embed_model": embed_model,
     });
-
     let client = reqwest::Client::new();
     let resp = client
         .post(&url)
@@ -588,28 +515,21 @@ async fn search_knowledge(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-
     let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let chunks: Vec<KnowledgeChunk> =
-        serde_json::from_value(data["results"].clone()).unwrap_or_default();
-
-    Ok(chunks)
+    Ok(serde_json::from_value(data["results"].clone()).unwrap_or_default())
 }
 
 // ---------------------------------------------------------------------------
 // Conversation commands
 // ---------------------------------------------------------------------------
 
-/// Create a new conversation and return it.
 #[tauri::command]
 async fn create_conversation(
     title: String,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<Conversation, String> {
     let (url, token) = sidecar_url(&sidecar_state, "/conversations")?;
-
     let body = serde_json::json!({ "title": title });
-
     let client = reqwest::Client::new();
     let resp = client
         .post(&url)
@@ -618,23 +538,17 @@ async fn create_conversation(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-
     if !resp.status().is_success() {
-        let status = resp.status().as_u16();
-        return Err(format!("Sidecar returned HTTP {status}"));
+        return Err(format!("Sidecar returned HTTP {}", resp.status().as_u16()));
     }
-
-    let conv: Conversation = resp.json().await.map_err(|e| e.to_string())?;
-    Ok(conv)
+    resp.json::<Conversation>().await.map_err(|e| e.to_string())
 }
 
-/// Return all conversations, newest first.
 #[tauri::command]
 async fn list_conversations(
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<Vec<Conversation>, String> {
     let (url, token) = sidecar_url(&sidecar_state, "/conversations")?;
-
     let client = reqwest::Client::new();
     let resp = client
         .get(&url)
@@ -642,15 +556,10 @@ async fn list_conversations(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-
     let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let conversations: Vec<Conversation> =
-        serde_json::from_value(data["conversations"].clone()).unwrap_or_default();
-
-    Ok(conversations)
+    Ok(serde_json::from_value(data["conversations"].clone()).unwrap_or_default())
 }
 
-/// Return all messages for a conversation, oldest first.
 #[tauri::command]
 async fn get_conversation_messages(
     conversation_id: String,
@@ -660,7 +569,6 @@ async fn get_conversation_messages(
         &sidecar_state,
         &format!("/conversations/{conversation_id}/messages"),
     )?;
-
     let client = reqwest::Client::new();
     let resp = client
         .get(&url)
@@ -668,16 +576,10 @@ async fn get_conversation_messages(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-
     let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let messages: Vec<ConversationMessage> =
-        serde_json::from_value(data["messages"].clone()).unwrap_or_default();
-
-    Ok(messages)
+    Ok(serde_json::from_value(data["messages"].clone()).unwrap_or_default())
 }
 
-/// Persist a user + assistant turn to a conversation.
-/// Called after the assistant reply is complete.
 #[tauri::command]
 async fn save_conversation_turn(
     conversation_id: String,
@@ -690,13 +592,11 @@ async fn save_conversation_turn(
         &sidecar_state,
         &format!("/conversations/{conversation_id}/turn"),
     )?;
-
     let body = serde_json::json!({
         "user_content": user_content,
         "assistant_content": assistant_content,
         "assistant_thinking": assistant_thinking,
     });
-
     let client = reqwest::Client::new();
     let resp = client
         .post(&url)
@@ -705,17 +605,12 @@ async fn save_conversation_turn(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-
     if !resp.status().is_success() {
-        let status = resp.status().as_u16();
-        return Err(format!("Sidecar returned HTTP {status}"));
+        return Err(format!("Sidecar returned HTTP {}", resp.status().as_u16()));
     }
-
     Ok(())
 }
 
-/// Delete a conversation and all its messages.
-/// Emits "conversations-updated" with the remaining list.
 #[tauri::command]
 async fn delete_conversation(
     conversation_id: String,
@@ -726,7 +621,6 @@ async fn delete_conversation(
         &sidecar_state,
         &format!("/conversations/{conversation_id}"),
     )?;
-
     let client = reqwest::Client::new();
     client
         .delete(&url)
@@ -734,8 +628,6 @@ async fn delete_conversation(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-
-    // Fetch updated list and notify UI
     let (list_url, list_token) = sidecar_url(&sidecar_state, "/conversations")?;
     let resp = client
         .get(&list_url)
@@ -743,22 +635,15 @@ async fn delete_conversation(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-
     let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
     let conversations: Vec<Conversation> =
         serde_json::from_value(data["conversations"].clone()).unwrap_or_default();
-
     app_handle
-        .emit(
-            "conversations-updated",
-            ConversationsUpdatedPayload { conversations },
-        )
+        .emit("conversations-updated", ConversationsUpdatedPayload { conversations })
         .ok();
-
     Ok(())
 }
 
-/// Rename a conversation.
 #[tauri::command]
 async fn rename_conversation(
     conversation_id: String,
@@ -769,9 +654,7 @@ async fn rename_conversation(
         &sidecar_state,
         &format!("/conversations/{conversation_id}"),
     )?;
-
     let body = serde_json::json!({ "title": title });
-
     let client = reqwest::Client::new();
     let resp = client
         .patch(&url)
@@ -780,13 +663,257 @@ async fn rename_conversation(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-
     if !resp.status().is_success() {
-        let status = resp.status().as_u16();
-        return Err(format!("Sidecar returned HTTP {status}"));
+        return Err(format!("Sidecar returned HTTP {}", resp.status().as_u16()));
     }
-
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Project commands
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+async fn create_project(
+    name: String,
+    path: Option<String>,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<Project, String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/projects")?;
+    let body = serde_json::json!({ "name": name, "path": path });
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("Sidecar returned HTTP {}", resp.status().as_u16()));
+    }
+    resp.json::<Project>().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn list_projects(
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<Vec<Project>, String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/projects")?;
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(serde_json::from_value(data["projects"].clone()).unwrap_or_default())
+}
+
+#[tauri::command]
+async fn update_project(
+    project_id: String,
+    name: Option<String>,
+    path: Option<String>,
+    summary: Option<String>,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<Project, String> {
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/projects/{project_id}"))?;
+    let body = serde_json::json!({ "name": name, "path": path, "summary": summary });
+    let client = reqwest::Client::new();
+    let resp = client
+        .patch(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("Sidecar returned HTTP {}", resp.status().as_u16()));
+    }
+    resp.json::<Project>().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_project(
+    project_id: String,
+    app_handle: tauri::AppHandle,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<(), String> {
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/projects/{project_id}"))?;
+    let client = reqwest::Client::new();
+    client
+        .delete(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let (list_url, list_token) = sidecar_url(&sidecar_state, "/projects")?;
+    let resp = client
+        .get(&list_url)
+        .header("Authorization", format!("Bearer {list_token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let projects: Vec<Project> =
+        serde_json::from_value(data["projects"].clone()).unwrap_or_default();
+    app_handle.emit("projects-updated", ProjectsUpdatedPayload { projects }).ok();
+    Ok(())
+}
+
+#[tauri::command]
+async fn generate_project_summary(
+    project_id: String,
+    speed_model: String,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<String, String> {
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/projects/{project_id}/summary"))?;
+    let body = serde_json::json!({ "speed_model": speed_model });
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("Sidecar returned HTTP {}", resp.status().as_u16()));
+    }
+    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(data["summary"].as_str().unwrap_or("").to_string())
+}
+
+#[tauri::command]
+async fn create_task(
+    project_id: String,
+    title: String,
+    due_at: Option<String>,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<Task, String> {
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/projects/{project_id}/tasks"))?;
+    let body = serde_json::json!({ "title": title, "due_at": due_at });
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("Sidecar returned HTTP {}", resp.status().as_u16()));
+    }
+    resp.json::<Task>().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn list_tasks(
+    project_id: String,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<Vec<Task>, String> {
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/projects/{project_id}/tasks"))?;
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(serde_json::from_value(data["tasks"].clone()).unwrap_or_default())
+}
+
+#[tauri::command]
+async fn update_task(
+    project_id: String,
+    task_id: String,
+    title: Option<String>,
+    status: Option<String>,
+    due_at: Option<String>,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<(), String> {
+    let (url, token) = sidecar_url(
+        &sidecar_state,
+        &format!("/projects/{project_id}/tasks/{task_id}"),
+    )?;
+    let body = serde_json::json!({ "title": title, "status": status, "due_at": due_at });
+    let client = reqwest::Client::new();
+    let resp = client
+        .patch(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("Sidecar returned HTTP {}", resp.status().as_u16()));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_task(
+    project_id: String,
+    task_id: String,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<(), String> {
+    let (url, token) = sidecar_url(
+        &sidecar_state,
+        &format!("/projects/{project_id}/tasks/{task_id}"),
+    )?;
+    let client = reqwest::Client::new();
+    client
+        .delete(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn assign_conversation_to_project(
+    conversation_id: String,
+    project_id: Option<String>,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<(), String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/projects/assign-conversation")?;
+    let body = serde_json::json!({
+        "conversation_id": conversation_id,
+        "project_id": project_id,
+    });
+    let client = reqwest::Client::new();
+    client
+        .post(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_project_conversations(
+    project_id: String,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<Vec<Conversation>, String> {
+    let (url, token) = sidecar_url(
+        &sidecar_state,
+        &format!("/projects/{project_id}/conversations"),
+    )?;
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(serde_json::from_value(data["conversations"].clone()).unwrap_or_default())
 }
 
 // ---------------------------------------------------------------------------
@@ -826,7 +953,6 @@ pub fn run() {
         .manage(OllamaState(Mutex::new(None)))
         .setup(|app| {
             let app_handle = app.handle().clone();
-
             tauri::async_runtime::spawn(async move {
                 let sidecar = match SidecarHandle::launch() {
                     Ok(s) => s,
@@ -835,7 +961,6 @@ pub fn run() {
                         return;
                     }
                 };
-
                 match sidecar.wait_until_ready().await {
                     Ok(()) => {
                         println!("[localmind] sidecar ready on port {}", sidecar.port);
@@ -846,8 +971,6 @@ pub fn run() {
                         eprintln!("[localmind] sidecar health check failed: {e}");
                     }
                 }
-
-                // Run Ollama detection after the sidecar is up
                 let status = ollama_check().await;
                 println!(
                     "[localmind] Ollama running={} models={} gpu={:?}",
@@ -858,7 +981,6 @@ pub fn run() {
                 let ollama_state = app_handle.state::<OllamaState>();
                 *ollama_state.0.lock().unwrap() = Some(status);
             });
-
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -878,6 +1000,17 @@ pub fn run() {
             save_conversation_turn,
             delete_conversation,
             rename_conversation,
+            create_project,
+            list_projects,
+            update_project,
+            delete_project,
+            generate_project_summary,
+            create_task,
+            list_tasks,
+            update_task,
+            delete_task,
+            assign_conversation_to_project,
+            get_project_conversations,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
