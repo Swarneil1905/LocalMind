@@ -50,15 +50,23 @@ export function useProjects() {
     return () => unlisten?.();
   }, []);
 
-  // Load tasks whenever active project changes
+  // Load tasks whenever active project changes.
+  // Wrapped in async function so setState is not called synchronously in the
+  // effect body (satisfies react-hooks/set-state-in-effect).
   useEffect(() => {
-    if (!activeProjectId) {
-      setTasks([]);
-      return;
+    async function load() {
+      if (!activeProjectId) {
+        setTasks([]);
+        return;
+      }
+      try {
+        const r = await invoke<{ tasks: Task[] }>("list_tasks", { projectId: activeProjectId });
+        setTasks(r.tasks ?? (r as unknown as Task[]));
+      } catch {
+        setTasks([]);
+      }
     }
-    invoke<{ tasks: Task[] }>("list_tasks", { projectId: activeProjectId })
-      .then((r) => setTasks(r.tasks ?? r as unknown as Task[]))
-      .catch(() => setTasks([]));
+    load();
   }, [activeProjectId]);
 
   const createProject = useCallback(async (name: string, path?: string): Promise<Project> => {

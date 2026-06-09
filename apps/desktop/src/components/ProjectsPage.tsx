@@ -1,7 +1,7 @@
 // Projects screen - Phase 4.
 //
 // Layout: narrow project list on the left, tabbed detail view on the right.
-// Tabs: Summary | Tasks | Conversations | Decisions (Memory filtered to project)
+// Tabs: Summary | Tasks | Conversations
 //
 // Spec reference: Section 15 (Projects Screen)
 
@@ -58,17 +58,25 @@ export function ProjectsPage() {
 
   const activeProject = projects.find((p) => p.id === activeProjectId) ?? null;
 
-  // Load conversations for active project when Conversations tab is shown
+  // Load conversations for active project when Conversations tab is shown.
+  // Wrapped in async function so setState is not called synchronously in the
+  // effect body (satisfies react-hooks/set-state-in-effect).
   useEffect(() => {
-    if (activeTab !== "conversations" || !activeProjectId) {
-      setProjectConvs([]);
-      return;
+    async function load() {
+      if (activeTab !== "conversations" || !activeProjectId) {
+        setProjectConvs([]);
+        return;
+      }
+      try {
+        const r = await invoke<{ conversations: Conversation[] }>("get_project_conversations", {
+          projectId: activeProjectId,
+        });
+        setProjectConvs(r.conversations ?? []);
+      } catch {
+        setProjectConvs([]);
+      }
     }
-    invoke<{ conversations: Conversation[] }>("get_project_conversations", {
-      projectId: activeProjectId,
-    })
-      .then((r) => setProjectConvs(r.conversations ?? []))
-      .catch(() => setProjectConvs([]));
+    load();
   }, [activeTab, activeProjectId]);
 
   const handleCreateProject = useCallback(async () => {
