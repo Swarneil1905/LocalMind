@@ -2,6 +2,7 @@
 //
 // User messages:   right-aligned, surface-2 background, 14px
 // Assistant msgs:  left-aligned, no background, Markdown rendered
+// Streaming cursor is rendered inline inside the last assistant message.
 
 import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
@@ -27,13 +28,26 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
         style={{
           flex: 1,
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          color: "var(--text-3)",
-          fontSize: 13,
+          gap: 12,
+          padding: 32,
         }}
       >
-        Select a conversation to begin
+        <p
+          style={{
+            fontSize: 20,
+            fontWeight: 600,
+            color: "var(--text-2)",
+            letterSpacing: "-0.02em",
+          }}
+        >
+          LocalMind
+        </p>
+        <p style={{ fontSize: 13, color: "var(--text-3)" }}>
+          Private, local AI - no cloud, no tracking.
+        </p>
       </div>
     );
   }
@@ -56,14 +70,17 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
           gap: 16,
         }}
       >
-        {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
+        {messages.map((msg, i) => (
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            streaming={
+              isStreaming &&
+              i === messages.length - 1 &&
+              msg.role === "assistant"
+            }
+          />
         ))}
-
-        {/* Streaming cursor - shown while the last assistant message is being generated */}
-        {isStreaming && messages[messages.length - 1]?.role === "assistant" && (
-          <StreamingCursor />
-        )}
 
         <div ref={bottomRef} />
       </div>
@@ -75,7 +92,12 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
 // Individual message
 // ---------------------------------------------------------------------------
 
-function MessageBubble({ message }: { message: Message }) {
+interface MessageBubbleProps {
+  message: Message;
+  streaming?: boolean;
+}
+
+function MessageBubble({ message, streaming }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
   if (isUser) {
@@ -107,98 +129,101 @@ function MessageBubble({ message }: { message: Message }) {
           fontSize: 14,
           color: message.error ? "var(--text-3)" : "var(--text)",
           maxWidth: "100%",
-          // Markdown rendering resets some browser defaults
           lineHeight: 1.6,
         }}
         className="assistant-message"
       >
         {message.content ? (
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              // Code blocks - dark surface, monospace font
-              code({ className, children, ...props }) {
-                const isBlock = className?.startsWith("language-");
-                return isBlock ? (
-                  <pre
-                    style={{
-                      backgroundColor: "var(--surface-2)",
-                      borderRadius: 4,
-                      padding: "10px 14px",
-                      overflowX: "auto",
-                      fontSize: 13,
-                      margin: "8px 0",
-                    }}
-                  >
-                    <code style={{ fontFamily: "monospace", color: "var(--text)" }}>
+          <>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                code({ className, children, ...props }) {
+                  const isBlock = className?.startsWith("language-");
+                  return isBlock ? (
+                    <pre
+                      style={{
+                        backgroundColor: "var(--surface-2)",
+                        borderRadius: 4,
+                        padding: "10px 14px",
+                        overflowX: "auto",
+                        fontSize: 13,
+                        margin: "8px 0",
+                      }}
+                    >
+                      <code
+                        style={{ fontFamily: "monospace", color: "var(--text)" }}
+                      >
+                        {children}
+                      </code>
+                    </pre>
+                  ) : (
+                    <code
+                      style={{
+                        backgroundColor: "var(--surface-2)",
+                        borderRadius: 3,
+                        padding: "1px 5px",
+                        fontSize: 13,
+                        fontFamily: "monospace",
+                      }}
+                      {...props}
+                    >
                       {children}
                     </code>
-                  </pre>
-                ) : (
-                  <code
-                    style={{
-                      backgroundColor: "var(--surface-2)",
-                      borderRadius: 3,
-                      padding: "1px 5px",
-                      fontSize: 13,
-                      fontFamily: "monospace",
-                    }}
-                    {...props}
-                  >
-                    {children}
-                  </code>
-                );
-              },
-              // Tables
-              table({ children }) {
-                return (
-                  <div style={{ overflowX: "auto", margin: "8px 0" }}>
-                    <table
+                  );
+                },
+                table({ children }) {
+                  return (
+                    <div style={{ overflowX: "auto", margin: "8px 0" }}>
+                      <table
+                        style={{
+                          borderCollapse: "collapse",
+                          fontSize: 13,
+                          width: "100%",
+                        }}
+                      >
+                        {children}
+                      </table>
+                    </div>
+                  );
+                },
+                th({ children }) {
+                  return (
+                    <th
                       style={{
-                        borderCollapse: "collapse",
-                        fontSize: 13,
-                        width: "100%",
+                        border: "1px solid var(--border)",
+                        padding: "6px 12px",
+                        backgroundColor: "var(--surface-2)",
+                        textAlign: "left",
+                        fontWeight: 600,
                       }}
                     >
                       {children}
-                    </table>
-                  </div>
-                );
-              },
-              th({ children }) {
-                return (
-                  <th
-                    style={{
-                      border: "1px solid var(--border)",
-                      padding: "6px 12px",
-                      backgroundColor: "var(--surface-2)",
-                      textAlign: "left",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {children}
-                  </th>
-                );
-              },
-              td({ children }) {
-                return (
-                  <td
-                    style={{
-                      border: "1px solid var(--border)",
-                      padding: "6px 12px",
-                    }}
-                  >
-                    {children}
-                  </td>
-                );
-              },
-            }}
-          >
-            {message.content}
-          </ReactMarkdown>
+                    </th>
+                  );
+                },
+                td({ children }) {
+                  return (
+                    <td
+                      style={{
+                        border: "1px solid var(--border)",
+                        padding: "6px 12px",
+                      }}
+                    >
+                      {children}
+                    </td>
+                  );
+                },
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
+            {streaming && <StreamingCursor />}
+          </>
         ) : (
-          // Empty content while first token hasn't arrived yet
-          <span style={{ color: "var(--text-3)" }}>...</span>
+          <span style={{ color: "var(--text-3)" }}>
+            {streaming ? <StreamingCursor /> : "..."}
+          </span>
         )}
       </div>
     </div>
@@ -206,7 +231,7 @@ function MessageBubble({ message }: { message: Message }) {
 }
 
 // ---------------------------------------------------------------------------
-// Streaming cursor
+// Streaming cursor - inline, blinks after the last token
 // ---------------------------------------------------------------------------
 
 function StreamingCursor() {
@@ -214,10 +239,12 @@ function StreamingCursor() {
     <span
       style={{
         display: "inline-block",
-        width: 8,
+        width: 7,
         height: 14,
         backgroundColor: "var(--accent)",
         borderRadius: 1,
+        verticalAlign: "text-bottom",
+        marginLeft: 2,
         animation: "blink 1s step-end infinite",
       }}
     />
