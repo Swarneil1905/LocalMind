@@ -6,7 +6,7 @@
 // - Stop button appears only while streaming
 
 import { useCallback, useEffect, useRef } from "react";
-import { Brain, Send, Square } from "lucide-react";
+import { BookOpen, Brain, Send, Square } from "lucide-react";
 
 interface ComposerProps {
   onSend: (text: string) => void;
@@ -15,9 +15,20 @@ interface ComposerProps {
   disabled: boolean;
   memoryEnabled: boolean;
   onMemoryToggle: () => void;
+  knowledgeEnabled: boolean;
+  onKnowledgeToggle: () => void;
 }
 
-export function Composer({ onSend, onStop, isStreaming, disabled, memoryEnabled, onMemoryToggle }: ComposerProps) {
+export function Composer({
+  onSend,
+  onStop,
+  isStreaming,
+  disabled,
+  memoryEnabled,
+  onMemoryToggle,
+  knowledgeEnabled,
+  onKnowledgeToggle,
+}: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-resize the textarea as the user types
@@ -112,27 +123,50 @@ export function Composer({ onSend, onStop, isStreaming, disabled, memoryEnabled,
             gap: 6,
           }}
         >
-          {/* Memory toggle - left side */}
-          <button
-            onClick={onMemoryToggle}
-            title={memoryEnabled ? "Memory on - click to disable" : "Memory off - click to enable"}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-              height: 24,
-              padding: "0 8px",
-              borderRadius: 4,
-              backgroundColor: memoryEnabled ? "var(--accent-dim)" : "transparent",
-              border: `1px solid ${memoryEnabled ? "var(--accent)" : "var(--border)"}`,
-              color: memoryEnabled ? "var(--accent)" : "var(--text-3)",
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            <Brain size={12} strokeWidth={1.5} />
-            Memory
-          </button>
+          {/* Left side: memory + knowledge toggles */}
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={onMemoryToggle}
+              title={memoryEnabled ? "Memory on - click to disable" : "Memory off - click to enable"}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                height: 24,
+                padding: "0 8px",
+                borderRadius: 4,
+                backgroundColor: memoryEnabled ? "var(--accent-dim)" : "transparent",
+                border: `1px solid ${memoryEnabled ? "var(--accent)" : "var(--border)"}`,
+                color: memoryEnabled ? "var(--accent)" : "var(--text-3)",
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              <Brain size={12} strokeWidth={1.5} />
+              Memory
+            </button>
+
+            <button
+              onClick={onKnowledgeToggle}
+              title={knowledgeEnabled ? "Knowledge on - click to disable" : "Knowledge off - click to enable"}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                height: 24,
+                padding: "0 8px",
+                borderRadius: 4,
+                backgroundColor: knowledgeEnabled ? "var(--accent-dim)" : "transparent",
+                border: `1px solid ${knowledgeEnabled ? "var(--accent)" : "var(--border)"}`,
+                color: knowledgeEnabled ? "var(--accent)" : "var(--text-3)",
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              <BookOpen size={12} strokeWidth={1.5} />
+              Knowledge
+            </button>
+          </div>
 
           {/* Send / Stop - right side */}
           <div style={{ display: "flex", gap: 6 }}>
