@@ -5,8 +5,9 @@
 //   2. Rust emits "chat-token" events; we parse <think>...</think> tags from the stream.
 //   3. Content inside <think> populates message.thinking; content after populates message.content.
 //   4. Rust emits "chat-done" when streaming ends (or errors).
-//   5. After a successful reply, if memoryEnabled, calls extract_memories in the background.
-//   6. stopStreaming() resets streaming state; in-flight tokens are ignored.
+//   5. After a successful reply, onTurnComplete is called so the caller can persist the turn.
+//   6. If memoryEnabled, extract_memories runs in the background.
+//   7. stopStreaming() resets streaming state; in-flight tokens are ignored.
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -27,6 +28,12 @@ interface UseChatOptions {
   memoryEnabled: boolean;
   knowledgeEnabled: boolean;
   embedModel: string;
+  /** Called after each successful assistant reply, for conversation persistence. */
+  onTurnComplete?: (
+    userContent: string,
+    assistantContent: string,
+    assistantThinking: string | null
+  ) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,7 +90,14 @@ function parseThinkTags(raw: string): {
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useChat({ modelMode, speedModel, memoryEnabled, knowledgeEnabled, embedModel }: UseChatOptions) {
+export function useChat({
+  modelMode,
+  speedModel,
+  memoryEnabled,
+  knowledgeEnabled,
+  embedModel,
+  onTurnComplete,
+}: UseChatOptions) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
 
@@ -97,10 +111,12 @@ export function useChat({ modelMode, speedModel, memoryEnabled, knowledgeEnabled
   const speedModelRef = useRef(speedModel);
   const knowledgeEnabledRef = useRef(knowledgeEnabled);
   const embedModelRef = useRef(embedModel);
+  const onTurnCompleteRef = useRef(onTurnComplete);
   memoryEnabledRef.current = memoryEnabled;
   speedModelRef.current = speedModel;
   knowledgeEnabledRef.current = knowledgeEnabled;
   embedModelRef.current = embedModel;
+  onTurnCompleteRef.current = onTurnComplete;
 
   useEffect(() => {
     let cancelled = false;
@@ -145,11 +161,23 @@ export function useChat({ modelMode, speedModel, memoryEnabled, knowledgeEnabled
 
       // Clear isThinking flag on completion
       if (assistantId) {
-        setMessages((prev) =>
-          prev.map((m) =>
+        setMessages((prev) => {
+          const updated = prev.map((m) =>
             m.id === assistantId ? { ...m, isThinking: false } : m
-          )
-        );
+          );
+
+          // Persist the turn - read the final assistant message from the updated list
+          const assistantMsg = updated.find((m) => m.id === assistantId);
+          if (assistantMsg && onTurnCompleteRef.current) {
+            onTurnCompleteRef.current(
+              lastUserMessageRef.current,
+              assistantMsg.content,
+              assistantMsg.thinking ?? null
+            );
+          }
+
+          return updated;
+        });
       }
 
       // Trigger background memory extraction after a successful reply.
@@ -237,11 +265,21 @@ export function useChat({ modelMode, speedModel, memoryEnabled, knowledgeEnabled
     [isStreaming, messages, modelMode, memoryEnabled, knowledgeEnabled, embedModel]
   );
 
+  // Load a set of persisted messages (e.g. when switching conversations).
+  const loadMessages = useCallback((msgs: Message[]) => {
+    setMessages(msgs);
+  }, []);
+
+  // Clear all messages (e.g. when starting a new conversation).
+  const clearMessages = useCallback(() => {
+    setMessages([]);
+  }, []);
+
   const stopStreaming = useCallback(() => {
     streamingIdRef.current = null;
     rawBufferRef.current = "";
     setIsStreaming(false);
   }, []);
 
-  return { messages, isStreaming, sendMessage, stopStreaming };
+  return { messages, isStreaming, sendMessage, stopStreaming, loadMessages, clearMessages };
 }

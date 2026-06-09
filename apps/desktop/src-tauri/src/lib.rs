@@ -57,6 +57,26 @@ pub struct KnowledgeChunk {
     pub content: String,
 }
 
+/// A persisted conversation (sidebar entry).
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Conversation {
+    pub id: String,
+    pub title: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// A single message row from a persisted conversation.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ConversationMessage {
+    pub id: String,
+    pub conversation_id: String,
+    pub role: String,
+    pub content: String,
+    pub thinking: Option<String>,
+    pub created_at: String,
+}
+
 /// Payload emitted for every token chunk while streaming.
 #[derive(Clone, Serialize)]
 struct ChatTokenPayload {
@@ -79,6 +99,12 @@ struct MemoriesUpdatedPayload {
 #[derive(Clone, Serialize)]
 struct KnowledgeUpdatedPayload {
     sources: Vec<KnowledgeSource>,
+}
+
+/// Payload emitted when the conversation list changes.
+#[derive(Clone, Serialize)]
+struct ConversationsUpdatedPayload {
+    conversations: Vec<Conversation>,
 }
 
 // ---------------------------------------------------------------------------
@@ -571,6 +597,199 @@ async fn search_knowledge(
 }
 
 // ---------------------------------------------------------------------------
+// Conversation commands
+// ---------------------------------------------------------------------------
+
+/// Create a new conversation and return it.
+#[tauri::command]
+async fn create_conversation(
+    title: String,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<Conversation, String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/conversations")?;
+
+    let body = serde_json::json!({ "title": title });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        return Err(format!("Sidecar returned HTTP {status}"));
+    }
+
+    let conv: Conversation = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(conv)
+}
+
+/// Return all conversations, newest first.
+#[tauri::command]
+async fn list_conversations(
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<Vec<Conversation>, String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/conversations")?;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let conversations: Vec<Conversation> =
+        serde_json::from_value(data["conversations"].clone()).unwrap_or_default();
+
+    Ok(conversations)
+}
+
+/// Return all messages for a conversation, oldest first.
+#[tauri::command]
+async fn get_conversation_messages(
+    conversation_id: String,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<Vec<ConversationMessage>, String> {
+    let (url, token) = sidecar_url(
+        &sidecar_state,
+        &format!("/conversations/{conversation_id}/messages"),
+    )?;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let messages: Vec<ConversationMessage> =
+        serde_json::from_value(data["messages"].clone()).unwrap_or_default();
+
+    Ok(messages)
+}
+
+/// Persist a user + assistant turn to a conversation.
+/// Called after the assistant reply is complete.
+#[tauri::command]
+async fn save_conversation_turn(
+    conversation_id: String,
+    user_content: String,
+    assistant_content: String,
+    assistant_thinking: Option<String>,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<(), String> {
+    let (url, token) = sidecar_url(
+        &sidecar_state,
+        &format!("/conversations/{conversation_id}/turn"),
+    )?;
+
+    let body = serde_json::json!({
+        "user_content": user_content,
+        "assistant_content": assistant_content,
+        "assistant_thinking": assistant_thinking,
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        return Err(format!("Sidecar returned HTTP {status}"));
+    }
+
+    Ok(())
+}
+
+/// Delete a conversation and all its messages.
+/// Emits "conversations-updated" with the remaining list.
+#[tauri::command]
+async fn delete_conversation(
+    conversation_id: String,
+    app_handle: tauri::AppHandle,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<(), String> {
+    let (url, token) = sidecar_url(
+        &sidecar_state,
+        &format!("/conversations/{conversation_id}"),
+    )?;
+
+    let client = reqwest::Client::new();
+    client
+        .delete(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Fetch updated list and notify UI
+    let (list_url, list_token) = sidecar_url(&sidecar_state, "/conversations")?;
+    let resp = client
+        .get(&list_url)
+        .header("Authorization", format!("Bearer {list_token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let conversations: Vec<Conversation> =
+        serde_json::from_value(data["conversations"].clone()).unwrap_or_default();
+
+    app_handle
+        .emit(
+            "conversations-updated",
+            ConversationsUpdatedPayload { conversations },
+        )
+        .ok();
+
+    Ok(())
+}
+
+/// Rename a conversation.
+#[tauri::command]
+async fn rename_conversation(
+    conversation_id: String,
+    title: String,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<(), String> {
+    let (url, token) = sidecar_url(
+        &sidecar_state,
+        &format!("/conversations/{conversation_id}"),
+    )?;
+
+    let body = serde_json::json!({ "title": title });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .patch(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        return Err(format!("Sidecar returned HTTP {status}"));
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // System prompt helpers
 // ---------------------------------------------------------------------------
 
@@ -653,6 +872,12 @@ pub fn run() {
             list_knowledge_sources,
             search_knowledge,
             delete_knowledge_source,
+            create_conversation,
+            list_conversations,
+            get_conversation_messages,
+            save_conversation_turn,
+            delete_conversation,
+            rename_conversation,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

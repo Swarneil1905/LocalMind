@@ -1,7 +1,8 @@
 // Spec reference: Section 14 (Chat UI), Section 15 (All Application Screens)
 // Phase 1: functional chat, Ollama detection, model mode selector.
+// Phase 3.5: conversation persistence wired in.
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -16,15 +17,17 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Composer } from "./components/Composer";
+import { ConversationList } from "./components/ConversationList";
 import { KnowledgePage } from "./components/KnowledgePage";
 import { MessageList } from "./components/MessageList";
 import { MemoryPage } from "./components/MemoryPage";
 import { PlaceholderPage } from "./components/PlaceholderPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { useChat } from "./hooks/useChat";
+import { ConversationMessage, useConversations } from "./hooks/useConversations";
 import { Memory, useMemory } from "./hooks/useMemory";
 import { useOllama } from "./hooks/useOllama";
-import { ModelMode, MODEL_MAP } from "./types";
+import { Message, ModelMode, MODEL_MAP } from "./types";
 import "./App.css";
 
 // ---------------------------------------------------------------------------
@@ -74,6 +77,17 @@ const SIDEBAR_COLLAPSED = 48;
 // Embedding model used for knowledge indexing and search
 const EMBED_MODEL = "nomic-embed-text";
 
+// Convert a DB ConversationMessage row to the UI Message shape.
+function dbMsgToMessage(m: ConversationMessage): Message {
+  return {
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    thinking: m.thinking ?? undefined,
+    isThinking: false,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // App root
 // ---------------------------------------------------------------------------
@@ -89,13 +103,69 @@ export default function App() {
 
   const ollamaStatus = useOllama();
   const { memories, deleteMemory } = useMemory();
-  const { messages, isStreaming, sendMessage, stopStreaming } = useChat({
+
+  const {
+    conversations,
+    activeId: activeConvId,
+    createConversation,
+    selectConversation,
+    saveCurrentTurn,
+    deleteConversation,
+    renameConversation,
+  } = useConversations();
+
+  // Called by useChat after each successful reply.
+  const handleTurnComplete = useCallback(
+    (userContent: string, assistantContent: string, assistantThinking: string | null) => {
+      saveCurrentTurn(userContent, assistantContent, assistantThinking);
+    },
+    [saveCurrentTurn]
+  );
+
+  const {
+    messages,
+    isStreaming,
+    sendMessage,
+    stopStreaming,
+    loadMessages,
+    clearMessages,
+  } = useChat({
     modelMode,
     speedModel,
     memoryEnabled,
     knowledgeEnabled,
     embedModel: EMBED_MODEL,
+    onTurnComplete: handleTurnComplete,
   });
+
+  // Create a new conversation and clear the chat pane.
+  const handleNewConversation = useCallback(async () => {
+    clearMessages();
+    // Title will be auto-updated to the first message later; for now use placeholder.
+    await createConversation("New chat").catch(() => {});
+  }, [clearMessages, createConversation]);
+
+  // Switch to an existing conversation and hydrate the message list.
+  const handleSelectConversation = useCallback(
+    async (id: string) => {
+      const dbMessages = await selectConversation(id);
+      loadMessages(dbMessages.map(dbMsgToMessage));
+    },
+    [selectConversation, loadMessages]
+  );
+
+  // Wrap sendMessage to auto-create a conversation if none is active.
+  const handleSend = useCallback(
+    async (text: string) => {
+      if (!activeConvId) {
+        // Derive a short title from the first user message (max 40 chars)
+        const title = text.trim().slice(0, 40) || "New chat";
+        await createConversation(title).catch(() => {});
+      }
+      sendMessage(text);
+    },
+    [activeConvId, createConversation, sendMessage]
+  );
 
   return (
     <div
@@ -124,7 +194,9 @@ export default function App() {
         memoryEnabled={memoryEnabled}
         knowledgeEnabled={knowledgeEnabled}
         memories={memories}
-        onSend={sendMessage}
+        conversations={conversations}
+        activeConvId={activeConvId}
+        onSend={handleSend}
         onStop={stopStreaming}
         onModelModeChange={setModelMode}
         onSpeedModelChange={setSpeedModel}
@@ -132,6 +204,10 @@ export default function App() {
         onMemoryToggle={() => setMemoryEnabled((v) => !v)}
         onKnowledgeToggle={() => setKnowledgeEnabled((v) => !v)}
         onDeleteMemory={deleteMemory}
+        onNewConversation={handleNewConversation}
+        onSelectConversation={handleSelectConversation}
+        onDeleteConversation={deleteConversation}
+        onRenameConversation={renameConversation}
       />
       <RightPanel memories={memories} onDeleteMemory={deleteMemory} />
     </div>
@@ -320,6 +396,8 @@ interface MainAreaProps {
   memoryEnabled: boolean;
   knowledgeEnabled: boolean;
   memories: Memory[];
+  conversations: ReturnType<typeof useConversations>["conversations"];
+  activeConvId: string | null;
   onSend: (text: string) => void;
   onStop: () => void;
   onModelModeChange: (mode: ModelMode) => void;
@@ -328,6 +406,10 @@ interface MainAreaProps {
   onMemoryToggle: () => void;
   onKnowledgeToggle: () => void;
   onDeleteMemory: (id: string) => void;
+  onNewConversation: () => void;
+  onSelectConversation: (id: string) => void;
+  onDeleteConversation: (id: string) => void;
+  onRenameConversation: (id: string, title: string) => void;
 }
 
 function MainArea({
@@ -341,6 +423,8 @@ function MainArea({
   memoryEnabled,
   knowledgeEnabled,
   memories,
+  conversations,
+  activeConvId,
   onSend,
   onStop,
   onModelModeChange,
@@ -349,6 +433,10 @@ function MainArea({
   onMemoryToggle,
   onKnowledgeToggle,
   onDeleteMemory,
+  onNewConversation,
+  onSelectConversation,
+  onDeleteConversation,
+  onRenameConversation,
 }: MainAreaProps) {
   const ollamaRunning = ollamaStatus?.running ?? null;
   const activeLabel =
@@ -408,19 +496,30 @@ function MainArea({
       ) : activePage === "memory" ? (
         <MemoryPage memories={memories ?? []} onDelete={onDeleteMemory} />
       ) : activePage === "chats" ? (
-        <>
-          <MessageList messages={messages} isStreaming={isStreaming} />
-          <Composer
-            onSend={onSend}
-            onStop={onStop}
-            isStreaming={isStreaming}
-            disabled={ollamaRunning === false}
-            memoryEnabled={memoryEnabled}
-            onMemoryToggle={onMemoryToggle}
-            knowledgeEnabled={knowledgeEnabled}
-            onKnowledgeToggle={onKnowledgeToggle}
+        // Chats page: conversation list panel + chat area side by side
+        <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+          <ConversationList
+            conversations={conversations}
+            activeId={activeConvId}
+            onNew={onNewConversation}
+            onSelect={onSelectConversation}
+            onDelete={onDeleteConversation}
+            onRename={onRenameConversation}
           />
-        </>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <MessageList messages={messages} isStreaming={isStreaming} />
+            <Composer
+              onSend={onSend}
+              onStop={onStop}
+              isStreaming={isStreaming}
+              disabled={ollamaRunning === false}
+              memoryEnabled={memoryEnabled}
+              onMemoryToggle={onMemoryToggle}
+              knowledgeEnabled={knowledgeEnabled}
+              onKnowledgeToggle={onKnowledgeToggle}
+            />
+          </div>
+        </div>
       ) : activePage === "knowledge" ? (
         <KnowledgePage embedModel={EMBED_MODEL} />
       ) : activePage === "projects" ? (
