@@ -118,6 +118,7 @@ async fn get_ollama_status(
 /// Emits two event types to the frontend window:
 ///   "chat-token"  - {content: "<chunk>"}   for each token
 ///   "chat-done"   - {error: null | "msg"}  on finish or error
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 async fn chat_stream(
     message: String,
