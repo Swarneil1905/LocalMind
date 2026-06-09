@@ -424,12 +424,16 @@ async fn index_knowledge(
 
     // Poll until the source transitions from "indexing" to "ready"/"error"
     // (background task on Python side), then emit the updated list.
-    let sidecar_clone = sidecar_state.0.lock().map_err(|e| e.to_string())?.clone();
+    // Extract port and token as owned Strings before dropping the lock -
+    // SidecarHandle is not Clone so we cannot clone the guard directly.
+    let sidecar_port_token: Option<(u16, String)> = {
+        let guard = sidecar_state.0.lock().map_err(|e| e.to_string())?;
+        guard.as_ref().map(|s| (s.port, s.token.clone()))
+    };
     let app_clone = app_handle.clone();
 
-    if let Some(sidecar) = sidecar_clone {
-        let list_url = format!("http://127.0.0.1:{}/knowledge/sources", sidecar.port);
-        let list_token = sidecar.token.clone();
+    if let Some((port, list_token)) = sidecar_port_token {
+        let list_url = format!("http://127.0.0.1:{port}/knowledge/sources");
 
         tauri::async_runtime::spawn(async move {
             let client = reqwest::Client::new();
