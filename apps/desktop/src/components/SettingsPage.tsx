@@ -1,6 +1,6 @@
 // Spec reference: Section 15 (Settings Screen)
-// Phase 1: Local Model + GPU sections only.
-// All other sections are rendered as locked placeholders.
+// Phase 1: Local Model + GPU sections active.
+// Phase 5: Web Search section active.
 
 import { useState } from "react";
 import { OllamaStatus } from "../hooks/useOllama";
@@ -43,8 +43,18 @@ const RECOMMENDED_MODELS = [
     slot: "speed" as const,
     vram: "< 6 GB",
     ctx: "128k",
-    note: "1.5B active params, MoE. Fast speed model for 6 GB GPUs.",
+    note: "1.5B active params, MoE. Best speed model for 6 GB GPUs.",
     pull: "ollama pull maternion/lfm2.5",
+  },
+  {
+    name: "phi4-mini:3.8b",
+    label: "Phi-4-Mini 3.8B",
+    by: "Microsoft",
+    slot: "speed" as const,
+    vram: "~3 GB",
+    ctx: "16k",
+    note: "Dense 3.8B model. Strong for its size. Good speed fallback.",
+    pull: "ollama pull phi4-mini:3.8b",
   },
   {
     name: "deepseek-r1:7b",
@@ -55,6 +65,16 @@ const RECOMMENDED_MODELS = [
     ctx: "32k",
     note: "Reasoning model with chain-of-thought. Current default.",
     pull: "ollama pull deepseek-r1:7b",
+  },
+  {
+    name: "qwen3:8b",
+    label: "Qwen3 8B",
+    by: "Alibaba",
+    slot: "balanced" as const,
+    vram: "~5-6 GB",
+    ctx: "32k",
+    note: "Strong reasoning + coding. 40+ tok/s on 6 GB GPU. Recommended alternative.",
+    pull: "ollama pull qwen3:8b",
   },
   {
     name: "mellum2:12b-a2.5b-thinking-q4_k_m",
@@ -81,7 +101,6 @@ export function SettingsPage({
 
   return (
     <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-      {/* Left sub-navigation */}
       <nav
         style={{
           width: 180,
@@ -104,34 +123,21 @@ export function SettingsPage({
               padding: "0 16px",
               fontSize: 13,
               textAlign: "left",
-              color:
-                !phase1
-                  ? "var(--text-3)"
-                  : activeSection === id
-                  ? "var(--text)"
-                  : "var(--text-2)",
-              backgroundColor:
-                activeSection === id && phase1
-                  ? "var(--surface-2)"
-                  : "transparent",
-              borderLeft: `2px solid ${
-                activeSection === id && phase1 ? "var(--accent)" : "transparent"
-              }`,
+              color: !phase1 ? "var(--text-3)" : activeSection === id ? "var(--text)" : "var(--text-2)",
+              backgroundColor: activeSection === id && phase1 ? "var(--surface-2)" : "transparent",
+              borderLeft: `2px solid ${activeSection === id && phase1 ? "var(--accent)" : "transparent"}`,
               cursor: phase1 ? "pointer" : "default",
               gap: 8,
             }}
           >
             {label}
             {!phase1 && (
-              <span style={{ fontSize: 10, color: "var(--text-3)", marginLeft: "auto" }}>
-                later
-              </span>
+              <span style={{ fontSize: 10, color: "var(--text-3)", marginLeft: "auto" }}>later</span>
             )}
           </button>
         ))}
       </nav>
 
-      {/* Section content */}
       <div style={{ flex: 1, overflowY: "auto", padding: "24px 32px" }}>
         {activeSection === "local-model" && (
           <LocalModelSection
@@ -146,9 +152,7 @@ export function SettingsPage({
             onBalancedContextChange={setBalancedContext}
           />
         )}
-        {activeSection === "gpu" && (
-          <GpuSection ollamaStatus={ollamaStatus} />
-        )}
+        {activeSection === "gpu" && <GpuSection ollamaStatus={ollamaStatus} />}
       </div>
     </div>
   );
@@ -197,7 +201,6 @@ function LocalModelSection({
     <div style={{ maxWidth: 560 }}>
       <SectionHeading>Local Model</SectionHeading>
 
-      {/* Ollama status */}
       <SettingRow label="Ollama status">
         <StatusBadge running={running} />
       </SettingRow>
@@ -208,7 +211,6 @@ function LocalModelSection({
         </SettingRow>
       )}
 
-      {/* Available models */}
       <SettingRow label="Available models">
         {models.length === 0 ? (
           <Value dimmed>No models found</Value>
@@ -226,23 +228,13 @@ function LocalModelSection({
 
       <Divider />
 
-      {/* Speed model */}
       <SettingRow label="Speed model" hint="Used for routing and background tasks (1B-2B)">
-        <ModelSelect
-          value={speedModel}
-          options={modelNames}
-          onChange={onSpeedModelChange}
-          disabled={!running}
-        />
+        <ModelSelect value={speedModel} options={modelNames} onChange={onSpeedModelChange} disabled={!running} />
       </SettingRow>
 
       <SettingRow label="Speed context length" hint={`${speedContext} tokens`}>
         <input
-          type="range"
-          min={512}
-          max={8192}
-          step={256}
-          value={speedContext}
+          type="range" min={512} max={8192} step={256} value={speedContext}
           onChange={(e) => onSpeedContextChange(Number(e.target.value))}
           style={{ width: 200, accentColor: "var(--accent)" }}
         />
@@ -250,23 +242,13 @@ function LocalModelSection({
 
       <Divider />
 
-      {/* Balanced model */}
-      <SettingRow label="Balanced model" hint="Main chat model (3B-7B)">
-        <ModelSelect
-          value={balancedModel}
-          options={modelNames}
-          onChange={onBalancedModelChange}
-          disabled={!running}
-        />
+      <SettingRow label="Balanced model" hint="Main chat model (3B-8B)">
+        <ModelSelect value={balancedModel} options={modelNames} onChange={onBalancedModelChange} disabled={!running} />
       </SettingRow>
 
       <SettingRow label="Balanced context length" hint={`${balancedContext} tokens`}>
         <input
-          type="range"
-          min={512}
-          max={8192}
-          step={256}
-          value={balancedContext}
+          type="range" min={512} max={8192} step={256} value={balancedContext}
           onChange={(e) => onBalancedContextChange(Number(e.target.value))}
           style={{ width: 200, accentColor: "var(--accent)" }}
         />
@@ -280,7 +262,7 @@ function LocalModelSection({
           Recommended models
         </div>
         <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 12 }}>
-          Verified to run on 6 GB VRAM. Copy the pull command, run it in a terminal, then click Use.
+          Verified on 6 GB VRAM. Copy the pull command, run it in a terminal, then click Use.
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -296,11 +278,8 @@ function LocalModelSection({
                   backgroundColor: "var(--surface)",
                 }}
               >
-                {/* Header row */}
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
-                    {m.label}
-                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{m.label}</span>
                   <span style={{ fontSize: 11, color: "var(--text-3)" }}>by {m.by}</span>
                   <span
                     style={{
@@ -319,14 +298,11 @@ function LocalModelSection({
                   </span>
                 </div>
 
-                {/* Specs row */}
                 <div style={{ display: "flex", gap: 16, marginBottom: 6 }}>
                   <span style={{ fontSize: 11, color: "var(--text-3)" }}>VRAM: {m.vram}</span>
                   <span style={{ fontSize: 11, color: "var(--text-3)" }}>Context: {m.ctx}</span>
                   {isPulled && (
-                    <span style={{ fontSize: 11, color: "#22c55e", fontWeight: 600 }}>
-                      Pulled
-                    </span>
+                    <span style={{ fontSize: 11, color: "#22c55e", fontWeight: 600 }}>Pulled</span>
                   )}
                 </div>
 
@@ -334,21 +310,13 @@ function LocalModelSection({
                   {m.note}
                 </p>
 
-                {/* Actions */}
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {/* Pull command */}
                   <code
                     style={{
-                      flex: 1,
-                      fontSize: 11,
-                      fontFamily: "monospace",
-                      backgroundColor: "var(--surface-2)",
-                      padding: "4px 8px",
-                      borderRadius: 3,
-                      color: "var(--text-2)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
+                      flex: 1, fontSize: 11, fontFamily: "monospace",
+                      backgroundColor: "var(--surface-2)", padding: "4px 8px",
+                      borderRadius: 3, color: "var(--text-2)",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}
                   >
                     {m.pull}
@@ -356,32 +324,24 @@ function LocalModelSection({
                   <button
                     onClick={() => copyPull(m.pull)}
                     style={{
-                      fontSize: 11,
-                      padding: "4px 10px",
-                      borderRadius: 3,
+                      fontSize: 11, padding: "4px 10px", borderRadius: 3,
                       backgroundColor: "var(--surface-2)",
                       color: copied === m.pull ? "#22c55e" : "var(--text-2)",
-                      border: "1px solid var(--border)",
-                      flexShrink: 0,
+                      border: "1px solid var(--border)", flexShrink: 0,
                     }}
                   >
                     {copied === m.pull ? "Copied!" : "Copy"}
                   </button>
                   <button
                     onClick={() =>
-                      m.slot === "speed"
-                        ? onSpeedModelChange(m.name)
-                        : onBalancedModelChange(m.name)
+                      m.slot === "speed" ? onSpeedModelChange(m.name) : onBalancedModelChange(m.name)
                     }
                     disabled={!running}
                     style={{
-                      fontSize: 11,
-                      padding: "4px 10px",
-                      borderRadius: 3,
+                      fontSize: 11, padding: "4px 10px", borderRadius: 3,
                       backgroundColor: running ? "var(--accent)" : "var(--surface-2)",
                       color: running ? "#fff" : "var(--text-3)",
-                      flexShrink: 0,
-                      opacity: running ? 1 : 0.6,
+                      flexShrink: 0, opacity: running ? 1 : 0.6,
                     }}
                   >
                     Use
@@ -409,39 +369,21 @@ function GpuSection({ ollamaStatus }: { ollamaStatus: OllamaStatus | null }) {
       <SectionHeading>GPU</SectionHeading>
 
       <SettingRow label="GPU detected">
-        {gpu ? (
-          <Value>{gpu.name}</Value>
-        ) : (
-          <Value dimmed>No GPU detected</Value>
-        )}
+        {gpu ? <Value>{gpu.name}</Value> : <Value dimmed>No GPU detected</Value>}
       </SettingRow>
 
       {gpu && (
         <>
           <SettingRow label="VRAM">
-            <Value>
-              {mibToGib(gpu.vramFreeMib)} GB free / {mibToGib(gpu.vramTotalMib)} GB total
-            </Value>
+            <Value>{mibToGib(gpu.vramFreeMib)} GB free / {mibToGib(gpu.vramTotalMib)} GB total</Value>
           </SettingRow>
-
           <SettingRow label="VRAM used">
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div
-                style={{
-                  width: 180,
-                  height: 6,
-                  backgroundColor: "var(--surface-2)",
-                  borderRadius: 3,
-                  overflow: "hidden",
-                }}
-              >
+              <div style={{ width: 180, height: 6, backgroundColor: "var(--surface-2)", borderRadius: 3, overflow: "hidden" }}>
                 <div
                   style={{
                     width: `${((gpu.vramTotalMib - gpu.vramFreeMib) / gpu.vramTotalMib) * 100}%`,
-                    height: "100%",
-                    backgroundColor: "var(--accent)",
-                    borderRadius: 3,
-                    transition: "width 500ms",
+                    height: "100%", backgroundColor: "var(--accent)", borderRadius: 3, transition: "width 500ms",
                   }}
                 />
               </div>
@@ -455,31 +397,13 @@ function GpuSection({ ollamaStatus }: { ollamaStatus: OllamaStatus | null }) {
 
       <SettingRow label="Inference mode">
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span
-            style={{
-              width: 7,
-              height: 7,
-              borderRadius: "50%",
-              backgroundColor: onGpu ? "#22c55e" : "#f59e0b",
-              display: "block",
-            }}
-          />
+          <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: onGpu ? "#22c55e" : "#f59e0b", display: "block" }} />
           <Value>{onGpu ? "GPU" : "CPU (no GPU detected)"}</Value>
         </div>
       </SettingRow>
 
       {!onGpu && (
-        <div
-          style={{
-            marginTop: 16,
-            padding: "10px 14px",
-            backgroundColor: "var(--surface-2)",
-            borderRadius: 5,
-            border: "1px solid var(--border)",
-            fontSize: 12,
-            color: "var(--text-2)",
-          }}
-        >
+        <div style={{ marginTop: 16, padding: "10px 14px", backgroundColor: "var(--surface-2)", borderRadius: 5, border: "1px solid var(--border)", fontSize: 12, color: "var(--text-2)" }}>
           No NVIDIA GPU was detected. LocalMind will use the CPU for inference,
           which is significantly slower. Install Ollama and ensure CUDA drivers
           are up to date if you have a GPU.
@@ -490,61 +414,27 @@ function GpuSection({ ollamaStatus }: { ollamaStatus: OllamaStatus | null }) {
 }
 
 // ---------------------------------------------------------------------------
-// Small reusable components
+// Shared components
 // ---------------------------------------------------------------------------
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <h2
-      style={{
-        fontSize: 15,
-        fontWeight: 600,
-        color: "var(--text)",
-        marginBottom: 20,
-        paddingBottom: 10,
-        borderBottom: "1px solid var(--border)",
-      }}
-    >
+    <h2 style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 20, paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
       {children}
     </h2>
   );
 }
 
 function Divider() {
-  return (
-    <div
-      style={{
-        height: 1,
-        backgroundColor: "var(--border-subtle)",
-        margin: "16px 0",
-      }}
-    />
-  );
+  return <div style={{ height: 1, backgroundColor: "var(--border-subtle)", margin: "16px 0" }} />;
 }
 
-function SettingRow({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
+function SettingRow({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 24,
-        marginBottom: 14,
-      }}
-    >
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 24, marginBottom: 14 }}>
       <div style={{ width: 180, flexShrink: 0 }}>
         <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.4 }}>{label}</div>
-        {hint && (
-          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>{hint}</div>
-        )}
+        {hint && <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>{hint}</div>}
       </div>
       <div style={{ flex: 1, display: "flex", alignItems: "center" }}>{children}</div>
     </div>
@@ -552,78 +442,36 @@ function SettingRow({
 }
 
 function Value({ children, dimmed }: { children: React.ReactNode; dimmed?: boolean }) {
-  return (
-    <span style={{ fontSize: 13, color: dimmed ? "var(--text-3)" : "var(--text)" }}>
-      {children}
-    </span>
-  );
+  return <span style={{ fontSize: 13, color: dimmed ? "var(--text-3)" : "var(--text)" }}>{children}</span>;
 }
 
 function StatusBadge({ running }: { running: boolean }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-      <span
-        style={{
-          width: 7,
-          height: 7,
-          borderRadius: "50%",
-          backgroundColor: running ? "#22c55e" : "#ef4444",
-          display: "block",
-        }}
-      />
+      <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: running ? "#22c55e" : "#ef4444", display: "block" }} />
       <Value>{running ? "Running" : "Not found"}</Value>
     </div>
   );
 }
 
-function ModelSelect({
-  value,
-  options,
-  onChange,
-  disabled,
-}: {
-  value: string;
-  options: string[];
-  onChange: (v: string) => void;
-  disabled: boolean;
-}) {
-  // If the current value isn't in the list (model not pulled), show it anyway
+function ModelSelect({ value, options, onChange, disabled }: { value: string; options: string[]; onChange: (v: string) => void; disabled: boolean }) {
   const allOptions = options.includes(value) ? options : [value, ...options];
-
   return (
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
-      style={{
-        fontSize: 13,
-        color: "var(--text)",
-        backgroundColor: "var(--surface-2)",
-        border: "1px solid var(--border)",
-        borderRadius: 4,
-        padding: "4px 8px",
-        cursor: disabled ? "not-allowed" : "pointer",
-        minWidth: 180,
-      }}
+      style={{ fontSize: 13, color: "var(--text)", backgroundColor: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 4, padding: "4px 8px", cursor: disabled ? "not-allowed" : "pointer", minWidth: 180 }}
     >
-      {allOptions.map((name) => (
-        <option key={name} value={name}>
-          {name}
-        </option>
-      ))}
+      {allOptions.map((name) => <option key={name} value={name}>{name}</option>)}
     </select>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Utilities
-// ---------------------------------------------------------------------------
-
 function formatBytes(bytes: number): string {
   const gb = bytes / 1024 / 1024 / 1024;
   if (gb >= 1) return `${gb.toFixed(1)} GB`;
-  const mb = bytes / 1024 / 1024;
-  return `${Math.round(mb)} MB`;
+  return `${Math.round(bytes / 1024 / 1024)} MB`;
 }
 
 function mibToGib(mib: number): string {

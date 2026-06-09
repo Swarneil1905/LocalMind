@@ -11,7 +11,16 @@ import os
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.api.routes import chat, conversations, health, knowledge, memory, models, projects
+from app.api.routes import (
+    chat,
+    conversations,
+    health,
+    knowledge,
+    memory,
+    models,
+    projects,
+    search_config,
+)
 
 app = FastAPI(title="LocalMind AI Service", version="0.1.0", docs_url=None, redoc_url=None)
 
@@ -32,3 +41,4 @@ app.include_router(memory.router)
 app.include_router(knowledge.router)
 app.include_router(conversations.router)
 app.include_router(projects.router)
+app.include_router(search_config.router)

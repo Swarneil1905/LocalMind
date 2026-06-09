@@ -92,6 +92,13 @@ pub struct Task {
     pub updated_at: String,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SearchConfig {
+    pub provider: String,
+    pub privacy_mode: String,
+    pub enabled: bool,
+}
+
 // ---------------------------------------------------------------------------
 // Event payloads
 // ---------------------------------------------------------------------------
@@ -104,6 +111,11 @@ struct ChatTokenPayload {
 #[derive(Clone, Serialize)]
 struct ChatDonePayload {
     error: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+struct ChatSourcesPayload {
+    sources: Vec<serde_json::Value>,
 }
 
 #[derive(Clone, Serialize)]
@@ -164,6 +176,7 @@ async fn chat_stream(
     memory_enabled: bool,
     knowledge_enabled: bool,
     embed_model: String,
+    web_search_enabled: bool,
     app_handle: tauri::AppHandle,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<(), String> {
@@ -229,6 +242,7 @@ async fn chat_stream(
         "model": model,
         "history": history,
         "system_prompt": system_prompt,
+        "web_search_enabled": web_search_enabled,
     });
 
     let resp = client
@@ -271,6 +285,14 @@ async fn chat_stream(
                             .unwrap_or("")
                             .to_string();
                         app_handle.emit("chat-token", ChatTokenPayload { content }).ok();
+                    }
+                    Some("sources") => {
+                        let sources: Vec<serde_json::Value> = value
+                            .get("sources")
+                            .and_then(|s| s.as_array())
+                            .cloned()
+                            .unwrap_or_default();
+                        app_handle.emit("chat-sources", ChatSourcesPayload { sources }).ok();
                     }
                     Some("done") => {
                         app_handle.emit("chat-done", ChatDonePayload { error: None }).ok();
@@ -917,6 +939,59 @@ async fn get_project_conversations(
 }
 
 // ---------------------------------------------------------------------------
+// Search config commands
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+async fn get_search_config(
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<SearchConfig, String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/search-config")?;
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("Sidecar returned HTTP {}", resp.status().as_u16()));
+    }
+    resp.json::<SearchConfig>().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn update_search_config(
+    provider: String,
+    privacy_mode: String,
+    enabled: bool,
+    api_key: Option<String>,
+    searxng_url: Option<String>,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<SearchConfig, String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/search-config")?;
+    let body = serde_json::json!({
+        "provider": provider,
+        "privacy_mode": privacy_mode,
+        "enabled": enabled,
+        "api_key": api_key,
+        "searxng_url": searxng_url,
+    });
+    let client = reqwest::Client::new();
+    let resp = client
+        .patch(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("Sidecar returned HTTP {}", resp.status().as_u16()));
+    }
+    resp.json::<SearchConfig>().await.map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
 // System prompt helpers
 // ---------------------------------------------------------------------------
 
@@ -1011,6 +1086,8 @@ pub fn run() {
             delete_task,
             assign_conversation_to_project,
             get_project_conversations,
+            get_search_config,
+            update_search_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
