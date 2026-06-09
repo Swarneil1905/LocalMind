@@ -97,6 +97,30 @@ button {
   border: none;
   font-family: inherit;
   cursor: pointer;
+  /* Smooth transition for hover/active state changes applied via inline styles */
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease,
+    border-color 150ms ease;
+}
+
+/* Keyboard focus ring - visible only for keyboard navigation, not mouse clicks */
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Sidebar nav item hover - background shift for inactive items */
+nav button:not([aria-current="page"]):hover {
+  background-color: var(--surface-2) !important;
+  color: var(--text) !important;
+}
+
+/* Icon-only and ghost buttons - subtle hover feedback */
+button[title]:not(:disabled):hover {
+  opacity: 0.75;
 }
 
 /* Streaming cursor animation */
