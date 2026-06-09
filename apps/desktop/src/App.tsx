@@ -2,6 +2,7 @@
 // Phase 1: functional chat, Ollama detection, model mode selector.
 // Phase 3.5: conversation persistence wired in.
 // Phase 4: Projects wired in, project selector in chat header.
+// Phase 5: webSearchEnabled wired through useChat + Composer.
 
 import { useCallback, useState } from "react";
 import {
@@ -104,6 +105,7 @@ export default function App() {
   const [balancedModel, setBalancedModel] = useState(MODEL_MAP.balanced);
   const [memoryEnabled, setMemoryEnabled] = useState(true);
   const [knowledgeEnabled, setKnowledgeEnabled] = useState(false);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
 
   const ollamaStatus = useOllama();
   const { memories, deleteMemory } = useMemory();
@@ -133,6 +135,7 @@ export default function App() {
   const {
     messages,
     isStreaming,
+    webSources,
     sendMessage,
     stopStreaming,
     loadMessages,
@@ -142,6 +145,7 @@ export default function App() {
     speedModel,
     memoryEnabled,
     knowledgeEnabled,
+    webSearchEnabled,
     embedModel: EMBED_MODEL,
     onTurnComplete: handleTurnComplete,
   });
@@ -207,6 +211,7 @@ export default function App() {
         balancedModel={balancedModel}
         memoryEnabled={memoryEnabled}
         knowledgeEnabled={knowledgeEnabled}
+        webSearchEnabled={webSearchEnabled}
         memories={memories}
         conversations={conversations}
         activeConvId={activeConvId}
@@ -218,6 +223,7 @@ export default function App() {
         onBalancedModelChange={setBalancedModel}
         onMemoryToggle={() => setMemoryEnabled((v) => !v)}
         onKnowledgeToggle={() => setKnowledgeEnabled((v) => !v)}
+        onWebSearchToggle={() => setWebSearchEnabled((v) => !v)}
         onDeleteMemory={deleteMemory}
         onNewConversation={handleNewConversation}
         onSelectConversation={handleSelectConversation}
@@ -225,7 +231,7 @@ export default function App() {
         onRenameConversation={renameConversation}
         onAssignProject={handleAssignProject}
       />
-      <RightPanel memories={memories} onDeleteMemory={deleteMemory} />
+      <RightPanel memories={memories} webSources={webSources} onDeleteMemory={deleteMemory} />
     </div>
   );
 }
@@ -242,28 +248,8 @@ interface SidebarProps {
   onToggle: () => void;
 }
 
-function Sidebar({
-  collapsed,
-  activePage,
-  ollamaRunning,
-  onNavigate,
-  onToggle,
-}: SidebarProps) {
+function Sidebar({ collapsed, activePage, ollamaRunning, onNavigate, onToggle }: SidebarProps) {
   const width = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED;
-
-  const dotColor =
-    ollamaRunning === null
-      ? "var(--text-3)"
-      : ollamaRunning
-      ? "#22c55e"
-      : "#ef4444";
-
-  const ollamaLabel =
-    ollamaRunning === null
-      ? "Ollama: checking"
-      : ollamaRunning
-      ? "Ollama: running"
-      : "Ollama: not found";
 
   return (
     <aside
@@ -274,125 +260,110 @@ function Sidebar({
         flexDirection: "column",
         backgroundColor: "var(--surface)",
         borderRight: "1px solid var(--border)",
-        transition: "width 200ms ease-in-out, min-width 200ms ease-in-out",
-        overflow: "hidden",
         flexShrink: 0,
+        transition: "width 200ms ease, min-width 200ms ease",
+        overflow: "hidden",
       }}
     >
-      {/* Header */}
+      {/* Logo / title row */}
       <div
         style={{
+          height: 48,
           display: "flex",
           alignItems: "center",
-          justifyContent: collapsed ? "center" : "space-between",
-          height: 48,
-          padding: collapsed ? "0 12px" : "0 16px",
+          padding: "0 12px",
+          gap: 10,
           borderBottom: "1px solid var(--border)",
           flexShrink: 0,
         }}
       >
         {!collapsed && (
-          <span
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: "var(--text)",
-              whiteSpace: "nowrap",
-              letterSpacing: "-0.01em",
-            }}
-          >
+          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", flex: 1, whiteSpace: "nowrap" }}>
             LocalMind
           </span>
         )}
         <button
           onClick={onToggle}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             width: 24,
             height: 24,
-            borderRadius: 3,
+            borderRadius: 4,
             color: "var(--text-3)",
-            flexShrink: 0,
+            marginLeft: collapsed ? "auto" : undefined,
           }}
         >
-          {collapsed ? (
-            <ChevronRight size={14} strokeWidth={1.5} />
-          ) : (
-            <ChevronLeft size={14} strokeWidth={1.5} />
-          )}
+          {collapsed ? <ChevronRight size={14} strokeWidth={1.5} /> : <ChevronLeft size={14} strokeWidth={1.5} />}
         </button>
       </div>
 
-      {/* Navigation */}
-      <nav style={{ flex: 1, padding: "4px 0", overflowY: "auto" }}>
+      {/* Nav items */}
+      <nav style={{ flex: 1, padding: "8px 0", overflowY: "auto" }}>
         {NAV_ITEMS.map(({ id, label, Icon }) => {
           const active = activePage === id;
           return (
             <button
               key={id}
               onClick={() => onNavigate(id)}
-              aria-label={label}
-              aria-current={active ? "page" : undefined}
+              title={collapsed ? label : undefined}
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
                 width: "100%",
                 height: 36,
-                padding: collapsed ? "0 15px" : "0 16px",
-                justifyContent: collapsed ? "center" : "flex-start",
+                display: "flex",
+                alignItems: "center",
+                padding: collapsed ? "0 12px" : "0 16px",
+                gap: 10,
+                fontSize: 13,
                 color: active ? "var(--text)" : "var(--text-2)",
                 backgroundColor: active ? "var(--surface-2)" : "transparent",
                 borderLeft: `2px solid ${active ? "var(--accent)" : "transparent"}`,
-                fontSize: 13,
+                justifyContent: collapsed ? "center" : undefined,
                 whiteSpace: "nowrap",
-                textAlign: "left",
+                transition: "background-color 150ms",
               }}
             >
-              <Icon size={16} strokeWidth={1.5} style={{ flexShrink: 0 }} />
+              <Icon size={16} strokeWidth={1.5} />
               {!collapsed && label}
             </button>
           );
         })}
       </nav>
 
-      {/* Footer */}
-      <div
-        style={{
-          borderTop: "1px solid var(--border)",
-          padding: collapsed ? "10px 0" : "10px 16px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-          flexShrink: 0,
-          alignItems: collapsed ? "center" : "flex-start",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+      {/* Ollama status dot */}
+      {!collapsed && (
+        <div
+          style={{
+            padding: "10px 16px",
+            borderTop: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            flexShrink: 0,
+          }}
+        >
           <span
             style={{
               width: 7,
               height: 7,
               borderRadius: "50%",
-              backgroundColor: dotColor,
-              flexShrink: 0,
+              backgroundColor:
+                ollamaRunning === null
+                  ? "var(--text-3)"
+                  : ollamaRunning
+                  ? "#22c55e"
+                  : "#ef4444",
               display: "block",
-              transition: "background-color 300ms",
+              flexShrink: 0,
             }}
           />
-          {!collapsed && (
-            <span style={{ fontSize: 11, color: "var(--text-3)", whiteSpace: "nowrap" }}>
-              {ollamaLabel}
-            </span>
-          )}
+          <span style={{ fontSize: 11, color: "var(--text-3)" }}>
+            {ollamaRunning === null ? "Checking..." : ollamaRunning ? "Ollama running" : "Ollama offline"}
+          </span>
         </div>
-        {!collapsed && (
-          <span style={{ fontSize: 11, color: "var(--text-3)" }}>v0.1.0</span>
-        )}
-      </div>
+      )}
     </aside>
   );
 }
@@ -403,7 +374,7 @@ function Sidebar({
 
 interface MainAreaProps {
   activePage: PageId;
-  messages: ReturnType<typeof useChat>["messages"];
+  messages: Message[];
   isStreaming: boolean;
   modelMode: ModelMode;
   ollamaStatus: ReturnType<typeof useOllama>;
@@ -411,6 +382,7 @@ interface MainAreaProps {
   balancedModel: string;
   memoryEnabled: boolean;
   knowledgeEnabled: boolean;
+  webSearchEnabled: boolean;
   memories: Memory[];
   conversations: ReturnType<typeof useConversations>["conversations"];
   activeConvId: string | null;
@@ -422,6 +394,7 @@ interface MainAreaProps {
   onBalancedModelChange: (model: string) => void;
   onMemoryToggle: () => void;
   onKnowledgeToggle: () => void;
+  onWebSearchToggle: () => void;
   onDeleteMemory: (id: string) => void;
   onNewConversation: () => void;
   onSelectConversation: (id: string) => void;
@@ -440,6 +413,7 @@ function MainArea({
   balancedModel,
   memoryEnabled,
   knowledgeEnabled,
+  webSearchEnabled,
   memories,
   conversations,
   activeConvId,
@@ -451,6 +425,7 @@ function MainArea({
   onBalancedModelChange,
   onMemoryToggle,
   onKnowledgeToggle,
+  onWebSearchToggle,
   onDeleteMemory,
   onNewConversation,
   onSelectConversation,
@@ -546,6 +521,8 @@ function MainArea({
               onMemoryToggle={onMemoryToggle}
               knowledgeEnabled={knowledgeEnabled}
               onKnowledgeToggle={onKnowledgeToggle}
+              webSearchEnabled={webSearchEnabled}
+              onWebSearchToggle={onWebSearchToggle}
             />
           </div>
         </div>
@@ -737,12 +714,15 @@ function ModelModeSelector({ value, onChange, ollamaRunning }: ModelModeSelector
 // Right panel
 // ---------------------------------------------------------------------------
 
+import type { WebSource } from "./hooks/useChat";
+
 interface RightPanelProps {
   memories: Memory[];
+  webSources: WebSource[];
   onDeleteMemory: (id: string) => void;
 }
 
-function RightPanel({ memories, onDeleteMemory }: RightPanelProps) {
+function RightPanel({ memories, webSources, onDeleteMemory }: RightPanelProps) {
   return (
     <aside
       style={{
@@ -813,8 +793,59 @@ function RightPanel({ memories, onDeleteMemory }: RightPanelProps) {
         </div>
       </div>
 
+      {/* Sources - populated by web search (Phase 5) */}
+      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: "var(--text-3)",
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+          }}
+        >
+          Sources
+        </span>
+        <div style={{ marginTop: 8 }}>
+          {webSources.length === 0 ? (
+            <p style={{ fontSize: 12, color: "var(--text-3)" }}>No sources</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {webSources.map((s, i) => (
+                <a
+                  key={i}
+                  href={s.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "block",
+                    backgroundColor: "var(--surface-2)",
+                    borderRadius: 4,
+                    padding: "7px 9px",
+                    textDecoration: "none",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", lineHeight: 1.3, marginBottom: 3 }}>
+                    {s.title || s.url}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 4, wordBreak: "break-all" }}>
+                    {s.url}
+                  </div>
+                  {s.snippet && (
+                    <div style={{ fontSize: 11, color: "var(--text-2)", lineHeight: 1.4 }}>
+                      {s.snippet.slice(0, 120)}{s.snippet.length > 120 ? "..." : ""}
+                    </div>
+                  )}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Remaining sections - placeholder until later phases */}
-      {RIGHT_PANEL_SECTIONS.filter((s) => s !== "Used memory").map((section) => (
+      {RIGHT_PANEL_SECTIONS.filter((s) => s !== "Used memory" && s !== "Sources").map((section) => (
         <div
           key={section}
           style={{

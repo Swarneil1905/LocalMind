@@ -2,7 +2,8 @@
 // Phase 1: Local Model + GPU sections active.
 // Phase 5: Web Search section active.
 
-import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useState } from "react";
 import { OllamaStatus } from "../hooks/useOllama";
 
 interface SettingsPageProps {
@@ -23,15 +24,15 @@ type SettingsSection =
   | "updates"
   | "shortcuts";
 
-const SECTIONS: { id: SettingsSection; label: string; phase1: boolean }[] = [
-  { id: "local-model",  label: "Local Model",       phase1: true  },
-  { id: "gpu",          label: "GPU",                phase1: true  },
-  { id: "web-search",   label: "Web Search",         phase1: false },
-  { id: "cloud-boost",  label: "Cloud Boost",        phase1: false },
-  { id: "memory",       label: "Memory",             phase1: false },
-  { id: "privacy",      label: "Privacy",            phase1: false },
-  { id: "updates",      label: "Updates",            phase1: false },
-  { id: "shortcuts",    label: "Keyboard Shortcuts", phase1: false },
+const SECTIONS: { id: SettingsSection; label: string; active: boolean }[] = [
+  { id: "local-model",  label: "Local Model",       active: true  },
+  { id: "gpu",          label: "GPU",                active: true  },
+  { id: "web-search",   label: "Web Search",         active: true  },
+  { id: "cloud-boost",  label: "Cloud Boost",        active: false },
+  { id: "memory",       label: "Memory",             active: false },
+  { id: "privacy",      label: "Privacy",            active: false },
+  { id: "updates",      label: "Updates",            active: false },
+  { id: "shortcuts",    label: "Keyboard Shortcuts", active: false },
 ];
 
 // Curated open models verified to run on 6 GB VRAM.
@@ -111,10 +112,10 @@ export function SettingsPage({
           flexShrink: 0,
         }}
       >
-        {SECTIONS.map(({ id, label, phase1 }) => (
+        {SECTIONS.map(({ id, label, active }) => (
           <button
             key={id}
-            onClick={() => phase1 && setActiveSection(id)}
+            onClick={() => active && setActiveSection(id)}
             style={{
               width: "100%",
               height: 34,
@@ -123,15 +124,15 @@ export function SettingsPage({
               padding: "0 16px",
               fontSize: 13,
               textAlign: "left",
-              color: !phase1 ? "var(--text-3)" : activeSection === id ? "var(--text)" : "var(--text-2)",
-              backgroundColor: activeSection === id && phase1 ? "var(--surface-2)" : "transparent",
-              borderLeft: `2px solid ${activeSection === id && phase1 ? "var(--accent)" : "transparent"}`,
-              cursor: phase1 ? "pointer" : "default",
+              color: !active ? "var(--text-3)" : activeSection === id ? "var(--text)" : "var(--text-2)",
+              backgroundColor: activeSection === id && active ? "var(--surface-2)" : "transparent",
+              borderLeft: `2px solid ${activeSection === id && active ? "var(--accent)" : "transparent"}`,
+              cursor: active ? "pointer" : "default",
               gap: 8,
             }}
           >
             {label}
-            {!phase1 && (
+            {!active && (
               <span style={{ fontSize: 10, color: "var(--text-3)", marginLeft: "auto" }}>later</span>
             )}
           </button>
@@ -153,6 +154,7 @@ export function SettingsPage({
           />
         )}
         {activeSection === "gpu" && <GpuSection ollamaStatus={ollamaStatus} />}
+        {activeSection === "web-search" && <WebSearchSection />}
       </div>
     </div>
   );
@@ -414,8 +416,247 @@ function GpuSection({ ollamaStatus }: { ollamaStatus: OllamaStatus | null }) {
 }
 
 // ---------------------------------------------------------------------------
+// Web Search section
+// ---------------------------------------------------------------------------
+
+type SearchProvider = "duckduckgo" | "brave" | "tavily" | "searxng";
+type PrivacyMode = "standard" | "strict";
+
+interface SearchConfig {
+  provider: SearchProvider;
+  privacy_mode: PrivacyMode;
+  enabled: boolean;
+}
+
+const PROVIDER_LABELS: Record<SearchProvider, string> = {
+  duckduckgo: "DuckDuckGo (no API key required)",
+  brave: "Brave Search",
+  tavily: "Tavily",
+  searxng: "SearxNG (self-hosted)",
+};
+
+function WebSearchSection() {
+  const [config, setConfig] = useState<SearchConfig>({
+    provider: "duckduckgo",
+    privacy_mode: "standard",
+    enabled: false,
+  });
+  const [apiKey, setApiKey] = useState("");
+  const [searxngUrl, setSearxngUrl] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const cfg = await invoke<SearchConfig>("get_search_config");
+        setConfig(cfg);
+      } catch {
+        // sidecar not ready - leave defaults
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const updated = await invoke<SearchConfig>("update_search_config", {
+        provider: config.provider,
+        privacyMode: config.privacy_mode,
+        enabled: config.enabled,
+        apiKey: apiKey || null,
+        searxngUrl: searxngUrl || null,
+      });
+      setConfig(updated);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      // ignore - user will see no "Saved" feedback
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const needsApiKey = config.provider === "brave" || config.provider === "tavily";
+  const needsSearxngUrl = config.provider === "searxng";
+
+  return (
+    <div style={{ maxWidth: 560 }}>
+      <SectionHeading>Web Search</SectionHeading>
+
+      <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 20, lineHeight: 1.5 }}>
+        When enabled, LocalMind fetches live search results and injects them as
+        context before generating a reply. All fetched content is SSRF-filtered
+        and marked as untrusted in the prompt.
+      </div>
+
+      {loading ? (
+        <Value dimmed>Loading...</Value>
+      ) : (
+        <>
+          <SettingRow label="Enable web search" hint="Toggle in the composer per message">
+            <Toggle
+              checked={config.enabled}
+              onChange={(v) => setConfig((c) => ({ ...c, enabled: v }))}
+            />
+          </SettingRow>
+
+          <Divider />
+
+          <SettingRow label="Provider">
+            <select
+              value={config.provider}
+              onChange={(e) => setConfig((c) => ({ ...c, provider: e.target.value as SearchProvider }))}
+              style={{
+                fontSize: 13,
+                color: "var(--text)",
+                backgroundColor: "var(--surface-2)",
+                border: "1px solid var(--border)",
+                borderRadius: 4,
+                padding: "4px 8px",
+                minWidth: 240,
+              }}
+            >
+              {(Object.keys(PROVIDER_LABELS) as SearchProvider[]).map((p) => (
+                <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
+              ))}
+            </select>
+          </SettingRow>
+
+          {needsApiKey && (
+            <SettingRow
+              label="API key"
+              hint={config.provider === "brave" ? "Brave Search API key" : "Tavily API key"}
+            >
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Paste your API key"
+                style={{
+                  fontSize: 13,
+                  color: "var(--text)",
+                  backgroundColor: "var(--surface-2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 4,
+                  padding: "4px 8px",
+                  width: 240,
+                  fontFamily: "monospace",
+                }}
+              />
+            </SettingRow>
+          )}
+
+          {needsSearxngUrl && (
+            <SettingRow label="SearxNG URL" hint="Base URL of your self-hosted instance">
+              <input
+                type="text"
+                value={searxngUrl}
+                onChange={(e) => setSearxngUrl(e.target.value)}
+                placeholder="http://localhost:8080"
+                style={{
+                  fontSize: 13,
+                  color: "var(--text)",
+                  backgroundColor: "var(--surface-2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 4,
+                  padding: "4px 8px",
+                  width: 240,
+                }}
+              />
+            </SettingRow>
+          )}
+
+          <Divider />
+
+          <SettingRow label="Privacy mode" hint="Strict uses lite/anonymous endpoints where available">
+            <div style={{ display: "flex", gap: 8 }}>
+              {(["standard", "strict"] as PrivacyMode[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setConfig((c) => ({ ...c, privacy_mode: m }))}
+                  style={{
+                    fontSize: 12,
+                    padding: "4px 12px",
+                    borderRadius: 4,
+                    backgroundColor: config.privacy_mode === m ? "var(--accent)" : "var(--surface-2)",
+                    color: config.privacy_mode === m ? "#fff" : "var(--text-2)",
+                    border: `1px solid ${config.privacy_mode === m ? "var(--accent)" : "var(--border)"}`,
+                    cursor: "pointer",
+                    textTransform: "capitalize",
+                  }}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </SettingRow>
+
+          <div style={{ marginTop: 24 }}>
+            <button
+              onClick={save}
+              disabled={saving}
+              style={{
+                fontSize: 13,
+                padding: "6px 20px",
+                borderRadius: 4,
+                backgroundColor: saved ? "#22c55e" : "var(--accent)",
+                color: "#fff",
+                cursor: saving ? "not-allowed" : "pointer",
+                opacity: saving ? 0.7 : 1,
+                transition: "background-color 300ms",
+              }}
+            >
+              {saving ? "Saving..." : saved ? "Saved!" : "Save"}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Shared components
 // ---------------------------------------------------------------------------
+
+function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      style={{
+        width: 36,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: checked ? "var(--accent)" : "var(--surface-2)",
+        border: `1px solid ${checked ? "var(--accent)" : "var(--border)"}`,
+        position: "relative",
+        cursor: "pointer",
+        transition: "background-color 200ms",
+        flexShrink: 0,
+      }}
+    >
+      <span
+        style={{
+          position: "absolute",
+          top: 2,
+          left: checked ? 17 : 2,
+          width: 14,
+          height: 14,
+          borderRadius: "50%",
+          backgroundColor: "#fff",
+          transition: "left 200ms",
+        }}
+      />
+    </button>
+  );
+}
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (

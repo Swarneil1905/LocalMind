@@ -6,7 +6,7 @@
 // - Stop button appears only while streaming
 
 import { useCallback, useEffect, useRef } from "react";
-import { BookOpen, Brain, Send, Square } from "lucide-react";
+import { BookOpen, Brain, Globe, Send, Square } from "lucide-react";
 
 interface ComposerProps {
   onSend: (text: string) => void;
@@ -17,6 +17,8 @@ interface ComposerProps {
   onMemoryToggle: () => void;
   knowledgeEnabled: boolean;
   onKnowledgeToggle: () => void;
+  webSearchEnabled: boolean;
+  onWebSearchToggle: () => void;
 }
 
 export function Composer({
@@ -28,6 +30,8 @@ export function Composer({
   onMemoryToggle,
   knowledgeEnabled,
   onKnowledgeToggle,
+  webSearchEnabled,
+  onWebSearchToggle,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -123,7 +127,7 @@ export function Composer({
             gap: 6,
           }}
         >
-          {/* Left side: memory + knowledge toggles */}
+          {/* Left side: memory + knowledge + web search toggles */}
           <div style={{ display: "flex", gap: 6 }}>
             <button
               onClick={onMemoryToggle}
@@ -166,50 +170,71 @@ export function Composer({
               <BookOpen size={12} strokeWidth={1.5} />
               Knowledge
             </button>
+
+            <button
+              onClick={onWebSearchToggle}
+              title={webSearchEnabled ? "Web search on - click to disable" : "Web search off - click to enable"}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                height: 24,
+                padding: "0 8px",
+                borderRadius: 4,
+                backgroundColor: webSearchEnabled ? "var(--accent-dim)" : "transparent",
+                border: `1px solid ${webSearchEnabled ? "var(--accent)" : "var(--border)"}`,
+                color: webSearchEnabled ? "var(--accent)" : "var(--text-3)",
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              <Globe size={12} strokeWidth={1.5} />
+              Search
+            </button>
           </div>
 
           {/* Send / Stop - right side */}
           <div style={{ display: "flex", gap: 6 }}>
-          {isStreaming ? (
-            // Stop button - square icon, shown only while streaming
-            <button
-              onClick={onStop}
-              title="Stop generation"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 28,
-                height: 28,
-                borderRadius: 4,
-                backgroundColor: "var(--surface-2)",
-                color: "var(--text-2)",
-                cursor: "pointer",
-              }}
-            >
-              <Square size={14} strokeWidth={1.5} />
-            </button>
-          ) : (
-            // Send button
-            <button
-              onClick={handleSendClick}
-              disabled={disabled}
-              title="Send message (Enter)"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 28,
-                height: 28,
-                borderRadius: 4,
-                backgroundColor: disabled ? "var(--surface-2)" : "var(--accent)",
-                color: disabled ? "var(--text-3)" : "#fff",
-                cursor: disabled ? "not-allowed" : "pointer",
-              }}
-            >
-              <Send size={14} strokeWidth={1.5} />
-            </button>
-          )}
+            {isStreaming ? (
+              // Stop button - square icon, shown only while streaming
+              <button
+                onClick={onStop}
+                title="Stop generation"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 28,
+                  height: 28,
+                  borderRadius: 4,
+                  backgroundColor: "var(--surface-2)",
+                  color: "var(--text-2)",
+                  cursor: "pointer",
+                }}
+              >
+                <Square size={14} strokeWidth={1.5} />
+              </button>
+            ) : (
+              // Send button
+              <button
+                onClick={handleSendClick}
+                disabled={disabled}
+                title="Send message (Enter)"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 28,
+                  height: 28,
+                  borderRadius: 4,
+                  backgroundColor: disabled ? "var(--surface-2)" : "var(--accent)",
+                  color: disabled ? "var(--text-3)" : "#fff",
+                  cursor: disabled ? "not-allowed" : "pointer",
+                }}
+              >
+                <Send size={14} strokeWidth={1.5} />
+              </button>
+            )}
           </div>
         </div>
       </div>

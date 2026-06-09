@@ -5,9 +5,10 @@
 //   2. Rust emits "chat-token" events; we parse <think>...</think> tags from the stream.
 //   3. Content inside <think> populates message.thinking; content after populates message.content.
 //   4. Rust emits "chat-done" when streaming ends (or errors).
-//   5. After a successful reply, onTurnComplete is called so the caller can persist the turn.
-//   6. If memoryEnabled, extract_memories runs in the background.
-//   7. stopStreaming() resets streaming state; in-flight tokens are ignored.
+//   5. Rust emits "chat-sources" before tokens when web search is enabled.
+//   6. After a successful reply, onTurnComplete is called so the caller can persist the turn.
+//   7. If memoryEnabled, extract_memories runs in the background.
+//   8. stopStreaming() resets streaming state; in-flight tokens are ignored.
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -22,11 +23,22 @@ interface ChatDonePayload {
   error: string | null;
 }
 
+interface ChatSourcesPayload {
+  sources: WebSource[];
+}
+
+export interface WebSource {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
 interface UseChatOptions {
   modelMode: ModelMode;
   speedModel: string;
   memoryEnabled: boolean;
   knowledgeEnabled: boolean;
+  webSearchEnabled: boolean;
   embedModel: string;
   /** Called after each successful assistant reply, for conversation persistence. */
   onTurnComplete?: (
@@ -95,11 +107,13 @@ export function useChat({
   speedModel,
   memoryEnabled,
   knowledgeEnabled,
+  webSearchEnabled,
   embedModel,
   onTurnComplete,
 }: UseChatOptions) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [webSources, setWebSources] = useState<WebSource[]>([]);
 
   const streamingIdRef = useRef<string | null>(null);
   // Raw accumulated text per streaming message (includes <think> tags)
@@ -110,11 +124,13 @@ export function useChat({
   const memoryEnabledRef = useRef(memoryEnabled);
   const speedModelRef = useRef(speedModel);
   const knowledgeEnabledRef = useRef(knowledgeEnabled);
+  const webSearchEnabledRef = useRef(webSearchEnabled);
   const embedModelRef = useRef(embedModel);
   const onTurnCompleteRef = useRef(onTurnComplete);
   memoryEnabledRef.current = memoryEnabled;
   speedModelRef.current = speedModel;
   knowledgeEnabledRef.current = knowledgeEnabled;
+  webSearchEnabledRef.current = webSearchEnabled;
   embedModelRef.current = embedModel;
   onTurnCompleteRef.current = onTurnComplete;
 
@@ -122,6 +138,7 @@ export function useChat({
     let cancelled = false;
     let unlistenToken: (() => void) | undefined;
     let unlistenDone: (() => void) | undefined;
+    let unlistenSources: (() => void) | undefined;
 
     listen<ChatTokenPayload>("chat-token", (event) => {
       const id = streamingIdRef.current;
@@ -200,10 +217,18 @@ export function useChat({
       else unlistenDone = fn;
     });
 
+    listen<ChatSourcesPayload>("chat-sources", (event) => {
+      setWebSources(event.payload.sources);
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlistenSources = fn;
+    });
+
     return () => {
       cancelled = true;
       unlistenToken?.();
       unlistenDone?.();
+      unlistenSources?.();
     };
   }, []);
 
@@ -236,6 +261,8 @@ export function useChat({
       streamingIdRef.current = assistantMsg.id;
       rawBufferRef.current = "";
       lastUserMessageRef.current = trimmed;
+      // Clear sources from previous turn
+      setWebSources([]);
 
       try {
         await invoke("chat_stream", {
@@ -245,6 +272,7 @@ export function useChat({
           memoryEnabled,
           knowledgeEnabled: knowledgeEnabledRef.current,
           embedModel: embedModelRef.current,
+          webSearchEnabled: webSearchEnabledRef.current,
         });
       } catch (e) {
         const id = streamingIdRef.current;
@@ -262,7 +290,7 @@ export function useChat({
         }
       }
     },
-    [isStreaming, messages, modelMode, memoryEnabled, knowledgeEnabled, embedModel]
+    [isStreaming, messages, modelMode, memoryEnabled, knowledgeEnabled, webSearchEnabled, embedModel]
   );
 
   // Load a set of persisted messages (e.g. when switching conversations).
@@ -273,6 +301,7 @@ export function useChat({
   // Clear all messages (e.g. when starting a new conversation).
   const clearMessages = useCallback(() => {
     setMessages([]);
+    setWebSources([]);
   }, []);
 
   const stopStreaming = useCallback(() => {
@@ -281,5 +310,5 @@ export function useChat({
     setIsStreaming(false);
   }, []);
 
-  return { messages, isStreaming, sendMessage, stopStreaming, loadMessages, clearMessages };
+  return { messages, isStreaming, webSources, sendMessage, stopStreaming, loadMessages, clearMessages };
 }
