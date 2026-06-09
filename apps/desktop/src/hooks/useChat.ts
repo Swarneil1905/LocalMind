@@ -24,20 +24,26 @@ interface UseChatOptions {
   modelMode: ModelMode;
   speedModel: string;
   memoryEnabled: boolean;
+  knowledgeEnabled: boolean;
+  embedModel: string;
 }
 
-export function useChat({ modelMode, speedModel, memoryEnabled }: UseChatOptions) {
+export function useChat({ modelMode, speedModel, memoryEnabled, knowledgeEnabled, embedModel }: UseChatOptions) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
 
   const streamingIdRef = useRef<string | null>(null);
   // Track the last user message so we can pass it to extraction after the reply
   const lastUserMessageRef = useRef<string>("");
-  // Keep memoryEnabled and speedModel in refs so the done-handler closure sees current values
+  // Keep these in refs so event-handler closures always see current values
   const memoryEnabledRef = useRef(memoryEnabled);
   const speedModelRef = useRef(speedModel);
+  const knowledgeEnabledRef = useRef(knowledgeEnabled);
+  const embedModelRef = useRef(embedModel);
   memoryEnabledRef.current = memoryEnabled;
   speedModelRef.current = speedModel;
+  knowledgeEnabledRef.current = knowledgeEnabled;
+  embedModelRef.current = embedModel;
 
   useEffect(() => {
     let cancelled = false;
@@ -135,6 +141,8 @@ export function useChat({ modelMode, speedModel, memoryEnabled }: UseChatOptions
           model: MODEL_MAP[modelMode],
           history,
           memoryEnabled,
+          knowledgeEnabled: knowledgeEnabledRef.current,
+          embedModel: embedModelRef.current,
         });
       } catch (e) {
         const id = streamingIdRef.current;
@@ -151,7 +159,7 @@ export function useChat({ modelMode, speedModel, memoryEnabled }: UseChatOptions
         }
       }
     },
-    [isStreaming, messages, modelMode, memoryEnabled]
+    [isStreaming, messages, modelMode, memoryEnabled, knowledgeEnabled, embedModel]
   );
 
   const stopStreaming = useCallback(() => {
