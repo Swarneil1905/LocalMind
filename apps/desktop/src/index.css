@@ -72,8 +72,6 @@ body,
 }
 
 body {
-  /* Inter is bundled in production. Falls back to system-ui in dev.
-     Do not load from Google Fonts or any CDN. */
   font-family: "Inter", system-ui, -apple-system, sans-serif;
   font-size: 13px;
   line-height: 1.5;
@@ -83,7 +81,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Monospace - used for code blocks, file paths, and the audit log */
 code,
 pre,
 kbd,
@@ -91,13 +88,12 @@ kbd,
   font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
 }
 
-/* Button reset - components style their own buttons */
+/* Button reset */
 button {
   background: none;
   border: none;
   font-family: inherit;
   cursor: pointer;
-  /* Smooth transition for hover/active state changes applied via inline styles */
   transition:
     background-color 150ms ease,
     color 150ms ease,
@@ -105,14 +101,14 @@ button {
     border-color 150ms ease;
 }
 
-/* Keyboard focus ring - visible only for keyboard navigation, not mouse clicks */
+/* Keyboard focus ring */
 button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 3px;
 }
 
-/* Sidebar nav item hover - background shift for inactive items */
+/* Sidebar nav item hover */
 nav button:not([aria-current="page"]):hover {
   background-color: var(--surface-2) !important;
   color: var(--text) !important;
@@ -123,36 +119,16 @@ button[title]:not(:disabled):hover {
   opacity: 0.75;
 }
 
-/* Streaming cursor animation */
+/* -----------------------------------------------------------------------
+   Animations
+   ----------------------------------------------------------------------- */
+
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0; }
 }
 
-/* Markdown prose resets inside assistant messages */
-.assistant-message p {
-  margin: 0 0 8px;
-}
-.assistant-message p:last-child {
-  margin-bottom: 0;
-}
-.assistant-message ul,
-.assistant-message ol {
-  margin: 4px 0 8px;
-  padding-left: 20px;
-}
-.assistant-message li {
-  margin-bottom: 2px;
-}
-.assistant-message h1,
-.assistant-message h2,
-.assistant-message h3 {
-  margin: 12px 0 6px;
-  color: var(--text);
-}
-.assistant-message blockquote {
-  border-left: 3px solid var(--border);
-  margin: 8px 0;
-  padding: 4px 12px;
-  color: var(--text-2);
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }

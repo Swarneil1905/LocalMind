@@ -2,10 +2,11 @@
 //
 // Flow:
 //   1. sendMessage() adds user + empty assistant messages, calls chat_stream command.
-//   2. Rust emits "chat-token" events; we append each token to the assistant message.
-//   3. Rust emits "chat-done" when streaming ends (or errors).
-//   4. After a successful reply, if memoryEnabled, calls extract_memories in the background.
-//   5. stopStreaming() resets streaming state; in-flight tokens are ignored.
+//   2. Rust emits "chat-token" events; we parse <think>...</think> tags from the stream.
+//   3. Content inside <think> populates message.thinking; content after populates message.content.
+//   4. Rust emits "chat-done" when streaming ends (or errors).
+//   5. After a successful reply, if memoryEnabled, calls extract_memories in the background.
+//   6. stopStreaming() resets streaming state; in-flight tokens are ignored.
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -28,11 +29,67 @@ interface UseChatOptions {
   embedModel: string;
 }
 
+// ---------------------------------------------------------------------------
+// <think> tag parser
+//
+// DeepSeek R1 wraps its chain-of-thought in <think>...</think> before the
+// final answer. Because tokens arrive one chunk at a time, the tag boundary
+// may be split across multiple chunks. We buffer the full raw text and scan
+// it on every new token.
+//
+// Returns:
+//   thinking   - text that was inside <think> blocks (may be partial if still open)
+//   content    - text outside <think> blocks (the final answer)
+//   isThinking - true while the model is still inside an open <think> tag
+// ---------------------------------------------------------------------------
+
+function parseThinkTags(raw: string): {
+  thinking: string;
+  content: string;
+  isThinking: boolean;
+} {
+  let thinking = "";
+  let content = "";
+  let inThink = false;
+  let i = 0;
+
+  while (i < raw.length) {
+    if (!inThink) {
+      const start = raw.indexOf("<think>", i);
+      if (start === -1) {
+        content += raw.slice(i);
+        break;
+      }
+      content += raw.slice(i, start);
+      i = start + "<think>".length;
+      inThink = true;
+    } else {
+      const end = raw.indexOf("</think>", i);
+      if (end === -1) {
+        // Still inside the think block - partial content
+        thinking += raw.slice(i);
+        break;
+      }
+      thinking += raw.slice(i, end);
+      i = end + "</think>".length;
+      inThink = false;
+    }
+  }
+
+  return { thinking, content, isThinking: inThink };
+}
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
+
 export function useChat({ modelMode, speedModel, memoryEnabled, knowledgeEnabled, embedModel }: UseChatOptions) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
 
   const streamingIdRef = useRef<string | null>(null);
+  // Raw accumulated text per streaming message (includes <think> tags)
+  const rawBufferRef = useRef<string>("");
   // Track the last user message so we can pass it to extraction after the reply
   const lastUserMessageRef = useRef<string>("");
   // Keep these in refs so event-handler closures always see current values
@@ -53,9 +110,15 @@ export function useChat({ modelMode, speedModel, memoryEnabled, knowledgeEnabled
     listen<ChatTokenPayload>("chat-token", (event) => {
       const id = streamingIdRef.current;
       if (!id) return;
+
+      rawBufferRef.current += event.payload.content;
+      const { thinking, content, isThinking } = parseThinkTags(rawBufferRef.current);
+
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === id ? { ...m, content: m.content + event.payload.content } : m
+          m.id === id
+            ? { ...m, content, thinking, isThinking }
+            : m
         )
       );
     }).then((fn) => {
@@ -66,22 +129,30 @@ export function useChat({ modelMode, speedModel, memoryEnabled, knowledgeEnabled
     listen<ChatDonePayload>("chat-done", (event) => {
       const assistantId = streamingIdRef.current;
       streamingIdRef.current = null;
+      rawBufferRef.current = "";
       setIsStreaming(false);
 
       if (event.payload.error && assistantId) {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
-              ? { ...m, content: event.payload.error!, error: true }
+              ? { ...m, content: event.payload.error!, isThinking: false, error: true }
               : m
           )
         );
         return;
       }
 
+      // Clear isThinking flag on completion
+      if (assistantId) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId ? { ...m, isThinking: false } : m
+          )
+        );
+      }
+
       // Trigger background memory extraction after a successful reply.
-      // We read the final assistant content via a no-op state update so we
-      // have access to the latest messages snapshot.
       if (memoryEnabledRef.current && assistantId) {
         const userMsg = lastUserMessageRef.current;
         setMessages((prev) => {
@@ -123,6 +194,8 @@ export function useChat({ modelMode, speedModel, memoryEnabled, knowledgeEnabled
         id: crypto.randomUUID(),
         role: "assistant",
         content: "",
+        thinking: "",
+        isThinking: false,
       };
 
       const history = messages.map((m) => ({
@@ -133,6 +206,7 @@ export function useChat({ modelMode, speedModel, memoryEnabled, knowledgeEnabled
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
       setIsStreaming(true);
       streamingIdRef.current = assistantMsg.id;
+      rawBufferRef.current = "";
       lastUserMessageRef.current = trimmed;
 
       try {
@@ -147,12 +221,13 @@ export function useChat({ modelMode, speedModel, memoryEnabled, knowledgeEnabled
       } catch (e) {
         const id = streamingIdRef.current;
         streamingIdRef.current = null;
+        rawBufferRef.current = "";
         setIsStreaming(false);
         if (id) {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === id
-                ? { ...m, content: String(e), error: true }
+                ? { ...m, content: String(e), isThinking: false, error: true }
                 : m
             )
           );
@@ -164,6 +239,7 @@ export function useChat({ modelMode, speedModel, memoryEnabled, knowledgeEnabled
 
   const stopStreaming = useCallback(() => {
     streamingIdRef.current = null;
+    rawBufferRef.current = "";
     setIsStreaming(false);
   }, []);
 

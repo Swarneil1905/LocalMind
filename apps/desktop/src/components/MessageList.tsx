@@ -2,11 +2,13 @@
 //
 // User messages:   right-aligned, surface-2 background, 14px
 // Assistant msgs:  left-aligned, no background, Markdown rendered
+// Reasoning block: collapsible <think> content shown above the answer
 // Streaming cursor is rendered inline inside the last assistant message.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { BrainCircuit, ChevronDown, ChevronRight } from "lucide-react";
 import { Message } from "../types";
 
 interface MessageListProps {
@@ -89,6 +91,104 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Reasoning block - collapsible, shown above the answer when thinking exists
+// ---------------------------------------------------------------------------
+
+interface ReasoningBlockProps {
+  thinking: string;
+  isThinking: boolean;
+}
+
+function ReasoningBlock({ thinking, isThinking }: ReasoningBlockProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Auto-expand while the model is actively thinking so the user can watch
+  // it reason. Collapses automatically when reasoning finishes.
+  const wasThinkingRef = useRef(false);
+  useEffect(() => {
+    if (isThinking && !wasThinkingRef.current) {
+      setExpanded(true);
+      wasThinkingRef.current = true;
+    }
+    if (!isThinking && wasThinkingRef.current) {
+      setExpanded(false);
+      wasThinkingRef.current = false;
+    }
+  }, [isThinking]);
+
+  if (!thinking && !isThinking) return null;
+
+  return (
+    <div
+      style={{
+        marginBottom: 10,
+        borderRadius: 6,
+        border: "1px solid var(--border)",
+        overflow: "hidden",
+        fontSize: 12,
+      }}
+    >
+      {/* Header row */}
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          width: "100%",
+          padding: "6px 10px",
+          background: "var(--surface-2)",
+          color: "var(--text-3)",
+          fontSize: 11,
+          fontWeight: 500,
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <BrainCircuit
+          size={13}
+          strokeWidth={1.5}
+          style={{
+            flexShrink: 0,
+            color: isThinking ? "var(--accent)" : "var(--text-3)",
+            animation: isThinking ? "spin 2s linear infinite" : "none",
+          }}
+        />
+        <span style={{ flex: 1 }}>
+          {isThinking ? "Reasoning..." : "Reasoning"}
+        </span>
+        {expanded ? (
+          <ChevronDown size={12} strokeWidth={1.5} />
+        ) : (
+          <ChevronRight size={12} strokeWidth={1.5} />
+        )}
+      </button>
+
+      {/* Thinking content */}
+      {expanded && thinking && (
+        <div
+          style={{
+            padding: "10px 12px",
+            background: "var(--bg)",
+            color: "var(--text-3)",
+            fontFamily: "monospace",
+            fontSize: 12,
+            lineHeight: 1.6,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            maxHeight: 320,
+            overflowY: "auto",
+          }}
+        >
+          {thinking}
+          {isThinking && <StreamingCursor />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Individual message
 // ---------------------------------------------------------------------------
 
@@ -121,6 +221,9 @@ function MessageBubble({ message, streaming }: MessageBubbleProps) {
     );
   }
 
+  const hasThinking = !!(message.thinking || message.isThinking);
+  const stillThinking = !!message.isThinking;
+
   // Assistant message
   return (
     <div style={{ display: "flex", justifyContent: "flex-start" }}>
@@ -130,9 +233,19 @@ function MessageBubble({ message, streaming }: MessageBubbleProps) {
           color: message.error ? "var(--text-3)" : "var(--text)",
           maxWidth: "100%",
           lineHeight: 1.6,
+          width: "100%",
         }}
         className="assistant-message"
       >
+        {/* Reasoning block - shown above the answer for R1 models */}
+        {hasThinking && (
+          <ReasoningBlock
+            thinking={message.thinking ?? ""}
+            isThinking={stillThinking}
+          />
+        )}
+
+        {/* Answer */}
         {message.content ? (
           <>
             <ReactMarkdown
@@ -218,11 +331,11 @@ function MessageBubble({ message, streaming }: MessageBubbleProps) {
             >
               {message.content}
             </ReactMarkdown>
-            {streaming && <StreamingCursor />}
+            {streaming && !stillThinking && <StreamingCursor />}
           </>
         ) : (
           <span style={{ color: "var(--text-3)" }}>
-            {streaming ? <StreamingCursor /> : "..."}
+            {streaming && !stillThinking ? <StreamingCursor /> : null}
           </span>
         )}
       </div>
