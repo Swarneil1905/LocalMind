@@ -14,7 +14,9 @@ _DB_NAME = "search_config.db"
 def _db_path() -> Path:
     import os
     base = os.environ.get("LOCALMIND_DATA_DIR", str(Path.home() / ".localmind"))
-    return Path(base) / _DB_NAME
+    p = Path(base)
+    p.mkdir(parents=True, exist_ok=True)
+    return p / _DB_NAME
 
 
 def _conn() -> sqlite3.Connection:
