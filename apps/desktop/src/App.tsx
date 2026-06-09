@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Composer } from "./components/Composer";
+import { KnowledgePage } from "./components/KnowledgePage";
 import { MessageList } from "./components/MessageList";
 import { MemoryPage } from "./components/MemoryPage";
 import { PlaceholderPage } from "./components/PlaceholderPage";
@@ -70,6 +71,9 @@ const RIGHT_PANEL_SECTIONS = [
 const SIDEBAR_EXPANDED = 240;
 const SIDEBAR_COLLAPSED = 48;
 
+// Embedding model used for knowledge indexing and search
+const EMBED_MODEL = "nomic-embed-text";
+
 // ---------------------------------------------------------------------------
 // App root
 // ---------------------------------------------------------------------------
@@ -81,6 +85,7 @@ export default function App() {
   const [speedModel, setSpeedModel] = useState(MODEL_MAP.speed);
   const [balancedModel, setBalancedModel] = useState(MODEL_MAP.balanced);
   const [memoryEnabled, setMemoryEnabled] = useState(true);
+  const [knowledgeEnabled, setKnowledgeEnabled] = useState(false);
 
   const ollamaStatus = useOllama();
   const { memories, deleteMemory } = useMemory();
@@ -88,6 +93,8 @@ export default function App() {
     modelMode,
     speedModel,
     memoryEnabled,
+    knowledgeEnabled,
+    embedModel: EMBED_MODEL,
   });
 
   return (
@@ -115,6 +122,7 @@ export default function App() {
         speedModel={speedModel}
         balancedModel={balancedModel}
         memoryEnabled={memoryEnabled}
+        knowledgeEnabled={knowledgeEnabled}
         memories={memories}
         onSend={sendMessage}
         onStop={stopStreaming}
@@ -122,6 +130,7 @@ export default function App() {
         onSpeedModelChange={setSpeedModel}
         onBalancedModelChange={setBalancedModel}
         onMemoryToggle={() => setMemoryEnabled((v) => !v)}
+        onKnowledgeToggle={() => setKnowledgeEnabled((v) => !v)}
         onDeleteMemory={deleteMemory}
       />
       <RightPanel memories={memories} onDeleteMemory={deleteMemory} />
@@ -309,6 +318,7 @@ interface MainAreaProps {
   speedModel: string;
   balancedModel: string;
   memoryEnabled: boolean;
+  knowledgeEnabled: boolean;
   memories: Memory[];
   onSend: (text: string) => void;
   onStop: () => void;
@@ -316,6 +326,7 @@ interface MainAreaProps {
   onSpeedModelChange: (model: string) => void;
   onBalancedModelChange: (model: string) => void;
   onMemoryToggle: () => void;
+  onKnowledgeToggle: () => void;
   onDeleteMemory: (id: string) => void;
 }
 
@@ -328,6 +339,7 @@ function MainArea({
   speedModel,
   balancedModel,
   memoryEnabled,
+  knowledgeEnabled,
   memories,
   onSend,
   onStop,
@@ -335,6 +347,7 @@ function MainArea({
   onSpeedModelChange,
   onBalancedModelChange,
   onMemoryToggle,
+  onKnowledgeToggle,
   onDeleteMemory,
 }: MainAreaProps) {
   const ollamaRunning = ollamaStatus?.running ?? null;
@@ -404,15 +417,12 @@ function MainArea({
             disabled={ollamaRunning === false}
             memoryEnabled={memoryEnabled}
             onMemoryToggle={onMemoryToggle}
+            knowledgeEnabled={knowledgeEnabled}
+            onKnowledgeToggle={onKnowledgeToggle}
           />
         </>
       ) : activePage === "knowledge" ? (
-        <PlaceholderPage
-          Icon={NAV_ITEMS.find((n) => n.id === "knowledge")!.Icon}
-          title="Knowledge"
-          description="Index local files and documents for semantic search and document Q&A."
-          phase="Coming in Phase 3"
-        />
+        <KnowledgePage embedModel={EMBED_MODEL} />
       ) : activePage === "projects" ? (
         <PlaceholderPage
           Icon={NAV_ITEMS.find((n) => n.id === "projects")!.Icon}
