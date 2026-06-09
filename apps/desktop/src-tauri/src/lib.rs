@@ -7,6 +7,7 @@ use localmind_core::{
 };
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
+use tauri_plugin_dialog::DialogExt;
 
 // ---------------------------------------------------------------------------
 // Managed state
@@ -34,6 +35,28 @@ pub struct MemoryEntry {
     pub created_at: String,
 }
 
+/// A knowledge source (indexed folder or file).
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct KnowledgeSource {
+    pub id: String,
+    pub path: String,
+    pub name: String,
+    pub file_count: i64,
+    pub chunk_count: i64,
+    pub status: String,
+    pub created_at: String,
+}
+
+/// A single retrieved chunk from the knowledge base.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct KnowledgeChunk {
+    pub id: String,
+    pub source_id: String,
+    pub file_path: String,
+    pub chunk_index: i64,
+    pub content: String,
+}
+
 /// Payload emitted for every token chunk while streaming.
 #[derive(Clone, Serialize)]
 struct ChatTokenPayload {
@@ -50,6 +73,12 @@ struct ChatDonePayload {
 #[derive(Clone, Serialize)]
 struct MemoriesUpdatedPayload {
     memories: Vec<MemoryEntry>,
+}
+
+/// Payload emitted when knowledge sources change.
+#[derive(Clone, Serialize)]
+struct KnowledgeUpdatedPayload {
+    sources: Vec<KnowledgeSource>,
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +112,9 @@ async fn get_ollama_status(
 /// If `memory_enabled` is true, fetches all stored memories first and
 /// prepends them to the system prompt.
 ///
+/// If `knowledge_enabled` is true and indexed sources exist, runs a
+/// semantic search on the user message and injects relevant chunks.
+///
 /// Emits two event types to the frontend window:
 ///   "chat-token"  - {content: "<chunk>"}   for each token
 ///   "chat-done"   - {error: null | "msg"}  on finish or error
@@ -92,15 +124,17 @@ async fn chat_stream(
     model: String,
     history: Vec<HistoryEntry>,
     memory_enabled: bool,
+    knowledge_enabled: bool,
+    embed_model: String,
     app_handle: tauri::AppHandle,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<(), String> {
     let (url, token) = sidecar_url(&sidecar_state, "/chat/stream")?;
+    let client = reqwest::Client::new();
 
     // Build system prompt, injecting memories when enabled
-    let system_prompt = if memory_enabled {
+    let mut system_prompt = if memory_enabled {
         let (list_url, list_token) = sidecar_url(&sidecar_state, "/memory/list")?;
-        let client = reqwest::Client::new();
         let memories: Vec<MemoryEntry> = match client
             .get(&list_url)
             .header("Authorization", format!("Bearer {list_token}"))
@@ -116,11 +150,44 @@ async fn chat_stream(
             }
             _ => vec![],
         };
-
         build_system_prompt(&memories)
     } else {
         default_system_prompt()
     };
+
+    // Inject knowledge context when enabled
+    if knowledge_enabled {
+        let (search_url, search_token) = sidecar_url(&sidecar_state, "/knowledge/search")?;
+        let search_body = serde_json::json!({
+            "query": message,
+            "limit": 5,
+            "embed_model": embed_model,
+        });
+        if let Ok(resp) = client
+            .post(&search_url)
+            .header("Authorization", format!("Bearer {search_token}"))
+            .json(&search_body)
+            .send()
+            .await
+        {
+            if resp.status().is_success() {
+                if let Ok(data) = resp.json::<serde_json::Value>().await {
+                    let chunks: Vec<KnowledgeChunk> =
+                        serde_json::from_value(data["results"].clone()).unwrap_or_default();
+                    if !chunks.is_empty() {
+                        let context = chunks
+                            .iter()
+                            .map(|c| format!("[{}]\n{}", c.file_path, c.content))
+                            .collect::<Vec<_>>()
+                            .join("\n\n---\n\n");
+                        system_prompt = format!(
+                            "{system_prompt}\n\nRelevant context from the user's knowledge base:\n\n{context}"
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     let body = serde_json::json!({
         "message": message,
@@ -129,7 +196,6 @@ async fn chat_stream(
         "system_prompt": system_prompt,
     });
 
-    let client = reqwest::Client::new();
     let resp = client
         .post(&url)
         .header("Authorization", format!("Bearer {token}"))
@@ -309,6 +375,197 @@ async fn delete_memory(
 }
 
 // ---------------------------------------------------------------------------
+// Knowledge commands
+// ---------------------------------------------------------------------------
+
+/// Open a native folder picker dialog and return the chosen path.
+/// Returns None if the user cancels.
+#[tauri::command]
+async fn pick_folder(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
+    // tauri-plugin-dialog uses a one-shot channel pattern for async results
+    let (tx, rx) = tokio::sync::oneshot::channel::<Option<String>>();
+
+    app_handle
+        .dialog()
+        .file()
+        .pick_folder(move |path| {
+            // FilePath implements Display; use to_string() for conversion
+            let result = path.map(|p| p.to_string());
+            tx.send(result).ok();
+        });
+
+    rx.await.map_err(|e| e.to_string())
+}
+
+/// Trigger background indexing of a folder or file.
+/// Emits "knowledge-updated" when indexing completes.
+#[tauri::command]
+async fn index_knowledge(
+    path: String,
+    embed_model: String,
+    app_handle: tauri::AppHandle,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<(), String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/knowledge/index")?;
+
+    let body = serde_json::json!({
+        "path": path,
+        "embed_model": embed_model,
+    });
+
+    let client = reqwest::Client::new();
+    client
+        .post(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Poll until the source transitions from "indexing" to "ready"/"error"
+    // (background task on Python side), then emit the updated list.
+    let sidecar_clone = sidecar_state.0.lock().map_err(|e| e.to_string())?.clone();
+    let app_clone = app_handle.clone();
+
+    if let Some(sidecar) = sidecar_clone {
+        let list_url = format!("http://127.0.0.1:{}/knowledge/sources", sidecar.port);
+        let list_token = sidecar.token.clone();
+
+        tauri::async_runtime::spawn(async move {
+            let client = reqwest::Client::new();
+            let mut attempts = 0u32;
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                attempts += 1;
+                if attempts > 200 {
+                    break; // give up after 10 minutes
+                }
+
+                let Ok(resp) = client
+                    .get(&list_url)
+                    .header("Authorization", format!("Bearer {list_token}"))
+                    .send()
+                    .await
+                else {
+                    continue;
+                };
+
+                let Ok(data) = resp.json::<serde_json::Value>().await else {
+                    continue;
+                };
+
+                let sources: Vec<KnowledgeSource> =
+                    serde_json::from_value(data["sources"].clone()).unwrap_or_default();
+
+                // Emit on every poll so the UI shows live progress
+                app_clone
+                    .emit("knowledge-updated", KnowledgeUpdatedPayload { sources: sources.clone() })
+                    .ok();
+
+                // Stop polling once no source is still indexing
+                if sources.iter().all(|s| s.status != "indexing") {
+                    break;
+                }
+            }
+        });
+    }
+
+    Ok(())
+}
+
+/// Return all indexed knowledge sources.
+#[tauri::command]
+async fn list_knowledge_sources(
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<Vec<KnowledgeSource>, String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/knowledge/sources")?;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let sources: Vec<KnowledgeSource> =
+        serde_json::from_value(data["sources"].clone()).unwrap_or_default();
+
+    Ok(sources)
+}
+
+/// Delete a knowledge source and all its chunks. Emits "knowledge-updated".
+#[tauri::command]
+async fn delete_knowledge_source(
+    source_id: String,
+    app_handle: tauri::AppHandle,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<(), String> {
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/knowledge/source/{source_id}"))?;
+
+    let client = reqwest::Client::new();
+    client
+        .delete(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Fetch updated sources and emit
+    let (list_url, list_token) = sidecar_url(&sidecar_state, "/knowledge/sources")?;
+    let resp = client
+        .get(&list_url)
+        .header("Authorization", format!("Bearer {list_token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let sources: Vec<KnowledgeSource> =
+        serde_json::from_value(data["sources"].clone()).unwrap_or_default();
+
+    app_handle
+        .emit("knowledge-updated", KnowledgeUpdatedPayload { sources })
+        .ok();
+
+    Ok(())
+}
+
+/// Search the knowledge base and return the top matching chunks.
+/// Used by the KnowledgePage search bar.
+#[tauri::command]
+async fn search_knowledge(
+    query: String,
+    embed_model: String,
+    limit: Option<usize>,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<Vec<KnowledgeChunk>, String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/knowledge/search")?;
+
+    let body = serde_json::json!({
+        "query": query,
+        "limit": limit.unwrap_or(5),
+        "embed_model": embed_model,
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let chunks: Vec<KnowledgeChunk> =
+        serde_json::from_value(data["results"].clone()).unwrap_or_default();
+
+    Ok(chunks)
+}
+
+// ---------------------------------------------------------------------------
 // System prompt helpers
 // ---------------------------------------------------------------------------
 
@@ -340,6 +597,7 @@ fn build_system_prompt(memories: &[MemoryEntry]) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(SidecarState(Mutex::new(None)))
         .manage(OllamaState(Mutex::new(None)))
         .setup(|app| {
@@ -385,6 +643,11 @@ pub fn run() {
             extract_memories,
             list_memories,
             delete_memory,
+            pick_folder,
+            index_knowledge,
+            list_knowledge_sources,
+            search_knowledge,
+            delete_knowledge_source,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
