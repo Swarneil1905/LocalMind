@@ -44,6 +44,7 @@ DEFAULT_EMBED_MODEL = "nomic-embed-text"
 SUPPORTED_EXTENSIONS = {
     ".txt", ".md", ".py", ".js", ".ts", ".tsx", ".jsx",
     ".rs", ".toml", ".json", ".csv", ".html", ".css", ".yaml", ".yml",
+    ".pdf",
 }
 
 CHUNK_SIZE = 1800       # characters per chunk
@@ -129,6 +130,31 @@ async def embed_text(text: str, model: str = DEFAULT_EMBED_MODEL) -> list[float]
 
 
 # ---------------------------------------------------------------------------
+# File reading
+# ---------------------------------------------------------------------------
+
+def _read_file_text(path: Path) -> str:
+    """
+    Return the text content of a file.
+    PDFs are extracted via pypdf; all other supported formats are read as UTF-8.
+    Returns an empty string on any error.
+    """
+    try:
+        if path.suffix.lower() == ".pdf":
+            from pypdf import PdfReader  # imported lazily - not needed for non-PDF files
+            reader = PdfReader(str(path))
+            pages = []
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    pages.append(text)
+            return "\n\n".join(pages)
+        return path.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return ""
+
+
+# ---------------------------------------------------------------------------
 # Chunking
 # ---------------------------------------------------------------------------
 
@@ -186,9 +212,8 @@ async def index_path(path: str, embed_model: str = DEFAULT_EMBED_MODEL) -> dict:
 
     rows = []
     for f in files:
-        try:
-            text = f.read_text(encoding="utf-8", errors="ignore")
-        except Exception:
+        text = _read_file_text(f)
+        if not text.strip():
             continue
         chunks = _chunk_text(text)
         for i, chunk in enumerate(chunks):
@@ -239,11 +264,11 @@ async def search(query: str, limit: int = 5, embed_model: str = DEFAULT_EMBED_MO
         )
         return [
             {
-                "id":         r["id"],
-                "source_id":  r["source_id"],
-                "file_path":  r["file_path"],
+                "id":          r["id"],
+                "source_id":   r["source_id"],
+                "file_path":   r["file_path"],
                 "chunk_index": r["chunk_index"],
-                "content":    r["content"],
+                "content":     r["content"],
             }
             for r in results
         ]
