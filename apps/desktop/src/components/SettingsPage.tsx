@@ -24,15 +24,49 @@ type SettingsSection =
   | "shortcuts";
 
 const SECTIONS: { id: SettingsSection; label: string; phase1: boolean }[] = [
-  { id: "local-model",  label: "Local Model",      phase1: true  },
-  { id: "gpu",          label: "GPU",               phase1: true  },
-  { id: "web-search",   label: "Web Search",        phase1: false },
-  { id: "cloud-boost",  label: "Cloud Boost",       phase1: false },
-  { id: "memory",       label: "Memory",            phase1: false },
-  { id: "privacy",      label: "Privacy",           phase1: false },
-  { id: "updates",      label: "Updates",           phase1: false },
+  { id: "local-model",  label: "Local Model",       phase1: true  },
+  { id: "gpu",          label: "GPU",                phase1: true  },
+  { id: "web-search",   label: "Web Search",         phase1: false },
+  { id: "cloud-boost",  label: "Cloud Boost",        phase1: false },
+  { id: "memory",       label: "Memory",             phase1: false },
+  { id: "privacy",      label: "Privacy",            phase1: false },
+  { id: "updates",      label: "Updates",            phase1: false },
   { id: "shortcuts",    label: "Keyboard Shortcuts", phase1: false },
 ];
+
+// Curated open models verified to run on 6 GB VRAM.
+const RECOMMENDED_MODELS = [
+  {
+    name: "maternion/lfm2.5",
+    label: "LFM2.5-8B-A1B",
+    by: "Liquid AI",
+    slot: "speed" as const,
+    vram: "< 6 GB",
+    ctx: "128k",
+    note: "1.5B active params, MoE. Fast speed model for 6 GB GPUs.",
+    pull: "ollama pull maternion/lfm2.5",
+  },
+  {
+    name: "deepseek-r1:7b",
+    label: "DeepSeek-R1 7B",
+    by: "DeepSeek",
+    slot: "balanced" as const,
+    vram: "~5 GB",
+    ctx: "32k",
+    note: "Reasoning model with chain-of-thought. Current default.",
+    pull: "ollama pull deepseek-r1:7b",
+  },
+  {
+    name: "mellum2:12b-a2.5b-thinking-q4_k_m",
+    label: "Mellum2-12B-A2.5B-Thinking",
+    by: "JetBrains",
+    slot: "balanced" as const,
+    vram: "~4 GB",
+    ctx: "32k",
+    note: "2.5B active params, coding-focused MoE. Chain-of-thought. Apache 2.0.",
+    pull: "ollama pull mellum2:12b-a2.5b-thinking-q4_k_m",
+  },
+] as const;
 
 export function SettingsPage({
   ollamaStatus,
@@ -98,13 +132,7 @@ export function SettingsPage({
       </nav>
 
       {/* Section content */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "24px 32px",
-        }}
-      >
+      <div style={{ flex: 1, overflowY: "auto", padding: "24px 32px" }}>
         {activeSection === "local-model" && (
           <LocalModelSection
             ollamaStatus={ollamaStatus}
@@ -156,6 +184,14 @@ function LocalModelSection({
   const running = ollamaStatus?.running ?? false;
   const models = ollamaStatus?.models ?? [];
   const modelNames = models.map((m) => m.name);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  function copyPull(cmd: string) {
+    navigator.clipboard.writeText(cmd).then(() => {
+      setCopied(cmd);
+      setTimeout(() => setCopied(null), 1800);
+    });
+  }
 
   return (
     <div style={{ maxWidth: 560 }}>
@@ -235,6 +271,127 @@ function LocalModelSection({
           style={{ width: 200, accentColor: "var(--accent)" }}
         />
       </SettingRow>
+
+      <Divider />
+
+      {/* Recommended models */}
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>
+          Recommended models
+        </div>
+        <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 12 }}>
+          Verified to run on 6 GB VRAM. Copy the pull command, run it in a terminal, then click Use.
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {RECOMMENDED_MODELS.map((m) => {
+            const isPulled = modelNames.some((n) => n.startsWith(m.name.split(":")[0]));
+            return (
+              <div
+                key={m.name}
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  padding: "12px 14px",
+                  backgroundColor: "var(--surface)",
+                }}
+              >
+                {/* Header row */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+                    {m.label}
+                  </span>
+                  <span style={{ fontSize: 11, color: "var(--text-3)" }}>by {m.by}</span>
+                  <span
+                    style={{
+                      marginLeft: "auto",
+                      fontSize: 10,
+                      fontWeight: 600,
+                      padding: "2px 7px",
+                      borderRadius: 3,
+                      backgroundColor: m.slot === "speed" ? "var(--surface-2)" : "var(--accent)",
+                      color: m.slot === "speed" ? "var(--text-2)" : "#fff",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                    }}
+                  >
+                    {m.slot}
+                  </span>
+                </div>
+
+                {/* Specs row */}
+                <div style={{ display: "flex", gap: 16, marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, color: "var(--text-3)" }}>VRAM: {m.vram}</span>
+                  <span style={{ fontSize: 11, color: "var(--text-3)" }}>Context: {m.ctx}</span>
+                  {isPulled && (
+                    <span style={{ fontSize: 11, color: "#22c55e", fontWeight: 600 }}>
+                      Pulled
+                    </span>
+                  )}
+                </div>
+
+                <p style={{ fontSize: 12, color: "var(--text-2)", marginBottom: 10, lineHeight: 1.5 }}>
+                  {m.note}
+                </p>
+
+                {/* Actions */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {/* Pull command */}
+                  <code
+                    style={{
+                      flex: 1,
+                      fontSize: 11,
+                      fontFamily: "monospace",
+                      backgroundColor: "var(--surface-2)",
+                      padding: "4px 8px",
+                      borderRadius: 3,
+                      color: "var(--text-2)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {m.pull}
+                  </code>
+                  <button
+                    onClick={() => copyPull(m.pull)}
+                    style={{
+                      fontSize: 11,
+                      padding: "4px 10px",
+                      borderRadius: 3,
+                      backgroundColor: "var(--surface-2)",
+                      color: copied === m.pull ? "#22c55e" : "var(--text-2)",
+                      border: "1px solid var(--border)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {copied === m.pull ? "Copied!" : "Copy"}
+                  </button>
+                  <button
+                    onClick={() =>
+                      m.slot === "speed"
+                        ? onSpeedModelChange(m.name)
+                        : onBalancedModelChange(m.name)
+                    }
+                    disabled={!running}
+                    style={{
+                      fontSize: 11,
+                      padding: "4px 10px",
+                      borderRadius: 3,
+                      backgroundColor: running ? "var(--accent)" : "var(--surface-2)",
+                      color: running ? "#fff" : "var(--text-3)",
+                      flexShrink: 0,
+                      opacity: running ? 1 : 0.6,
+                    }}
+                  >
+                    Use
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

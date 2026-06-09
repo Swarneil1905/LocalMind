@@ -15,10 +15,11 @@ export interface Message {
 }
 
 // Model names sent to the Python sidecar.
-// balanced defaults to deepseek-r1:7b - a reasoning model that thinks before answering.
-// Speed uses a small fast model. Boost placeholder until cloud API key support lands.
+// Speed: fast sub-2B active-param model for routing, memory extraction, project summaries.
+// Balanced: main chat model with reasoning. deepseek-r1:7b as fallback default.
+// Boost: placeholder until cloud API key support lands (Phase 2).
 export const MODEL_MAP: Record<ModelMode, string> = {
-  speed: "qwen2.5:1.5b",
+  speed: "maternion/lfm2.5",
   balanced: "deepseek-r1:7b",
   boost: "deepseek-r1:7b",
 };
