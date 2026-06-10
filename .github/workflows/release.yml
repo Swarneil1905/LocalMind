@@ -1,0 +1,161 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # needed to create GitHub Release and upload assets
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Build matrix: one job per platform / arch
+  # ─────────────────────────────────────────────
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ── Windows x64 ──
+          - platform: windows-latest
+            args: --target x86_64-pc-windows-msvc
+            rust-target: x86_64-pc-windows-msvc
+            label: windows-x64
+
+          # ── macOS Intel ──
+          - platform: macos-latest
+            args: --target x86_64-apple-darwin
+            rust-target: x86_64-apple-darwin
+            label: macos-x64
+
+          # ── macOS Apple Silicon ──
+          - platform: macos-latest
+            args: --target aarch64-apple-darwin
+            rust-target: aarch64-apple-darwin
+            label: macos-arm64
+
+          # ── Linux x64 ──
+          - platform: ubuntu-22.04
+            args: --target x86_64-unknown-linux-gnu
+            rust-target: x86_64-unknown-linux-gnu
+            label: linux-x64
+
+    name: Build (${{ matrix.label }})
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── System deps (Linux only) ──
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      # ── Rust toolchain ──
+      - name: Install Rust stable + target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop/src-tauri/target/
+          key: ${{ runner.os }}-${{ matrix.rust-target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.rust-target }}-cargo-
+
+      # ── Node / pnpm ──
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+
+      # ── Python sidecar ──
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install sidecar dependencies
+        working-directory: services/ai
+        run: pip install -r requirements.txt --break-system-packages || pip install -r requirements.txt
+
+      # ── Build Tauri app ──
+      - name: Build Tauri application
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          args: ${{ matrix.args }}
+          tagName: ${{ github.ref_name }}
+          releaseName: "LocalMind ${{ github.ref_name }}"
+          releaseBody: |
+            ## LocalMind ${{ github.ref_name }}
+
+            **Privacy-first AI assistant that runs entirely on your machine.**
+            No account required. No data leaves your computer.
+
+            ### Install
+
+            | Platform | Download |
+            |----------|---------|
+            | Windows  | `.msi` or `.exe` below |
+            | macOS Intel | `.dmg` (x64) below |
+            | macOS Apple Silicon | `.dmg` (arm64) below |
+            | Linux | `.AppImage` or `.deb` below |
+
+            See [README](https://github.com/${{ github.repository }}#readme) for setup instructions.
+          releaseDraft: false
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
+
+  # ─────────────────────────────────────────────
+  # Post-release: generate SHA256SUMS.txt
+  # ─────────────────────────────────────────────
+  checksums:
+    name: Generate SHA256SUMS
+    needs: build
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Download all release assets
+        uses: robinraju/release-downloader@v1
+        with:
+          tag: ${{ github.ref_name }}
+          fileName: "*"
+          out-file-path: release-assets
+
+      - name: Generate SHA256SUMS.txt
+        run: |
+          cd release-assets
+          sha256sum * | sort > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload SHA256SUMS.txt to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: release-assets/SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
