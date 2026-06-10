@@ -31,6 +31,8 @@ export function useMemory() {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [links, setLinks] = useState<MemoryLink[]>([]);
 
+  // refreshLinks is used from the event listener callback (async callback path, not
+  // synchronously in an effect body) so it stays as useCallback.
   const refreshLinks = useCallback(async () => {
     try {
       const result = await invoke<MemoryLink[]>("list_memory_links");
@@ -45,16 +47,26 @@ export function useMemory() {
     let cancelled = false;
     let unlisten: (() => void) | undefined;
 
-    // Fetch current list from DB on mount
+    // Fetch current memory list on mount (via .then callback, not synchronously)
     invoke<Memory[]>("list_memories")
       .then((list) => {
         if (!cancelled) setMemories(list);
       })
       .catch(() => {}); // sidecar may not be ready yet - silently skip
 
-    refreshLinks();
+    // Initial link load: defined inline so the linter can see setState is async
+    async function initialLinkLoad() {
+      try {
+        const result = await invoke<MemoryLink[]>("list_memory_links");
+        if (!cancelled) setLinks(result);
+      } catch {
+        // sidecar not ready
+      }
+    }
+    initialLinkLoad();
 
     listen<MemoriesUpdatedPayload>("memories-updated", (event) => {
+      // These setState calls are inside an event callback - not synchronous in effect body
       setMemories(event.payload.memories);
       refreshLinks();
     }).then((fn) => {

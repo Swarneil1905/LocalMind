@@ -56,35 +56,30 @@ export function TasksPage({ projects }: TasksPageProps) {
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [selectedProject, setSelectedProject] = useState<string>("all");
   const [newTitle, setNewTitle] = useState("");
+  // Controlled project selector for the add-task row; falls back to first project
   const [newProjectId, setNewProjectId] = useState<string>("");
-  const [adding] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const result = await invoke<TaskWithProject[]>("list_all_tasks");
-      setTasks(result);
-    } catch {
-      // sidecar not ready
+  // Derive the effective new-task project without a setState-in-effect
+  const effectiveNewProjectId = newProjectId || projects[0]?.id || "";
+
+  useEffect(() => {
+    async function fetchTasks() {
+      try {
+        const result = await invoke<TaskWithProject[]>("list_all_tasks");
+        setTasks(result);
+      } catch {
+        // sidecar not ready
+      }
     }
+    fetchTasks();
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  // Default new-task project to first available project
-  useEffect(() => {
-    if (!newProjectId && projects.length > 0) {
-      setNewProjectId(projects[0].id);
-    }
-  }, [projects, newProjectId]);
-
-  const handleAdd = async () => {
-    if (!newTitle.trim() || !newProjectId) return;
+  const handleAdd = useCallback(async () => {
+    if (!newTitle.trim() || !effectiveNewProjectId) return;
     try {
       const task = await invoke<TaskWithProject>("create_task", {
-        projectId: newProjectId,
+        projectId: effectiveNewProjectId,
         title: newTitle.trim(),
         dueAt: null,
       });
@@ -94,9 +89,9 @@ export function TasksPage({ projects }: TasksPageProps) {
     } catch {
       // swallow
     }
-  };
+  }, [newTitle, effectiveNewProjectId]);
 
-  const handleStatusCycle = async (task: TaskWithProject) => {
+  const handleStatusCycle = useCallback(async (task: TaskWithProject) => {
     const next = STATUS_CYCLE[task.status];
     try {
       await invoke("update_task", {
@@ -112,9 +107,9 @@ export function TasksPage({ projects }: TasksPageProps) {
     } catch {
       // swallow
     }
-  };
+  }, []);
 
-  const handleDelete = async (task: TaskWithProject) => {
+  const handleDelete = useCallback(async (task: TaskWithProject) => {
     try {
       await invoke("delete_task", {
         projectId: task.project_id,
@@ -124,11 +119,10 @@ export function TasksPage({ projects }: TasksPageProps) {
     } catch {
       // swallow
     }
-  };
+  }, []);
 
   const visible = tasks.filter((t) => {
-    const matchStatus =
-      filter === "all" || t.status === filter;
+    const matchStatus = filter === "all" || t.status === filter;
     const matchProject =
       selectedProject === "all" || t.project_id === selectedProject;
     return matchStatus && matchProject;
@@ -188,13 +182,7 @@ export function TasksPage({ projects }: TasksPageProps) {
         </div>
 
         {/* Add task row */}
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 16,
-          }}
-        >
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
           <input
             ref={inputRef}
             value={newTitle}
@@ -215,7 +203,7 @@ export function TasksPage({ projects }: TasksPageProps) {
             }}
           />
           <select
-            value={newProjectId}
+            value={effectiveNewProjectId}
             onChange={(e) => setNewProjectId(e.target.value)}
             style={{
               fontSize: 12,
@@ -235,7 +223,7 @@ export function TasksPage({ projects }: TasksPageProps) {
           </select>
           <button
             onClick={handleAdd}
-            disabled={!newTitle.trim() || !newProjectId}
+            disabled={!newTitle.trim() || !effectiveNewProjectId}
             style={{
               display: "flex",
               alignItems: "center",
@@ -243,11 +231,18 @@ export function TasksPage({ projects }: TasksPageProps) {
               padding: "6px 12px",
               fontSize: 12,
               fontWeight: 500,
-              backgroundColor: newTitle.trim() && newProjectId ? "var(--accent)" : "var(--surface-2)",
-              color: newTitle.trim() && newProjectId ? "#fff" : "var(--text-3)",
+              backgroundColor:
+                newTitle.trim() && effectiveNewProjectId
+                  ? "var(--accent)"
+                  : "var(--surface-2)",
+              color:
+                newTitle.trim() && effectiveNewProjectId
+                  ? "#fff"
+                  : "var(--text-3)",
               border: "1px solid var(--border)",
               borderRadius: 6,
-              cursor: newTitle.trim() && newProjectId ? "pointer" : "default",
+              cursor:
+                newTitle.trim() && effectiveNewProjectId ? "pointer" : "default",
               flexShrink: 0,
             }}
           >
@@ -388,13 +383,19 @@ export function TasksPage({ projects }: TasksPageProps) {
                   >
                     {task.title}
                   </p>
-                  <p style={{ fontSize: 11, color: "var(--text-3)", marginTop: 1 }}>
+                  <p
+                    style={{ fontSize: 11, color: "var(--text-3)", marginTop: 1 }}
+                  >
                     {task.project_name ?? "Unknown project"}
                     {task.due_at && (
                       <>
                         {" · "}
                         <span>
-                          Due {new Date(task.due_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                          Due{" "}
+                          {new Date(task.due_at).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                          })}
                         </span>
                       </>
                     )}
@@ -432,13 +433,6 @@ export function TasksPage({ projects }: TasksPageProps) {
                 </button>
               </div>
             ))}
-          </div>
-        )}
-
-        {/* "Adding" spinner placeholder for future optimistic UX */}
-        {adding && (
-          <div style={{ textAlign: "center", padding: 8, color: "var(--text-3)", fontSize: 12 }}>
-            Adding…
           </div>
         )}
       </div>
