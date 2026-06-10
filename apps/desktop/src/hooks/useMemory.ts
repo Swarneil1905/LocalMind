@@ -13,12 +13,32 @@ export interface Memory {
   created_at: string;
 }
 
+export interface MemoryLink {
+  id: string;
+  from_id: string;
+  to_id: string;
+  relation: string;
+  created_at: string;
+  from_content: string;
+  to_content: string;
+}
+
 interface MemoriesUpdatedPayload {
   memories: Memory[];
 }
 
 export function useMemory() {
   const [memories, setMemories] = useState<Memory[]>([]);
+  const [links, setLinks] = useState<MemoryLink[]>([]);
+
+  const refreshLinks = useCallback(async () => {
+    try {
+      const result = await invoke<MemoryLink[]>("list_memory_links");
+      setLinks(result);
+    } catch {
+      // sidecar may not be ready - silently skip
+    }
+  }, []);
 
   // Load initial list and listen for updates
   useEffect(() => {
@@ -32,8 +52,11 @@ export function useMemory() {
       })
       .catch(() => {}); // sidecar may not be ready yet - silently skip
 
+    refreshLinks();
+
     listen<MemoriesUpdatedPayload>("memories-updated", (event) => {
       setMemories(event.payload.memories);
+      refreshLinks();
     }).then((fn) => {
       if (cancelled) fn();
       else unlisten = fn;
@@ -43,7 +66,7 @@ export function useMemory() {
       cancelled = true;
       unlisten?.();
     };
-  }, []);
+  }, [refreshLinks]);
 
   const deleteMemory = useCallback(async (id: string) => {
     try {
@@ -53,5 +76,31 @@ export function useMemory() {
     }
   }, []);
 
-  return { memories, deleteMemory };
+  const deleteLink = useCallback(async (linkId: string) => {
+    try {
+      await invoke("delete_memory_link", { linkId });
+      setLinks((prev) => prev.filter((l) => l.id !== linkId));
+    } catch {
+      // swallow
+    }
+  }, []);
+
+  const createLink = useCallback(
+    async (fromId: string, toId: string, relation: string) => {
+      try {
+        const link = await invoke<MemoryLink>("create_memory_link", {
+          fromId,
+          toId,
+          relation,
+        });
+        setLinks((prev) => [link, ...prev]);
+        return link;
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
+  return { memories, links, deleteMemory, deleteLink, createLink };
 }

@@ -99,6 +99,17 @@ pub struct SearchConfig {
     pub enabled: bool,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct MemoryLink {
+    pub id: String,
+    pub from_id: String,
+    pub to_id: String,
+    pub relation: String,
+    pub created_at: String,
+    pub from_content: String,
+    pub to_content: String,
+}
+
 // ---------------------------------------------------------------------------
 // Event payloads
 // ---------------------------------------------------------------------------
@@ -200,7 +211,36 @@ async fn chat_stream(
                 .unwrap_or_default(),
             _ => vec![],
         };
-        build_system_prompt(&memories)
+
+        // 1-hop link expansion: fetch all links and append linked facts not already listed
+        let (links_url, links_token) = sidecar_url(&sidecar_state, "/memory/links")?;
+        let links: Vec<MemoryLink> = match client
+            .get(&links_url)
+            .header("Authorization", format!("Bearer {links_token}"))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<serde_json::Value>()
+                .await
+                .ok()
+                .and_then(|v| serde_json::from_value(v["links"].clone()).ok())
+                .unwrap_or_default(),
+            _ => vec![],
+        };
+
+        let mut prompt = build_system_prompt(&memories);
+        if !links.is_empty() {
+            let link_lines: Vec<String> = links
+                .iter()
+                .map(|l| format!("- \"{}\" {} \"{}\"", l.from_content, l.relation, l.to_content))
+                .collect();
+            prompt = format!(
+                "{prompt}\n\nMemory connections:\n{}",
+                link_lines.join("\n")
+            );
+        }
+        prompt
     } else {
         default_system_prompt()
     };
@@ -398,6 +438,61 @@ async fn delete_memory(
     let memories: Vec<MemoryEntry> =
         serde_json::from_value(data["memories"].clone()).unwrap_or_default();
     app_handle.emit("memories-updated", MemoriesUpdatedPayload { memories }).ok();
+    Ok(())
+}
+
+#[tauri::command]
+async fn list_memory_links(
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<Vec<MemoryLink>, String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/memory/links")?;
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(serde_json::from_value(data["links"].clone()).unwrap_or_default())
+}
+
+#[tauri::command]
+async fn create_memory_link(
+    from_id: String,
+    to_id: String,
+    relation: String,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<MemoryLink, String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/memory/links")?;
+    let body = serde_json::json!({ "from_id": from_id, "to_id": to_id, "relation": relation });
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("Sidecar returned HTTP {}", resp.status().as_u16()));
+    }
+    resp.json::<MemoryLink>().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_memory_link(
+    link_id: String,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<(), String> {
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/memory/link/{link_id}"))?;
+    let client = reqwest::Client::new();
+    client
+        .delete(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -1090,6 +1185,9 @@ pub fn run() {
             get_project_conversations,
             get_search_config,
             update_search_config,
+            list_memory_links,
+            create_memory_link,
+            delete_memory_link,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

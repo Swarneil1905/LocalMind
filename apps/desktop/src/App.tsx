@@ -109,7 +109,7 @@ export default function App() {
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
 
   const ollamaStatus = useOllama();
-  const { memories, deleteMemory } = useMemory();
+  const { memories, links: memoryLinks, deleteMemory, deleteLink: deleteMemoryLink } = useMemory();
 
   const {
     conversations,
@@ -229,6 +229,8 @@ export default function App() {
         hydeEnabled={hydeEnabled}
         onHydeToggle={() => setHydeEnabled((v) => !v)}
         onDeleteMemory={deleteMemory}
+        memoryLinks={memoryLinks}
+        onDeleteMemoryLink={deleteMemoryLink}
         onNewConversation={handleNewConversation}
         onSelectConversation={handleSelectConversation}
         onDeleteConversation={deleteConversation}
@@ -402,6 +404,8 @@ interface MainAreaProps {
   hydeEnabled: boolean;
   onHydeToggle: () => void;
   onDeleteMemory: (id: string) => void;
+  memoryLinks: import("./hooks/useMemory").MemoryLink[];
+  onDeleteMemoryLink: (linkId: string) => void;
   onNewConversation: () => void;
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
@@ -435,6 +439,8 @@ function MainArea({
   hydeEnabled,
   onHydeToggle,
   onDeleteMemory,
+  memoryLinks,
+  onDeleteMemoryLink,
   onNewConversation,
   onSelectConversation,
   onDeleteConversation,
@@ -508,7 +514,12 @@ function MainArea({
           onHydeToggle={onHydeToggle}
         />
       ) : activePage === "memory" ? (
-        <MemoryPage memories={memories ?? []} onDelete={onDeleteMemory} />
+        <MemoryPage
+          memories={memories ?? []}
+          links={memoryLinks ?? []}
+          onDelete={onDeleteMemory}
+          onDeleteLink={onDeleteMemoryLink}
+        />
       ) : activePage === "chats" ? (
         // Chats page: conversation list panel + chat area side by side
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
@@ -864,6 +875,7 @@ function RightPanel({ memories, webSources, onDeleteMemory }: RightPanelProps) {
           }}
         >
           <span
+
             style={{
               fontSize: 11,
               fontWeight: 600,
