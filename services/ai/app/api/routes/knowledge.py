@@ -33,6 +33,8 @@ class SearchRequest(BaseModel):
     query: str
     limit: int = 5
     embed_model: str = "nomic-embed-text"
+    hyde_enabled: bool = False
+    speed_model: str = "qwen2.5:1.5b"
 
 
 @router.post("/index")
@@ -58,7 +60,13 @@ def get_sources() -> dict:
 @router.post("/search")
 async def search_knowledge(request: SearchRequest) -> dict:
     """Semantic search over indexed chunks."""
-    results = await kb.search(request.query, limit=request.limit, embed_model=request.embed_model)
+    results = await kb.search(
+        request.query,
+        limit=request.limit,
+        embed_model=request.embed_model,
+        hyde_enabled=request.hyde_enabled,
+        speed_model=request.speed_model,
+    )
     return {"results": results}
 
 

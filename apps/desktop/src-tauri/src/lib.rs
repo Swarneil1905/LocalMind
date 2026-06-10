@@ -176,6 +176,7 @@ async fn chat_stream(
     memory_enabled: bool,
     knowledge_enabled: bool,
     embed_model: String,
+    hyde_enabled: bool,
     web_search_enabled: bool,
     app_handle: tauri::AppHandle,
     sidecar_state: tauri::State<'_, SidecarState>,
@@ -210,6 +211,7 @@ async fn chat_stream(
             "query": message,
             "limit": 5,
             "embed_model": embed_model,
+            "hyde_enabled": hyde_enabled,
         });
         if let Ok(resp) = client
             .post(&search_url)

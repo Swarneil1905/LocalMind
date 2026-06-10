@@ -105,6 +105,7 @@ export default function App() {
   const [balancedModel, setBalancedModel] = useState(MODEL_MAP.balanced);
   const [memoryEnabled, setMemoryEnabled] = useState(true);
   const [knowledgeEnabled, setKnowledgeEnabled] = useState(false);
+  const [hydeEnabled, setHydeEnabled] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
 
   const ollamaStatus = useOllama();
@@ -145,6 +146,7 @@ export default function App() {
     speedModel,
     memoryEnabled,
     knowledgeEnabled,
+    hydeEnabled,
     webSearchEnabled,
     embedModel: EMBED_MODEL,
     onTurnComplete: handleTurnComplete,
@@ -224,6 +226,8 @@ export default function App() {
         onMemoryToggle={() => setMemoryEnabled((v) => !v)}
         onKnowledgeToggle={() => setKnowledgeEnabled((v) => !v)}
         onWebSearchToggle={() => setWebSearchEnabled((v) => !v)}
+        hydeEnabled={hydeEnabled}
+        onHydeToggle={() => setHydeEnabled((v) => !v)}
         onDeleteMemory={deleteMemory}
         onNewConversation={handleNewConversation}
         onSelectConversation={handleSelectConversation}
@@ -395,6 +399,8 @@ interface MainAreaProps {
   onMemoryToggle: () => void;
   onKnowledgeToggle: () => void;
   onWebSearchToggle: () => void;
+  hydeEnabled: boolean;
+  onHydeToggle: () => void;
   onDeleteMemory: (id: string) => void;
   onNewConversation: () => void;
   onSelectConversation: (id: string) => void;
@@ -426,6 +432,8 @@ function MainArea({
   onMemoryToggle,
   onKnowledgeToggle,
   onWebSearchToggle,
+  hydeEnabled,
+  onHydeToggle,
   onDeleteMemory,
   onNewConversation,
   onSelectConversation,
@@ -496,6 +504,8 @@ function MainArea({
           balancedModel={balancedModel}
           onSpeedModelChange={onSpeedModelChange}
           onBalancedModelChange={onBalancedModelChange}
+          hydeEnabled={hydeEnabled}
+          onHydeToggle={onHydeToggle}
         />
       ) : activePage === "memory" ? (
         <MemoryPage memories={memories ?? []} onDelete={onDeleteMemory} />

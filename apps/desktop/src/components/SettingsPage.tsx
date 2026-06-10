@@ -1,6 +1,7 @@
 // Spec reference: Section 15 (Settings Screen)
 // Phase 1: Local Model + GPU sections active.
 // Phase 5: Web Search section active.
+// Phase 5.5: Knowledge section active (HyDE toggle).
 
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
@@ -12,12 +13,15 @@ interface SettingsPageProps {
   balancedModel: string;
   onSpeedModelChange: (model: string) => void;
   onBalancedModelChange: (model: string) => void;
+  hydeEnabled: boolean;
+  onHydeToggle: () => void;
 }
 
 type SettingsSection =
   | "local-model"
   | "gpu"
   | "web-search"
+  | "knowledge"
   | "cloud-boost"
   | "memory"
   | "privacy"
@@ -28,6 +32,7 @@ const SECTIONS: { id: SettingsSection; label: string; active: boolean }[] = [
   { id: "local-model",  label: "Local Model",       active: true  },
   { id: "gpu",          label: "GPU",                active: true  },
   { id: "web-search",   label: "Web Search",         active: true  },
+  { id: "knowledge",    label: "Knowledge",          active: true  },
   { id: "cloud-boost",  label: "Cloud Boost",        active: false },
   { id: "memory",       label: "Memory",             active: false },
   { id: "privacy",      label: "Privacy",            active: false },
@@ -95,6 +100,8 @@ export function SettingsPage({
   balancedModel,
   onSpeedModelChange,
   onBalancedModelChange,
+  hydeEnabled,
+  onHydeToggle,
 }: SettingsPageProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>("local-model");
   const [speedContext, setSpeedContext] = useState(2048);
@@ -155,6 +162,9 @@ export function SettingsPage({
         )}
         {activeSection === "gpu" && <GpuSection ollamaStatus={ollamaStatus} />}
         {activeSection === "web-search" && <WebSearchSection />}
+        {activeSection === "knowledge" && (
+          <KnowledgeSection hydeEnabled={hydeEnabled} onHydeToggle={onHydeToggle} />
+        )}
       </div>
     </div>
   );
@@ -717,4 +727,70 @@ function formatBytes(bytes: number): string {
 
 function mibToGib(mib: number): string {
   return (mib / 1024).toFixed(1);
+}
+
+// ---------------------------------------------------------------------------
+// Knowledge section
+// ---------------------------------------------------------------------------
+
+interface KnowledgeSectionProps {
+  hydeEnabled: boolean;
+  onHydeToggle: () => void;
+}
+
+function KnowledgeSection({ hydeEnabled, onHydeToggle }: KnowledgeSectionProps) {
+  return (
+    <div>
+      <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>Knowledge</h2>
+      <p style={{ fontSize: 13, color: "var(--text-2)", marginBottom: 24 }}>
+        Configure how LocalMind retrieves context from your indexed documents.
+      </p>
+
+      {/* HyDE toggle */}
+      <div
+        style={{
+          backgroundColor: "var(--surface-2)",
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          padding: "16px 20px",
+          marginBottom: 16,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>
+              HyDE Retrieval
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.5 }}>
+              Hypothetical Document Embeddings: the Speed model generates a short hypothetical answer
+              for your query, then that answer is embedded for retrieval. Produces more
+              relevant context but adds a ~0.5–2 s latency. Falls back to direct embedding on timeout.
+            </div>
+          </div>
+          <button
+            onClick={onHydeToggle}
+            style={{
+              flexShrink: 0,
+              padding: "6px 14px",
+              fontSize: 12,
+              fontWeight: 500,
+              borderRadius: 6,
+              border: `1px solid ${hydeEnabled ? "var(--accent)" : "var(--border)"}`,
+              backgroundColor: hydeEnabled ? "var(--accent-dim)" : "transparent",
+              color: hydeEnabled ? "var(--accent)" : "var(--text-2)",
+              cursor: "pointer",
+              transition: "all 0.15s",
+            }}
+          >
+            {hydeEnabled ? "Enabled" : "Disabled"}
+          </button>
+        </div>
+      </div>
+
+      <p style={{ fontSize: 11, color: "var(--text-3)" }}>
+        HyDE requires the Speed model to be running. If Ollama is unavailable, it falls back to
+        standard embedding automatically.
+      </p>
+    </div>
+  );
 }

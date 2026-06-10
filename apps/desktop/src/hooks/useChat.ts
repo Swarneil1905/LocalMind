@@ -38,6 +38,7 @@ interface UseChatOptions {
   speedModel: string;
   memoryEnabled: boolean;
   knowledgeEnabled: boolean;
+  hydeEnabled: boolean;
   webSearchEnabled: boolean;
   embedModel: string;
   /** Called after each successful assistant reply, for conversation persistence. */
@@ -107,6 +108,7 @@ export function useChat({
   speedModel,
   memoryEnabled,
   knowledgeEnabled,
+  hydeEnabled,
   webSearchEnabled,
   embedModel,
   onTurnComplete,
@@ -124,12 +126,14 @@ export function useChat({
   const memoryEnabledRef = useRef(memoryEnabled);
   const speedModelRef = useRef(speedModel);
   const knowledgeEnabledRef = useRef(knowledgeEnabled);
+  const hydeEnabledRef = useRef(hydeEnabled);
   const webSearchEnabledRef = useRef(webSearchEnabled);
   const embedModelRef = useRef(embedModel);
   const onTurnCompleteRef = useRef(onTurnComplete);
   memoryEnabledRef.current = memoryEnabled;
   speedModelRef.current = speedModel;
   knowledgeEnabledRef.current = knowledgeEnabled;
+  hydeEnabledRef.current = hydeEnabled;
   webSearchEnabledRef.current = webSearchEnabled;
   embedModelRef.current = embedModel;
   onTurnCompleteRef.current = onTurnComplete;
@@ -274,6 +278,7 @@ export function useChat({
           // correctness but refs ensure closures always see the latest value.
           knowledgeEnabled: knowledgeEnabledRef.current,
           embedModel: embedModelRef.current,
+          hydeEnabled: hydeEnabledRef.current,
           webSearchEnabled: webSearchEnabledRef.current,
         });
       } catch (e) {
