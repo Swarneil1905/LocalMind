@@ -33,10 +33,6 @@ import httpx
 import lancedb
 import pyarrow as pa
 
-# ---------------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------------
-
 EMBED_TIMEOUT = httpx.Timeout(connect=5.0, read=120.0, write=5.0, pool=5.0)
 OLLAMA_BASE = "http://127.0.0.1:11434"
 DEFAULT_EMBED_MODEL = "nomic-embed-text"
@@ -47,8 +43,8 @@ SUPPORTED_EXTENSIONS = {
     ".pdf",
 }
 
-CHUNK_SIZE = 1800       # characters per chunk
-CHUNK_OVERLAP = 200     # overlap between adjacent chunks
+CHUNK_SIZE = 1800
+CHUNK_OVERLAP = 200
 
 
 def _data_dir() -> Path:
@@ -70,10 +66,6 @@ def _sqlite_path() -> Path:
     return _data_dir() / "knowledge_sources.db"
 
 
-# ---------------------------------------------------------------------------
-# SQLite sources DB
-# ---------------------------------------------------------------------------
-
 def _get_sqlite() -> sqlite3.Connection:
     conn = sqlite3.connect(str(_sqlite_path()))
     conn.row_factory = sqlite3.Row
@@ -94,10 +86,6 @@ def _get_sqlite() -> sqlite3.Connection:
     return conn
 
 
-# ---------------------------------------------------------------------------
-# LanceDB
-# ---------------------------------------------------------------------------
-
 def _get_lance_table():
     """Open (or create) the LanceDB chunks table."""
     db = lancedb.connect(_lance_dir())
@@ -114,10 +102,6 @@ def _get_lance_table():
     return db.open_table("chunks")
 
 
-# ---------------------------------------------------------------------------
-# Embedding
-# ---------------------------------------------------------------------------
-
 async def embed_text(text: str, model: str = DEFAULT_EMBED_MODEL) -> list[float]:
     """Call Ollama /api/embeddings and return the embedding vector."""
     async with httpx.AsyncClient(timeout=EMBED_TIMEOUT) as client:
@@ -129,19 +113,10 @@ async def embed_text(text: str, model: str = DEFAULT_EMBED_MODEL) -> list[float]
         return resp.json()["embedding"]
 
 
-# ---------------------------------------------------------------------------
-# File reading
-# ---------------------------------------------------------------------------
-
 def _read_file_text(path: Path) -> str:
-    """
-    Return the text content of a file.
-    PDFs are extracted via pypdf; all other supported formats are read as UTF-8.
-    Returns an empty string on any error.
-    """
     try:
         if path.suffix.lower() == ".pdf":
-            from pypdf import PdfReader  # imported lazily - not needed for non-PDF files
+            from pypdf import PdfReader
             reader = PdfReader(str(path))
             pages = []
             for page in reader.pages:
@@ -153,10 +128,6 @@ def _read_file_text(path: Path) -> str:
     except Exception:
         return ""
 
-
-# ---------------------------------------------------------------------------
-# Chunking
-# ---------------------------------------------------------------------------
 
 def _chunk_text(text: str) -> list[str]:
     """Split text into overlapping chunks by character count."""
@@ -177,7 +148,6 @@ def _collect_files(path: str) -> list[Path]:
     files = []
     for f in p.rglob("*"):
         if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS:
-            # Skip hidden files and common noise dirs
             parts = f.parts
             if any(part.startswith(".") or part in ("node_modules", "__pycache__", "target", "dist") for part in parts):
                 continue
@@ -185,16 +155,10 @@ def _collect_files(path: str) -> list[Path]:
     return files
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
 async def index_path(path: str, embed_model: str = DEFAULT_EMBED_MODEL) -> dict:
     """
     Index a folder or file. Creates a source record, embeds all chunks,
     and writes them to LanceDB.
-
-    Returns: {"source_id": str, "file_count": int, "chunk_count": int}
     """
     source_id = str(uuid.uuid4())
     name = Path(path).name or path
@@ -246,16 +210,30 @@ async def index_path(path: str, embed_model: str = DEFAULT_EMBED_MODEL) -> dict:
     return {"source_id": source_id, "file_count": file_count, "chunk_count": chunk_count}
 
 
-async def search(query: str, limit: int = 5, embed_model: str = DEFAULT_EMBED_MODEL) -> list[dict]:
+async def search(
+    query: str,
+    limit: int = 5,
+    embed_model: str = DEFAULT_EMBED_MODEL,
+    hyde_enabled: bool = False,
+    speed_model: str = "qwen2.5:1.5b",
+) -> list[dict]:
     """
     Semantic search over indexed chunks.
     Returns up to `limit` chunks sorted by relevance.
+
+    When hyde_enabled is True, the Speed model generates a hypothetical ideal
+    answer for the query and that answer is embedded instead of the raw query.
+    Falls back to raw query embedding automatically on timeout or error.
     """
     try:
         table = _get_lance_table()
         if table.count_rows() == 0:
             return []
-        vector = await embed_text(query, model=embed_model)
+        if hyde_enabled:
+            from app.rag.hyde import hyde_embed
+            vector = await hyde_embed(query, speed_model=speed_model, embed_model=embed_model)
+        else:
+            vector = await embed_text(query, model=embed_model)
         results = (
             table.search(vector)
             .limit(limit)
@@ -299,6 +277,6 @@ def delete_source(source_id: str) -> bool:
             table = _get_lance_table()
             table.delete(f"source_id = '{source_id}'")
         except Exception:
-            pass  # LanceDB delete failure is non-fatal
+            pass
 
     return deleted
