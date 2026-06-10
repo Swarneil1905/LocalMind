@@ -53,6 +53,13 @@ def _sanitize_query(query: str) -> str:
     return q[:200]
 
 
+def _scrub_key(text: str, key: str) -> str:
+    """Replace any occurrence of key in an error string with [REDACTED]."""
+    if not key:
+        return text
+    return text.replace(key, "[REDACTED]")
+
+
 # ---------------------------------------------------------------------------
 # DuckDuckGo (no API key - uses lite HTML endpoint)
 # ---------------------------------------------------------------------------
@@ -95,18 +102,21 @@ async def search_duckduckgo(query: str, max_results: int = 5) -> list[SearchResu
 
 async def search_brave(query: str, api_key: str, max_results: int = 5) -> list[SearchResult]:
     """Search via Brave Search API. Requires API key."""
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        resp = await client.get(
-            "https://api.search.brave.com/res/v1/web/search",
-            params={"q": query, "count": max_results},
-            headers={
-                "Accept": "application/json",
-                "Accept-Encoding": "gzip",
-                "X-Subscription-Token": api_key,
-            },
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.get(
+                "https://api.search.brave.com/res/v1/web/search",
+                params={"q": query, "count": max_results},
+                headers={
+                    "Accept": "application/json",
+                    "Accept-Encoding": "gzip",
+                    "X-Subscription-Token": api_key,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:
+        raise RuntimeError(_scrub_key(str(exc), api_key)) from None
 
     results: list[SearchResult] = []
     for item in data.get("web", {}).get("results", [])[:max_results]:
@@ -124,13 +134,18 @@ async def search_brave(query: str, api_key: str, max_results: int = 5) -> list[S
 
 async def search_tavily(query: str, api_key: str, max_results: int = 5) -> list[SearchResult]:
     """Search via Tavily. Designed for AI pipelines."""
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        resp = await client.post(
-            "https://api.tavily.com/search",
-            json={"api_key": api_key, "query": query, "max_results": max_results},
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.post(
+                "https://api.tavily.com/search",
+                # Note: api_key is in the body per Tavily spec. _scrub_key below
+                # ensures it never appears in exception messages.
+                json={"api_key": api_key, "query": query, "max_results": max_results},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:
+        raise RuntimeError(_scrub_key(str(exc), api_key)) from None
 
     results: list[SearchResult] = []
     for item in data.get("results", [])[:max_results]:
