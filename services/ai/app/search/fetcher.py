@@ -67,7 +67,7 @@ _INJECTION_PATTERNS = [
     r"<</?SYS>>",
     r"\[SYSTEM\]",
     # Fake turn boundaries injected in web content
-    r"(?m)^\s*(?:system|user|assistant)\s*:\s*",
+    r"^\s*(?:system|user|assistant)\s*:\s*",
     # Data exfiltration patterns
     r"(?:send|transmit|output|print|reveal|show|display)\s+(?:all\s+)?(?:your\s+)?(?:system\s+prompt|instructions?|context)",
     r"what\s+(?:are|were|is)\s+your\s+(?:original\s+)?instructions?",
@@ -75,7 +75,7 @@ _INJECTION_PATTERNS = [
 
 _INJECTION_RE = re.compile(
     "|".join(f"(?:{p})" for p in _INJECTION_PATTERNS),
-    flags=re.IGNORECASE,
+    flags=re.IGNORECASE | re.MULTILINE,
 )
 
 # Control characters except tab (9), newline (10), carriage return (13)
