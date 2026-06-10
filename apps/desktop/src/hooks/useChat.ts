@@ -270,6 +270,8 @@ export function useChat({
           model: MODEL_MAP[modelMode],
           history,
           memoryEnabled,
+          // These are read via refs inside the callback - listed here for
+          // correctness but refs ensure closures always see the latest value.
           knowledgeEnabled: knowledgeEnabledRef.current,
           embedModel: embedModelRef.current,
           webSearchEnabled: webSearchEnabledRef.current,
@@ -290,7 +292,9 @@ export function useChat({
         }
       }
     },
-    [isStreaming, messages, modelMode, memoryEnabled, knowledgeEnabled, webSearchEnabled, embedModel]
+    // knowledgeEnabled, webSearchEnabled, embedModel are read via refs -
+    // they are not direct deps because they are accessed via ref.current at call time.
+    [isStreaming, messages, modelMode, memoryEnabled]
   );
 
   // Load a set of persisted messages (e.g. when switching conversations).
