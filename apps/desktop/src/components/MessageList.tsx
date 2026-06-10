@@ -1,11 +1,14 @@
-// Spec reference: Section 14 (Main Chat Area - Message list)
+// Spec reference: Section 14 (Main Chat Area - Message list) + Phase 5.5 Reasoning UI
 //
 // User messages:   right-aligned, surface-2 background, 14px
 // Assistant msgs:  left-aligned, no background, Markdown rendered
-// Reasoning block: collapsible <think> content shown above the answer
+// Reasoning block: collapsible panel showing <think> content above the answer
+//   - Auto-expands when thinking starts so user can watch the model reason
+//   - Stays expanded after thinking ends (user controls it from there)
+//   - Shows approximate token count and elapsed time in the header
 // Streaming cursor is rendered inline inside the last assistant message.
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { BrainCircuit, ChevronDown, ChevronRight } from "lucide-react";
@@ -19,7 +22,6 @@ interface MessageListProps {
 export function MessageList({ messages, isStreaming }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to the latest token as it arrives
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -55,13 +57,7 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
   }
 
   return (
-    <div
-      style={{
-        flex: 1,
-        overflowY: "auto",
-        padding: "16px 0",
-      }}
-    >
+    <div style={{ flex: 1, overflowY: "auto", padding: "16px 0" }}>
       <div
         style={{
           maxWidth: 740,
@@ -83,7 +79,6 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
             }
           />
         ))}
-
         <div ref={bottomRef} />
       </div>
     </div>
@@ -91,7 +86,7 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Reasoning block - collapsible, shown above the answer when thinking exists
+// Reasoning block
 // ---------------------------------------------------------------------------
 
 interface ReasoningBlockProps {
@@ -101,22 +96,52 @@ interface ReasoningBlockProps {
 
 function ReasoningBlock({ thinking, isThinking }: ReasoningBlockProps) {
   const [expanded, setExpanded] = useState(false);
+  // Elapsed seconds: counts up while thinking, freezes when done
+  const [elapsedSec, setElapsedSec] = useState<number | null>(null);
 
-  // Auto-expand while the model is actively thinking so the user can watch
-  // it reason. Collapses automatically when reasoning finishes.
-  const wasThinkingRef = useRef(false);
+  const startTimeRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Track whether we have already auto-expanded for this message
+  const hasAutoExpandedRef = useRef(false);
+
   useEffect(() => {
-    if (isThinking && !wasThinkingRef.current) {
+    if (isThinking && !hasAutoExpandedRef.current) {
+      // First time thinking starts: auto-expand and start the clock
       setExpanded(true);
-      wasThinkingRef.current = true;
+      hasAutoExpandedRef.current = true;
+      startTimeRef.current = Date.now();
+      timerRef.current = setInterval(() => {
+        if (startTimeRef.current !== null) {
+          setElapsedSec(Math.floor((Date.now() - startTimeRef.current) / 1000));
+        }
+      }, 500);
     }
-    if (!isThinking && wasThinkingRef.current) {
-      setExpanded(false);
-      wasThinkingRef.current = false;
+
+    if (!isThinking && startTimeRef.current !== null) {
+      // Thinking finished: freeze the elapsed display, stop the timer
+      setElapsedSec(Math.round((Date.now() - startTimeRef.current) / 1000));
+      startTimeRef.current = null;
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      // Do NOT auto-collapse - leave expanded so user can read it
     }
   }, [isThinking]);
 
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
+
+  const toggle = useCallback(() => setExpanded((v) => !v), []);
+
   if (!thinking && !isThinking) return null;
+
+  // Approximate token count: split on whitespace
+  const approxTokens = thinking ? thinking.split(/\s+/).filter(Boolean).length : 0;
 
   return (
     <div
@@ -130,7 +155,7 @@ function ReasoningBlock({ thinking, isThinking }: ReasoningBlockProps) {
     >
       {/* Header row */}
       <button
-        onClick={() => setExpanded((v) => !v)}
+        onClick={toggle}
         style={{
           display: "flex",
           alignItems: "center",
@@ -143,6 +168,7 @@ function ReasoningBlock({ thinking, isThinking }: ReasoningBlockProps) {
           fontWeight: 500,
           cursor: "pointer",
           textAlign: "left",
+          border: "none",
         }}
       >
         <BrainCircuit
@@ -157,6 +183,24 @@ function ReasoningBlock({ thinking, isThinking }: ReasoningBlockProps) {
         <span style={{ flex: 1 }}>
           {isThinking ? "Reasoning..." : "Reasoning"}
         </span>
+
+        {/* Token count + elapsed time */}
+        {approxTokens > 0 && (
+          <span
+            style={{
+              fontSize: 10,
+              color: "var(--text-3)",
+              marginRight: 4,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            ~{approxTokens} tokens
+            {elapsedSec !== null && (
+              <> &middot; {elapsedSec}s</>
+            )}
+          </span>
+        )}
+
         {expanded ? (
           <ChevronDown size={12} strokeWidth={1.5} />
         ) : (
@@ -189,7 +233,7 @@ function ReasoningBlock({ thinking, isThinking }: ReasoningBlockProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Individual message
+// Individual message bubble
 // ---------------------------------------------------------------------------
 
 interface MessageBubbleProps {
@@ -224,7 +268,6 @@ function MessageBubble({ message, streaming }: MessageBubbleProps) {
   const hasThinking = !!(message.thinking || message.isThinking);
   const stillThinking = !!message.isThinking;
 
-  // Assistant message
   return (
     <div style={{ display: "flex", justifyContent: "flex-start" }}>
       <div
@@ -237,7 +280,7 @@ function MessageBubble({ message, streaming }: MessageBubbleProps) {
         }}
         className="assistant-message"
       >
-        {/* Reasoning block - shown above the answer for R1 models */}
+        {/* Reasoning block - shown above the answer for R1/reasoning models */}
         {hasThinking && (
           <ReasoningBlock
             thinking={message.thinking ?? ""}
@@ -265,7 +308,10 @@ function MessageBubble({ message, streaming }: MessageBubbleProps) {
                       }}
                     >
                       <code
-                        style={{ fontFamily: "monospace", color: "var(--text)" }}
+                        style={{
+                          fontFamily: "monospace",
+                          color: "var(--text)",
+                        }}
                       >
                         {children}
                       </code>
@@ -344,7 +390,7 @@ function MessageBubble({ message, streaming }: MessageBubbleProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Streaming cursor - inline, blinks after the last token
+// Streaming cursor
 // ---------------------------------------------------------------------------
 
 function StreamingCursor() {
