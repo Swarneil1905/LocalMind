@@ -145,6 +145,38 @@ async def search_searxng(query: str, base_url: str, max_results: int = 5) -> lis
 
 
 # ---------------------------------------------------------------------------
+# Query sanitization
+# ---------------------------------------------------------------------------
+
+import re as _re
+
+# Strip null bytes and ASCII control chars (except normal whitespace)
+_QUERY_CTRL_RE = _re.compile(
+    r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]"
+)
+
+
+def _sanitize_query(query: str) -> str:
+    """
+    Sanitize a user-supplied search query before sending it to any provider.
+
+    - Remove null bytes and ASCII control characters (tabs and newlines are
+      normalised to spaces, not removed).
+    - Collapse internal whitespace.
+    - Hard-cap at 200 characters so we never send an oversized string to a
+      third-party API.
+    """
+    # Replace tab/newline with space so multi-line pastes become one query
+    q = query.replace("\t", " ").replace("\n", " ").replace("\r", " ")
+    # Remove remaining control chars
+    q = _QUERY_CTRL_RE.sub("", q)
+    # Collapse runs of whitespace
+    q = " ".join(q.split())
+    # Hard cap
+    return q[:200]
+
+
+# ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
 
@@ -156,6 +188,9 @@ async def search(
     max_results: int = 5,
 ) -> list[SearchResult]:
     """Route to the correct provider and return results."""
+    query = _sanitize_query(query)
+    if not query:
+        return []
     if provider == "brave":
         return await search_brave(query, api_key, max_results)
     if provider == "tavily":
