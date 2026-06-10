@@ -93,6 +93,12 @@ def create_task(project_id: str, req: CreateTaskRequest) -> dict:
     return db.create_task(project_id, req.title, req.due_at)
 
 
+@router.get("/tasks/all")
+def list_all_tasks() -> dict:
+    """Return all tasks across all projects (includes project_name field)."""
+    return {"tasks": db.list_all_tasks()}
+
+
 @router.get("/{project_id}/tasks")
 def list_tasks(project_id: str) -> dict:
     return {"tasks": db.list_tasks(project_id)}

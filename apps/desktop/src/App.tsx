@@ -26,6 +26,7 @@ import { MessageList } from "./components/MessageList";
 import { MemoryPage } from "./components/MemoryPage";
 import { PlaceholderPage } from "./components/PlaceholderPage";
 import { ProjectsPage } from "./components/ProjectsPage";
+import { TasksPage } from "./components/TasksPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { useChat } from "./hooks/useChat";
 import { ConversationMessage, useConversations } from "./hooks/useConversations";
@@ -559,12 +560,7 @@ function MainArea({
           phase="Coming in Phase 5"
         />
       ) : activePage === "tasks" ? (
-        <PlaceholderPage
-          Icon={NAV_ITEMS.find((n) => n.id === "tasks")!.Icon}
-          title="Tasks"
-          description="Track and manage tasks with AI-assisted capture and follow-up."
-          phase="Coming in Phase 5"
-        />
+        <TasksPage projects={projects} />
       ) : null}
     </main>
   );

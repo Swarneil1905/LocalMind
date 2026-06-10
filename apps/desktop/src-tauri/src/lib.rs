@@ -93,6 +93,18 @@ pub struct Task {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct TaskWithProject {
+    pub id: String,
+    pub project_id: String,
+    pub title: String,
+    pub status: String,
+    pub due_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub project_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct SearchConfig {
     pub provider: String,
     pub privacy_mode: String,
@@ -946,6 +958,22 @@ async fn list_tasks(
 }
 
 #[tauri::command]
+async fn list_all_tasks(
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<Vec<TaskWithProject>, String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/projects/tasks/all")?;
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(serde_json::from_value(data["tasks"].clone()).unwrap_or_default())
+}
+
+#[tauri::command]
 async fn update_task(
     project_id: String,
     task_id: String,
@@ -1179,6 +1207,7 @@ pub fn run() {
             generate_project_summary,
             create_task,
             list_tasks,
+            list_all_tasks,
             update_task,
             delete_task,
             assign_conversation_to_project,

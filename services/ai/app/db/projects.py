@@ -197,6 +197,22 @@ def list_tasks(project_id: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def list_all_tasks() -> list[dict]:
+    """Return all tasks across all projects, joined with project name, newest first."""
+    conn = _get_conn()
+    rows = conn.execute(
+        """
+        SELECT t.id, t.project_id, t.title, t.status, t.due_at, t.created_at, t.updated_at,
+               p.name AS project_name
+        FROM tasks t
+        LEFT JOIN projects p ON p.id = t.project_id
+        ORDER BY t.created_at DESC
+        """
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 def update_task(project_id: str, task_id: str,
                 title: str | None = None, status: str | None = None,
                 due_at: str | None = None) -> bool:
