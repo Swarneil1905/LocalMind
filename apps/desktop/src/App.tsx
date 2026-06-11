@@ -1058,11 +1058,3 @@ function RightPanel({ memories, webSources, onDeleteMemory }: RightPanelProps) {
     </aside>
   );
 }
--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Permissions
-        </span>
-        <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 8 }}>No data</p>
-      </div>
-    </aside>
-  );
-}
