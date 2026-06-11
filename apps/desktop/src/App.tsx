@@ -165,6 +165,7 @@ export default function App() {
   const {
     messages,
     isStreaming,
+    isSearching,
     webSources,
     sendMessage,
     stopStreaming,
@@ -276,6 +277,7 @@ export default function App() {
         rightPanelOpen={rightPanelOpen}
         onToggleRightPanel={() => setRightPanelOpen((v) => !v)}
         hasRightPanelContent={memories.length > 0 || webSources.length > 0}
+        isSearching={isSearching}
       />
       {rightPanelOpen && (memories.length > 0 || webSources.length > 0) && (
         <RightPanel memories={memories} webSources={webSources} onDeleteMemory={deleteMemory} />
@@ -512,6 +514,7 @@ interface MainAreaProps {
   rightPanelOpen: boolean;
   onToggleRightPanel: () => void;
   hasRightPanelContent: boolean;
+  isSearching: boolean;
 }
 
 function MainArea({
@@ -555,6 +558,7 @@ function MainArea({
   rightPanelOpen,
   onToggleRightPanel,
   hasRightPanelContent,
+  isSearching,
 }: MainAreaProps) {
   const ollamaRunning = ollamaStatus?.running ?? null;
   const activeLabel =
@@ -593,20 +597,11 @@ function MainArea({
         </span>
 
         {/* Controls shown only on Chats page */}
-        {activePage === "chats" && (
-          <>
-            {activeConvId && projects.length > 0 && (
-              <ProjectSelector
-                projects={projects}
-                onAssign={onAssignProject}
-              />
-            )}
-            <ModelModeSelector
-              value={modelMode}
-              onChange={onModelModeChange}
-              ollamaRunning={ollamaRunning}
-            />
-          </>
+        {activePage === "chats" && activeConvId && projects.length > 0 && (
+          <ProjectSelector
+            projects={projects}
+            onAssign={onAssignProject}
+          />
         )}
         {/* Right panel toggle — only visible when there's actual content */}
         {hasRightPanelContent && (
@@ -671,25 +666,32 @@ function MainArea({
                   flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
-                  padding: "0 32px 72px",
-                  gap: 16,
+                  padding: "0 24px 80px",
+                  gap: 20,
                   overflow: "hidden",
                 }}
               >
-                <h1
-                  style={{
-                    fontSize: 24,
-                    fontWeight: 600,
-                    color: "var(--text)",
-                    letterSpacing: "-0.025em",
-                    margin: 0,
-                  }}
-                >
-                  What can I help with?
-                </h1>
+                {/* Greeting */}
+                <div style={{ textAlign: "center", marginBottom: 4 }}>
+                  <h1
+                    style={{
+                      fontSize: 28,
+                      fontWeight: 700,
+                      color: "var(--text)",
+                      letterSpacing: "-0.03em",
+                      margin: "0 0 6px",
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    What should we work on?
+                  </h1>
+                  <p style={{ fontSize: 14, color: "var(--text-3)", margin: 0 }}>
+                    LocalMind runs privately on your machine.
+                  </p>
+                </div>
 
                 {/* Composer prominent and centered */}
-                <div style={{ width: "100%", maxWidth: 660 }}>
+                <div style={{ width: "100%", maxWidth: 680 }}>
                   <Composer
                     onSend={onSend}
                     onStop={onStop}
@@ -701,40 +703,48 @@ function MainArea({
                     onKnowledgeToggle={onKnowledgeToggle}
                     webSearchEnabled={webSearchEnabled}
                     onWebSearchToggle={onWebSearchToggle}
+                    modelMode={modelMode}
+                    onModelModeChange={onModelModeChange}
+                    ollamaRunning={ollamaRunning}
                     draft={composerDraft}
                     onDraftApplied={onComposerDraftApplied}
                   />
                 </div>
 
-                {/* Suggestion chips below composer */}
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", maxWidth: 660 }}>
+                {/* Suggestion chips — two rows like Copilot */}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", maxWidth: 680 }}>
                   {[
-                    { label: "Summarize a document", text: "Please summarize this document for me:" },
+                    { label: "Summarize a document", text: "Please summarize this document:" },
                     { label: "Draft an email", text: "Help me draft a professional email about:" },
-                    { label: "Explain a concept", text: "Can you explain this to me:" },
+                    { label: "Explain a concept", text: "Can you explain this in simple terms:" },
                     { label: "Brainstorm ideas", text: "Help me brainstorm ideas for:" },
+                    { label: "Write some code", text: "Help me write code to:" },
+                    { label: "Analyze data", text: "Help me analyze this data:" },
                   ].map(({ label, text }) => (
                     <button
                       key={label}
                       onClick={() => onSetComposerDraft(text)}
                       style={{
-                        padding: "6px 14px",
+                        padding: "7px 16px",
                         backgroundColor: "var(--surface)",
                         border: "1px solid var(--border)",
                         borderRadius: 999,
                         fontSize: 12,
+                        fontWeight: 400,
                         color: "var(--text-2)",
                         cursor: "pointer",
-                        transition: "border-color 0.12s, color 0.12s",
+                        transition: "border-color 0.12s, color 0.12s, background-color 0.12s",
                         whiteSpace: "nowrap",
                       }}
                       onMouseEnter={(e) => {
                         (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)";
                         (e.currentTarget as HTMLButtonElement).style.color = "var(--text)";
+                        (e.currentTarget as HTMLButtonElement).style.backgroundColor = "var(--surface-2)";
                       }}
                       onMouseLeave={(e) => {
                         (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
                         (e.currentTarget as HTMLButtonElement).style.color = "var(--text-2)";
+                        (e.currentTarget as HTMLButtonElement).style.backgroundColor = "var(--surface)";
                       }}
                     >
                       {label}
@@ -750,6 +760,7 @@ function MainArea({
                   isStreaming={isStreaming}
                   followUpQuestions={followUpQuestions}
                   onSendFollowUp={onSendFollowUp}
+                  isSearching={isSearching}
                 />
                 <Composer
                   onSend={onSend}
@@ -762,6 +773,9 @@ function MainArea({
                   onKnowledgeToggle={onKnowledgeToggle}
                   webSearchEnabled={webSearchEnabled}
                   onWebSearchToggle={onWebSearchToggle}
+                  modelMode={modelMode}
+                  onModelModeChange={onModelModeChange}
+                  ollamaRunning={ollamaRunning}
                   draft={composerDraft}
                   onDraftApplied={onComposerDraftApplied}
                 />
@@ -883,72 +897,6 @@ function ProjectSelector({ projects, onAssign }: ProjectSelectorProps) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Model mode selector - Section 14 (Chat header)
-// ---------------------------------------------------------------------------
-
-const MODE_LABELS: Record<ModelMode, string> = {
-  speed: "Speed",
-  balanced: "Balanced",
-  boost: "Boost",
-};
-
-const MODES: ModelMode[] = ["speed", "balanced", "boost"];
-
-interface ModelModeSelectorProps {
-  value: ModelMode;
-  onChange: (mode: ModelMode) => void;
-  ollamaRunning: boolean | null;
-}
-
-function ModelModeSelector({ value, onChange, ollamaRunning }: ModelModeSelectorProps) {
-  return (
-    <div
-      role="group"
-      aria-label="Model mode"
-      style={{
-        display: "flex",
-        backgroundColor: "var(--surface-2)",
-        borderRadius: 5,
-        padding: 2,
-        gap: 2,
-      }}
-    >
-      {MODES.map((mode) => {
-        const active = value === mode;
-        const boostDisabled = mode === "boost";
-        return (
-          <button
-            key={mode}
-                        onClick={() => !boostDisabled && onChange(mode)}
-            disabled={boostDisabled || ollamaRunning === false}
-            title={boostDisabled ? "Boost requires an API key (Phase 2)" : undefined}
-            style={{
-              fontSize: 11,
-              fontWeight: active ? 600 : 400,
-              padding: "3px 10px",
-              borderRadius: 3,
-              backgroundColor: active ? "var(--surface)" : "transparent",
-              color: boostDisabled
-                ? "var(--text-3)"
-                : active
-                ? "var(--text)"
-                : "var(--text-2)",
-              cursor: boostDisabled ? "not-allowed" : "pointer",
-              transition: "background-color 150ms",
-              border: active ? "1px solid var(--border)" : "1px solid transparent",
-              opacity: boostDisabled ? 0.5 : 1,
-            }}
-          >
-            {MODE_LABELS[mode]}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Right panel
 // ---------------------------------------------------------------------------
 
