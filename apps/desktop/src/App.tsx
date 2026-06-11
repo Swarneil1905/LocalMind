@@ -21,6 +21,7 @@ import {
   Monitor,
   Sun,
   Moon,
+  PanelRight,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Composer } from "./components/Composer";
@@ -139,6 +140,8 @@ export default function App() {
   const { projects, assignConversation } = useProjects();
 
   const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
+  const [composerDraft, setComposerDraft] = useState<string>("");
+  const [rightPanelOpen, setRightPanelOpen] = useState(false);
 
   // Called by useChat after each successful reply.
   const handleTurnComplete = useCallback(
@@ -267,8 +270,16 @@ export default function App() {
         onDeleteConversation={deleteConversation}
         onRenameConversation={renameConversation}
         onAssignProject={handleAssignProject}
+        composerDraft={composerDraft}
+        onComposerDraftApplied={() => setComposerDraft("")}
+        onSetComposerDraft={setComposerDraft}
+        rightPanelOpen={rightPanelOpen}
+        onToggleRightPanel={() => setRightPanelOpen((v) => !v)}
+        hasRightPanelContent={memories.length > 0 || webSources.length > 0}
       />
-      <RightPanel memories={memories} webSources={webSources} onDeleteMemory={deleteMemory} />
+      {rightPanelOpen && (memories.length > 0 || webSources.length > 0) && (
+        <RightPanel memories={memories} webSources={webSources} onDeleteMemory={deleteMemory} />
+      )}
     </div>
   );
 }
@@ -349,22 +360,24 @@ function Sidebar({ collapsed, activePage, ollamaRunning, theme, onNavigate, onTo
               onClick={() => onNavigate(id)}
               title={collapsed ? label : undefined}
               style={{
-                width: "100%",
-                height: 36,
                 display: "flex",
                 alignItems: "center",
-                padding: collapsed ? "0 12px" : "0 16px",
-                gap: 10,
+                margin: "1px 6px",
+                height: 34,
+                width: "calc(100% - 12px)",
+                padding: collapsed ? "0 9px" : "0 10px",
+                gap: 9,
                 fontSize: 13,
+                fontWeight: active ? 500 : 400,
                 color: active ? "var(--text)" : "var(--text-2)",
                 backgroundColor: active ? "var(--surface-2)" : "transparent",
-                borderLeft: `2px solid ${active ? "var(--accent)" : "transparent"}`,
+                borderRadius: 6,
                 justifyContent: collapsed ? "center" : undefined,
                 whiteSpace: "nowrap",
-                transition: "background-color 150ms",
+                transition: "background-color 120ms, color 120ms",
               }}
             >
-              <Icon size={16} strokeWidth={1.5} />
+              <Icon size={15} strokeWidth={active ? 2 : 1.5} style={{ color: active ? "var(--accent)" : undefined }} />
               {!collapsed && label}
             </button>
           );
@@ -493,6 +506,12 @@ interface MainAreaProps {
   onDeleteConversation: (id: string) => void;
   onRenameConversation: (id: string, title: string) => void;
   onAssignProject: (projectId: string | null) => void;
+  composerDraft: string;
+  onComposerDraftApplied: () => void;
+  onSetComposerDraft: (text: string) => void;
+  rightPanelOpen: boolean;
+  onToggleRightPanel: () => void;
+  hasRightPanelContent: boolean;
 }
 
 function MainArea({
@@ -530,6 +549,12 @@ function MainArea({
   onDeleteConversation,
   onRenameConversation,
   onAssignProject,
+  composerDraft,
+  onComposerDraftApplied,
+  onSetComposerDraft,
+  rightPanelOpen,
+  onToggleRightPanel,
+  hasRightPanelContent,
 }: MainAreaProps) {
   const ollamaRunning = ollamaStatus?.running ?? null;
   const activeLabel =
@@ -570,7 +595,6 @@ function MainArea({
         {/* Controls shown only on Chats page */}
         {activePage === "chats" && (
           <>
-            {/* Project selector - assign current conversation to a project */}
             {activeConvId && projects.length > 0 && (
               <ProjectSelector
                 projects={projects}
@@ -583,6 +607,28 @@ function MainArea({
               ollamaRunning={ollamaRunning}
             />
           </>
+        )}
+        {/* Right panel toggle — only visible when there's actual content */}
+        {hasRightPanelContent && (
+          <button
+            onClick={onToggleRightPanel}
+            title={rightPanelOpen ? "Hide side panel" : "Show side panel"}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 28,
+              height: 28,
+              borderRadius: 5,
+              backgroundColor: rightPanelOpen ? "var(--surface-2)" : "transparent",
+              color: rightPanelOpen ? "var(--accent)" : "var(--text-3)",
+              border: rightPanelOpen ? "1px solid var(--border)" : "1px solid transparent",
+              cursor: "pointer",
+              transition: "background-color 150ms, color 150ms",
+            }}
+          >
+            <PanelRight size={15} strokeWidth={1.5} />
+          </button>
         )}
       </div>
 
@@ -617,7 +663,7 @@ function MainArea({
           />
           <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {messages.length === 0 ? (
-              /* ── Empty state: centered hero + composer ── */
+              /* ── Empty state ── */
               <div
                 style={{
                   flex: 1,
@@ -625,60 +671,62 @@ function MainArea({
                   flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
-                  padding: "0 24px 48px",
-                  gap: 28,
+                  padding: "0 32px 72px",
+                  gap: 16,
                   overflow: "hidden",
                 }}
               >
-                {/* Hero */}
-                <div style={{ textAlign: "center" }}>
-                  <h1
-                    style={{
-                      fontSize: 26,
-                      fontWeight: 700,
-                      color: "var(--text)",
-                      letterSpacing: "-0.03em",
-                      margin: 0,
-                      marginBottom: 8,
-                    }}
-                  >
-                    How can I help you?
-                  </h1>
-                  <p style={{ fontSize: 13, color: "var(--text-3)", margin: 0 }}>
-                    Private, local AI — no cloud, no tracking.
-                  </p>
-                </div>
-
-                {/* Starter prompt cards */}
-                <div
+                <h1
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 10,
-                    width: "100%",
-                    maxWidth: 560,
+                    fontSize: 24,
+                    fontWeight: 600,
+                    color: "var(--text)",
+                    letterSpacing: "-0.025em",
+                    margin: 0,
                   }}
                 >
+                  What can I help with?
+                </h1>
+
+                {/* Composer prominent and centered */}
+                <div style={{ width: "100%", maxWidth: 660 }}>
+                  <Composer
+                    onSend={onSend}
+                    onStop={onStop}
+                    isStreaming={isStreaming}
+                    disabled={ollamaRunning === false}
+                    memoryEnabled={memoryEnabled}
+                    onMemoryToggle={onMemoryToggle}
+                    knowledgeEnabled={knowledgeEnabled}
+                    onKnowledgeToggle={onKnowledgeToggle}
+                    webSearchEnabled={webSearchEnabled}
+                    onWebSearchToggle={onWebSearchToggle}
+                    draft={composerDraft}
+                    onDraftApplied={onComposerDraftApplied}
+                  />
+                </div>
+
+                {/* Suggestion chips below composer */}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", maxWidth: 660 }}>
                   {[
-                    { label: "Summarize a document", prompt: "Please summarize the following document for me:" },
-                    { label: "Draft an email", prompt: "Help me draft a professional email about:" },
-                    { label: "Explain a concept", prompt: "Can you explain in simple terms:" },
-                    { label: "Brainstorm ideas", prompt: "Help me brainstorm ideas for:" },
-                  ].map(({ label, prompt }) => (
+                    { label: "Summarize a document", text: "Please summarize this document for me:" },
+                    { label: "Draft an email", text: "Help me draft a professional email about:" },
+                    { label: "Explain a concept", text: "Can you explain this to me:" },
+                    { label: "Brainstorm ideas", text: "Help me brainstorm ideas for:" },
+                  ].map(({ label, text }) => (
                     <button
                       key={label}
-                      onClick={() => onSend(prompt)}
+                      onClick={() => onSetComposerDraft(text)}
                       style={{
-                        padding: "12px 14px",
+                        padding: "6px 14px",
                         backgroundColor: "var(--surface)",
                         border: "1px solid var(--border)",
-                        borderRadius: 8,
-                        fontSize: 13,
+                        borderRadius: 999,
+                        fontSize: 12,
                         color: "var(--text-2)",
-                        textAlign: "left",
                         cursor: "pointer",
-                        transition: "border-color 0.15s, color 0.15s",
-                        lineHeight: 1.4,
+                        transition: "border-color 0.12s, color 0.12s",
+                        whiteSpace: "nowrap",
                       }}
                       onMouseEnter={(e) => {
                         (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)";
@@ -692,22 +740,6 @@ function MainArea({
                       {label}
                     </button>
                   ))}
-                </div>
-
-                {/* Composer centered below cards */}
-                <div style={{ width: "100%", maxWidth: 620 }}>
-                  <Composer
-                    onSend={onSend}
-                    onStop={onStop}
-                    isStreaming={isStreaming}
-                    disabled={ollamaRunning === false}
-                    memoryEnabled={memoryEnabled}
-                    onMemoryToggle={onMemoryToggle}
-                    knowledgeEnabled={knowledgeEnabled}
-                    onKnowledgeToggle={onKnowledgeToggle}
-                    webSearchEnabled={webSearchEnabled}
-                    onWebSearchToggle={onWebSearchToggle}
-                  />
                 </div>
               </div>
             ) : (
@@ -730,6 +762,8 @@ function MainArea({
                   onKnowledgeToggle={onKnowledgeToggle}
                   webSearchEnabled={webSearchEnabled}
                   onWebSearchToggle={onWebSearchToggle}
+                  draft={composerDraft}
+                  onDraftApplied={onComposerDraftApplied}
                 />
               </>
             )}
@@ -940,121 +974,90 @@ function RightPanel({ memories, webSources, onDeleteMemory }: RightPanelProps) {
         overflowY: "auto",
       }}
     >
-      {/* Used Memory */}
-      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Used Memory
-        </span>
-        <div style={{ marginTop: 8 }}>
-          {memories.length === 0 ? (
-            <p style={{ fontSize: 12, color: "var(--text-3)" }}>No memories yet</p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {memories.map((m) => (
-                <div
-                  key={m.id}
+      {/* Used Memory — only rendered when there are memories */}
+      {memories.length > 0 && (
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Used Memory
+          </span>
+          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+            {memories.map((m) => (
+              <div
+                key={m.id}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 6,
+                  backgroundColor: "var(--surface-2)",
+                  borderRadius: 4,
+                  padding: "6px 8px",
+                }}
+              >
+                <span style={{ fontSize: 12, color: "var(--text-2)", flex: 1, lineHeight: 1.4 }}>
+                  {m.content}
+                </span>
+                <button
+                  onClick={() => onDeleteMemory(m.id)}
+                  title="Delete memory"
                   style={{
                     display: "flex",
-                    alignItems: "flex-start",
-                    gap: 6,
-                    backgroundColor: "var(--surface-2)",
-                    borderRadius: 4,
-                    padding: "6px 8px",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 16,
+                    height: 16,
+                    borderRadius: 3,
+                    color: "var(--text-3)",
+                    flexShrink: 0,
+                    marginTop: 1,
                   }}
                 >
-                  <span style={{ fontSize: 12, color: "var(--text-2)", flex: 1, lineHeight: 1.4 }}>
-                    {m.content}
-                  </span>
-                  <button
-                    onClick={() => onDeleteMemory(m.id)}
-                    title="Delete memory"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      width: 16,
-                      height: 16,
-                      borderRadius: 3,
-                      color: "var(--text-3)",
-                      flexShrink: 0,
-                      marginTop: 1,
-                    }}
-                  >
-                    <X size={10} strokeWidth={1.5} />
-                  </button>
+                  <X size={10} strokeWidth={1.5} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Sources — only rendered when web search returned results */}
+      {webSources.length > 0 && (
+        <div style={{ padding: "12px 16px" }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Sources
+          </span>
+          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+            {webSources.map((s, i) => (
+              <a
+                key={i}
+                href={s.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "block",
+                  backgroundColor: "var(--surface-2)",
+                  borderRadius: 4,
+                  padding: "7px 9px",
+                  textDecoration: "none",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", lineHeight: 1.3, marginBottom: 3 }}>
+                  {s.title || s.url}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Sources */}
-      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Sources
-        </span>
-        <div style={{ marginTop: 8 }}>
-          {webSources.length === 0 ? (
-            <p style={{ fontSize: 12, color: "var(--text-3)" }}>No sources</p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {webSources.map((s, i) => (
-                <a
-                  key={i}
-                  href={s.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    display: "block",
-                    backgroundColor: "var(--surface-2)",
-                    borderRadius: 4,
-                    padding: "7px 9px",
-                    textDecoration: "none",
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", lineHeight: 1.3, marginBottom: 3 }}>
-                    {s.title || s.url}
+                <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 4, wordBreak: "break-all" }}>
+                  {s.url}
+                </div>
+                {s.snippet && (
+                  <div style={{ fontSize: 11, color: "var(--text-2)", lineHeight: 1.4 }}>
+                    {s.snippet.slice(0, 120)}{s.snippet.length > 120 ? "..." : ""}
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 4, wordBreak: "break-all" }}>
-                    {s.url}
-                  </div>
-                  {s.snippet && (
-                    <div style={{ fontSize: 11, color: "var(--text-2)", lineHeight: 1.4 }}>
-                      {s.snippet.slice(0, 120)}{s.snippet.length > 120 ? "..." : ""}
-                    </div>
-                  )}
-                </a>
-              ))}
-            </div>
-          )}
+                )}
+              </a>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Tool Activity placeholder */}
-      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Tool Activity
-        </span>
-        <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 8 }}>No data</p>
-      </div>
-
-      {/* Suggested Saves placeholder */}
-      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Suggested Saves
-        </span>
-        <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 8 }}>No data</p>
-      </div>
-
-      {/* Permissions placeholder */}
-      <div style={{ padding: "12px 16px" }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Permissions
-        </span>
-        <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 8 }}>No data</p>
-      </div>
     </aside>
   );
 }
