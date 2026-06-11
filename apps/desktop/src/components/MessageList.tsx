@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { BrainCircuit, ChevronDown, ChevronRight } from "lucide-react";
+import { BrainCircuit, ChevronDown, ChevronRight, Copy, Check } from "lucide-react";
 import { Message } from "../types";
 
 interface MessageListProps {
@@ -34,33 +34,7 @@ export function MessageList({
   }, [messages, followUpQuestions]);
 
   if (messages.length === 0) {
-    return (
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 12,
-          padding: 32,
-        }}
-      >
-        <p
-          style={{
-            fontSize: 20,
-            fontWeight: 600,
-            color: "var(--text-2)",
-            letterSpacing: "-0.02em",
-          }}
-        >
-          LocalMind
-        </p>
-        <p style={{ fontSize: 13, color: "var(--text-3)" }}>
-          Private, local AI - no cloud, no tracking.
-        </p>
-      </div>
-    );
+    return <div style={{ flex: 1 }} />;
   }
 
   const showChips =
@@ -628,9 +602,22 @@ function MessageBubble({ message, streaming }: MessageBubbleProps) {
 
   const hasThinking = !!(message.thinking || message.isThinking);
   const stillThinking = !!message.isThinking;
+  const [hovered, setHovered] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(message.content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [message.content]);
 
   return (
-    <div style={{ display: "flex", justifyContent: "flex-start" }}>
+    <div
+      style={{ display: "flex", justifyContent: "flex-start", flexDirection: "column" }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       <div
         style={{
           fontSize: 14,
@@ -661,6 +648,43 @@ function MessageBubble({ message, streaming }: MessageBubbleProps) {
           </span>
         )}
       </div>
+
+      {/* Action bar — shown on hover, hidden while streaming */}
+      {!streaming && (
+        <div
+          style={{
+            display: "flex",
+            gap: 4,
+            marginTop: 4,
+            opacity: hovered ? 1 : 0,
+            transition: "opacity 0.15s",
+            pointerEvents: hovered ? "auto" : "none",
+          }}
+        >
+          <button
+            onClick={handleCopy}
+            title={copied ? "Copied!" : "Copy response"}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              fontSize: 11,
+              padding: "3px 8px",
+              borderRadius: 4,
+              backgroundColor: "var(--surface-2)",
+              border: "1px solid var(--border)",
+              color: copied ? "var(--accent)" : "var(--text-3)",
+              cursor: "pointer",
+              transition: "color 0.15s",
+            }}
+          >
+            {copied
+              ? <><Check size={11} strokeWidth={2} /> Copied</>
+              : <><Copy size={11} strokeWidth={1.5} /> Copy</>
+            }
+          </button>
+        </div>
+      )}
     </div>
   );
 }
