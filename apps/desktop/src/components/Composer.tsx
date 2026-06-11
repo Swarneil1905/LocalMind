@@ -2,11 +2,19 @@
 //
 // - Auto-resizing textarea, min 48px max 240px
 // - Enter submits, Shift+Enter adds a new line
-// - Toolbar with Send / Stop button
-// - Stop button appears only while streaming
+// - Toolbar: model mode selector (left), feature toggles (left), Send/Stop (right)
+// - Stop rendered as a filled circle (Copilot-style)
+// - Model mode selector lives here, not in the header
 
-import { useCallback, useEffect, useRef } from "react";
-import { BookOpen, Brain, Globe, Send, Square } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { BookOpen, Brain, ChevronDown, Globe, Send } from "lucide-react";
+import type { ModelMode } from "../types";
+
+const MODE_LABELS: Record<ModelMode, string> = {
+  speed: "Speed",
+  balanced: "Balanced",
+  boost: "Boost",
+};
 
 interface ComposerProps {
   onSend: (text: string) => void;
@@ -19,6 +27,9 @@ interface ComposerProps {
   onKnowledgeToggle: () => void;
   webSearchEnabled: boolean;
   onWebSearchToggle: () => void;
+  modelMode: ModelMode;
+  onModelModeChange: (mode: ModelMode) => void;
+  ollamaRunning: boolean | null;
   /** Pre-fill the textarea with this text and focus it. Clear after use. */
   draft?: string;
   onDraftApplied?: () => void;
@@ -35,10 +46,15 @@ export function Composer({
   onKnowledgeToggle,
   webSearchEnabled,
   onWebSearchToggle,
+  modelMode,
+  onModelModeChange,
+  ollamaRunning,
   draft,
   onDraftApplied,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [modeOpen, setModeOpen] = useState(false);
+  const modeRef = useRef<HTMLDivElement>(null);
 
   // Auto-resize the textarea as the user types
   const resize = useCallback(() => {
@@ -52,6 +68,18 @@ export function Composer({
     resize();
   }, [resize]);
 
+  // Close mode dropdown on outside click
+  useEffect(() => {
+    if (!modeOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (modeRef.current && !modeRef.current.contains(e.target as Node)) {
+        setModeOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [modeOpen]);
+
   // When a draft is injected from outside, set it and focus
   useEffect(() => {
     if (!draft) return;
@@ -59,7 +87,6 @@ export function Composer({
     if (el) {
       el.value = draft;
       el.focus();
-      // Place cursor at end
       el.selectionStart = el.selectionEnd = draft.length;
       resize();
     }
@@ -74,7 +101,6 @@ export function Composer({
         const value = textareaRef.current?.value.trim();
         if (!value) return;
         onSend(value);
-        // Clear and reset height
         if (textareaRef.current) {
           textareaRef.current.value = "";
           textareaRef.current.style.height = "auto";
@@ -94,11 +120,43 @@ export function Composer({
     }
   }, [isStreaming, disabled, onSend]);
 
+  const toolBtn = (
+    active: boolean,
+    onClick: () => void,
+    icon: React.ReactNode,
+    label: string,
+    title: string
+  ) => (
+    <button
+      onClick={onClick}
+      title={title}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 5,
+        height: 26,
+        padding: "0 9px",
+        borderRadius: 6,
+        backgroundColor: active ? "var(--accent-dim)" : "transparent",
+        border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+        color: active ? "var(--accent)" : "var(--text-3)",
+        fontSize: 11,
+        fontWeight: active ? 500 : 400,
+        cursor: "pointer",
+        transition: "border-color 0.12s, color 0.12s, background-color 0.12s",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+
   return (
     <div
       style={{
         borderTop: "1px solid var(--border)",
-        padding: "10px 16px 12px",
+        padding: "10px 16px 10px",
         flexShrink: 0,
         backgroundColor: "var(--bg)",
       }}
@@ -107,9 +165,10 @@ export function Composer({
         style={{
           backgroundColor: "var(--surface)",
           border: "1px solid var(--border)",
-          borderRadius: 6,
+          borderRadius: 14,
           display: "flex",
           flexDirection: "column",
+          transition: "border-color 0.15s",
         }}
       >
         {/* Textarea */}
@@ -117,7 +176,7 @@ export function Composer({
           ref={textareaRef}
           onKeyDown={handleKeyDown}
           onInput={resize}
-          placeholder="Message LocalMind"
+          placeholder="Message LocalMind..."
           disabled={disabled}
           style={{
             resize: "none",
@@ -125,13 +184,14 @@ export function Composer({
             outline: "none",
             backgroundColor: "transparent",
             color: "var(--text)",
-            fontSize: 13,
-            lineHeight: 1.5,
-            padding: "10px 14px 6px",
-            minHeight: 40,
-            maxHeight: 200,
+            fontSize: 14,
+            lineHeight: 1.6,
+            padding: "14px 16px 6px",
+            minHeight: 44,
+            maxHeight: 220,
             fontFamily: "inherit",
             overflowY: "auto",
+            borderRadius: "14px 14px 0 0",
           }}
           rows={1}
         />
@@ -142,80 +202,112 @@ export function Composer({
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "4px 8px 8px",
+            padding: "6px 10px 10px",
             gap: 6,
           }}
         >
-          {/* Left side: memory + knowledge + web search toggles */}
-          <div style={{ display: "flex", gap: 6 }}>
-            <button
-              onClick={onMemoryToggle}
-              title={memoryEnabled ? "Memory on - click to disable" : "Memory off - click to enable"}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                height: 24,
-                padding: "0 8px",
-                borderRadius: 4,
-                backgroundColor: memoryEnabled ? "var(--accent-dim)" : "transparent",
-                border: `1px solid ${memoryEnabled ? "var(--accent)" : "var(--border)"}`,
-                color: memoryEnabled ? "var(--accent)" : "var(--text-3)",
-                fontSize: 11,
-                cursor: "pointer",
-              }}
-            >
-              <Brain size={12} strokeWidth={1.5} />
-              Memory
-            </button>
+          {/* Left side: model mode + feature toggles */}
+          <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
+            {/* Model mode dropdown */}
+            <div ref={modeRef} style={{ position: "relative" }}>
+              <button
+                onClick={() => setModeOpen((v) => !v)}
+                disabled={ollamaRunning === false}
+                title="Switch model mode"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  height: 26,
+                  padding: "0 9px",
+                  borderRadius: 6,
+                  backgroundColor: "var(--surface-2)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text-2)",
+                  fontSize: 11,
+                  fontWeight: 500,
+                  cursor: ollamaRunning === false ? "not-allowed" : "pointer",
+                  opacity: ollamaRunning === false ? 0.5 : 1,
+                }}
+              >
+                {MODE_LABELS[modelMode]}
+                <ChevronDown size={10} strokeWidth={2} />
+              </button>
 
-            <button
-              onClick={onKnowledgeToggle}
-              title={knowledgeEnabled ? "Knowledge on - click to disable" : "Knowledge off - click to enable"}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                height: 24,
-                padding: "0 8px",
-                borderRadius: 4,
-                backgroundColor: knowledgeEnabled ? "var(--accent-dim)" : "transparent",
-                border: `1px solid ${knowledgeEnabled ? "var(--accent)" : "var(--border)"}`,
-                color: knowledgeEnabled ? "var(--accent)" : "var(--text-3)",
-                fontSize: 11,
-                cursor: "pointer",
-              }}
-            >
-              <BookOpen size={12} strokeWidth={1.5} />
-              Knowledge
-            </button>
+              {modeOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: "calc(100% + 6px)",
+                    left: 0,
+                    backgroundColor: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    padding: 4,
+                    zIndex: 100,
+                    minWidth: 120,
+                    boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
+                  }}
+                >
+                  {(["speed", "balanced"] as ModelMode[]).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => { onModelModeChange(m); setModeOpen(false); }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        width: "100%",
+                        padding: "7px 10px",
+                        borderRadius: 5,
+                        backgroundColor: modelMode === m ? "var(--surface-2)" : "transparent",
+                        border: "none",
+                        color: modelMode === m ? "var(--text)" : "var(--text-2)",
+                        fontSize: 12,
+                        fontWeight: modelMode === m ? 600 : 400,
+                        cursor: "pointer",
+                        textAlign: "left",
+                        gap: 8,
+                      }}
+                    >
+                      <span>{MODE_LABELS[m]}</span>
+                      {modelMode === m && (
+                        <span style={{ fontSize: 10, color: "var(--accent)" }}>&#10003;</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
-            <button
-              onClick={onWebSearchToggle}
-              title={webSearchEnabled ? "Web search on - click to disable" : "Web search off - click to enable"}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                height: 24,
-                padding: "0 8px",
-                borderRadius: 4,
-                backgroundColor: webSearchEnabled ? "var(--accent-dim)" : "transparent",
-                border: `1px solid ${webSearchEnabled ? "var(--accent)" : "var(--border)"}`,
-                color: webSearchEnabled ? "var(--accent)" : "var(--text-3)",
-                fontSize: 11,
-                cursor: "pointer",
-              }}
-            >
-              <Globe size={12} strokeWidth={1.5} />
-              Search
-            </button>
+            <span style={{ width: 1, height: 16, backgroundColor: "var(--border)", flexShrink: 0 }} />
+
+            {toolBtn(
+              memoryEnabled,
+              onMemoryToggle,
+              <Brain size={11} strokeWidth={1.5} />,
+              "Memory",
+              memoryEnabled ? "Memory on" : "Memory off"
+            )}
+            {toolBtn(
+              knowledgeEnabled,
+              onKnowledgeToggle,
+              <BookOpen size={11} strokeWidth={1.5} />,
+              "Knowledge",
+              knowledgeEnabled ? "Knowledge on" : "Knowledge off"
+            )}
+            {toolBtn(
+              webSearchEnabled,
+              onWebSearchToggle,
+              <Globe size={11} strokeWidth={1.5} />,
+              "Search",
+              webSearchEnabled ? "Web search on" : "Web search off"
+            )}
           </div>
 
-          {/* Send / Stop - right side */}
-          <div style={{ display: "flex", gap: 6 }}>
+          {/* Right side: Send / Stop */}
+          <div style={{ flexShrink: 0 }}>
             {isStreaming ? (
-              // Stop button - square icon, shown only while streaming
               <button
                 onClick={onStop}
                 title="Stop generation"
@@ -223,18 +315,20 @@ export function Composer({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  width: 28,
-                  height: 28,
-                  borderRadius: 4,
-                  backgroundColor: "var(--surface-2)",
-                  color: "var(--text-2)",
+                  width: 30,
+                  height: 30,
+                  borderRadius: "50%",
+                  backgroundColor: "var(--accent)",
+                  border: "none",
                   cursor: "pointer",
                 }}
               >
-                <Square size={14} strokeWidth={1.5} />
+                {/* Filled square stop icon */}
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="white">
+                  <rect x="1" y="1" width="8" height="8" rx="1.5" />
+                </svg>
               </button>
             ) : (
-              // Send button
               <button
                 onClick={handleSendClick}
                 disabled={disabled}
@@ -243,15 +337,17 @@ export function Composer({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  width: 28,
-                  height: 28,
-                  borderRadius: 4,
+                  width: 30,
+                  height: 30,
+                  borderRadius: "50%",
                   backgroundColor: disabled ? "var(--surface-2)" : "var(--accent)",
-                               color: disabled ? "var(--text-3)" : "#fff",
+                  border: "none",
+                  color: disabled ? "var(--text-3)" : "#fff",
                   cursor: disabled ? "not-allowed" : "pointer",
+                  transition: "background-color 0.12s",
                 }}
               >
-                <Send size={14} strokeWidth={1.5} />
+                <Send size={13} strokeWidth={2} />
               </button>
             )}
           </div>
@@ -260,13 +356,14 @@ export function Composer({
 
       <p
         style={{
-          marginTop: 6,
+          marginTop: 5,
           fontSize: 11,
           color: "var(--text-3)",
           textAlign: "center",
+          opacity: 0.7,
         }}
       >
-        Enter to send · Shift+Enter for new line
+        Enter to send &middot; Shift+Enter for new line
       </p>
     </div>
   );
