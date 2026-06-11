@@ -37,6 +37,9 @@ apps/desktop/src-tauri/target/
 .DS_Store
 Thumbs.db
 
+# Local dev spec (not for public repo)
+LOCALMIND_MASTER_SPEC.md
+
 # Logs
 *.log
 logs/

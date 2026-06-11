@@ -88,7 +88,6 @@ jobs:
           version: 9
 
       - name: Install frontend dependencies
-        working-directory: apps/desktop
         run: pnpm install --frozen-lockfile
 
       # ── Python sidecar ──
