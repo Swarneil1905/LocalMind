@@ -165,6 +165,54 @@ async def _stream_ollama(request: ChatRequest) -> AsyncIterator[str]:
         yield f"data: {error}\n\n"
 
 
+class FollowUpRequest(BaseModel):
+    last_user: str
+    last_assistant: str
+    model: str = "qwen2.5:1.5b"
+
+
+@router.post("/followups")
+async def get_followups(request: FollowUpRequest) -> dict:
+    """
+    Generate 3 follow-up questions based on the last conversation turn.
+    Uses the Speed model locally. Returns {"questions": [...]}.
+    Falls back to an empty list on any error.
+    """
+    prompt = (
+        "Based on this conversation, generate exactly 3 concise follow-up questions "
+        "the user might want to ask next. Return ONLY a valid JSON array of 3 strings, "
+        "nothing else — no explanation, no markdown, no code block.\n\n"
+        f"User: {request.last_user}\n\n"
+        f"Assistant: {request.last_assistant}\n\n"
+        "Follow-up questions (JSON array only):"
+    )
+
+    payload = {
+        "model": request.model,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": False,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+            resp = await client.post(f"{OLLAMA_BASE}/api/chat", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            raw = data.get("message", {}).get("content", "[]").strip()
+            # Strip any accidental markdown fences
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            questions = json.loads(raw)
+            if isinstance(questions, list):
+                return {"questions": [str(q) for q in questions[:4]]}
+    except Exception:
+        pass
+
+    return {"questions": []}
+
+
 @router.post("/stream")
 async def chat_stream(request: ChatRequest) -> StreamingResponse:
     return StreamingResponse(
