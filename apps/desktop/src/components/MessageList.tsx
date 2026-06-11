@@ -579,6 +579,17 @@ interface MessageBubbleProps {
 function MessageBubble({ message, streaming }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
+  // All hooks must be called unconditionally before any early return
+  const [hovered, setHovered] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(message.content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [message.content]);
+
   if (isUser) {
     return (
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
@@ -602,15 +613,6 @@ function MessageBubble({ message, streaming }: MessageBubbleProps) {
 
   const hasThinking = !!(message.thinking || message.isThinking);
   const stillThinking = !!message.isThinking;
-  const [hovered, setHovered] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(message.content).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }, [message.content]);
 
   return (
     <div
@@ -704,7 +706,7 @@ function StreamingCursor() {
         borderRadius: 1,
         verticalAlign: "text-bottom",
         marginLeft: 2,
-        animation: "blink 1s step-end infinite",
+         animation: "blink 1s step-end infinite",
       }}
     />
   );
