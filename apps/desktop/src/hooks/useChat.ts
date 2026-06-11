@@ -115,6 +115,7 @@ export function useChat({
 }: UseChatOptions) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const [webSources, setWebSources] = useState<WebSource[]>([]);
 
   const streamingIdRef = useRef<string | null>(null);
@@ -148,6 +149,7 @@ export function useChat({
       const id = streamingIdRef.current;
       if (!id) return;
 
+      setIsSearching(false);
       rawBufferRef.current += event.payload.content;
       const { thinking, content, isThinking } = parseThinkTags(rawBufferRef.current);
 
@@ -222,6 +224,7 @@ export function useChat({
     });
 
     listen<ChatSourcesPayload>("chat-sources", (event) => {
+      setIsSearching(false);
       setWebSources(event.payload.sources);
     }).then((fn) => {
       if (cancelled) fn();
@@ -262,6 +265,7 @@ export function useChat({
 
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
       setIsStreaming(true);
+      if (webSearchEnabledRef.current) setIsSearching(true);
       streamingIdRef.current = assistantMsg.id;
       rawBufferRef.current = "";
       lastUserMessageRef.current = trimmed;
@@ -286,6 +290,7 @@ export function useChat({
         streamingIdRef.current = null;
         rawBufferRef.current = "";
         setIsStreaming(false);
+        setIsSearching(false);
         if (id) {
           setMessages((prev) =>
             prev.map((m) =>
@@ -317,7 +322,17 @@ export function useChat({
     streamingIdRef.current = null;
     rawBufferRef.current = "";
     setIsStreaming(false);
+    setIsSearching(false);
   }, []);
 
-  return { messages, isStreaming, webSources, sendMessage, stopStreaming, loadMessages, clearMessages };
+  return {
+    messages,
+    isStreaming,
+    isSearching,
+    webSources,
+    sendMessage,
+    stopStreaming,
+    loadMessages,
+    clearMessages,
+  };
 }
