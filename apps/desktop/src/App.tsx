@@ -5,6 +5,7 @@
 // Phase 5: webSearchEnabled wired through useChat + Composer.
 
 import { useCallback, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -69,13 +70,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: "settings",  label: "Settings",  Icon: Settings        },
 ];
 
-const RIGHT_PANEL_SECTIONS = [
-  "Used memory",
-  "Sources",
-  "Tool activity",
-  "Suggested saves",
-  "Permissions",
-];
 
 const SIDEBAR_EXPANDED = 240;
 const SIDEBAR_COLLAPSED = 48;
@@ -126,10 +120,23 @@ export default function App() {
   // ProjectsPage has its own instance; both stay in sync via Tauri events.
   const { projects, assignConversation } = useProjects();
 
+  const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
+
   // Called by useChat after each successful reply.
   const handleTurnComplete = useCallback(
-    (userContent: string, assistantContent: string, assistantThinking: string | null) => {
+    async (userContent: string, assistantContent: string, assistantThinking: string | null) => {
       saveCurrentTurn(userContent, assistantContent, assistantThinking);
+      // Fetch follow-up question suggestions from the Speed model
+      try {
+        const qs = await invoke<string[]>("get_followup_questions", {
+          lastUser: userContent,
+          lastAssistant: assistantContent.slice(0, 1200), // trim to avoid huge prompts
+          model: undefined,
+        });
+        setFollowUpQuestions(qs ?? []);
+      } catch {
+        setFollowUpQuestions([]);
+      }
     },
     [saveCurrentTurn]
   );
@@ -171,6 +178,7 @@ export default function App() {
   // Wrap sendMessage to auto-create a conversation if none is active.
   const handleSend = useCallback(
     async (text: string) => {
+      setFollowUpQuestions([]); // clear stale follow-ups on new send
       if (!activeConvId) {
         const title = text.trim().slice(0, 40) || "New chat";
         await createConversation(title).catch(() => {});
@@ -232,6 +240,8 @@ export default function App() {
         onDeleteMemory={deleteMemory}
         memoryLinks={memoryLinks}
         onDeleteMemoryLink={deleteMemoryLink}
+        followUpQuestions={followUpQuestions}
+        onSendFollowUp={handleSend}
         onNewConversation={handleNewConversation}
         onSelectConversation={handleSelectConversation}
         onDeleteConversation={deleteConversation}
@@ -407,6 +417,8 @@ interface MainAreaProps {
   onDeleteMemory: (id: string) => void;
   memoryLinks: import("./hooks/useMemory").MemoryLink[];
   onDeleteMemoryLink: (linkId: string) => void;
+  followUpQuestions: string[];
+  onSendFollowUp: (question: string) => void;
   onNewConversation: () => void;
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
@@ -442,6 +454,8 @@ function MainArea({
   onDeleteMemory,
   memoryLinks,
   onDeleteMemoryLink,
+  followUpQuestions,
+  onSendFollowUp,
   onNewConversation,
   onSelectConversation,
   onDeleteConversation,
@@ -533,7 +547,12 @@ function MainArea({
             onRename={onRenameConversation}
           />
           <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            <MessageList messages={messages} isStreaming={isStreaming} />
+            <MessageList
+                messages={messages}
+                isStreaming={isStreaming}
+                followUpQuestions={followUpQuestions}
+                onSendFollowUp={onSendFollowUp}
+              />
             <Composer
               onSend={onSend}
               onStop={onStop}
@@ -861,32 +880,29 @@ function RightPanel({ memories, webSources, onDeleteMemory }: RightPanelProps) {
         </div>
       </div>
 
-      {/* Remaining sections - placeholder until later phases */}
-      {RIGHT_PANEL_SECTIONS.filter((s) => s !== "Used memory" && s !== "Sources").map((section) => (
-        <div
-          key={section}
-          style={{
-            padding: "12px 16px",
-            borderBottom: "1px solid var(--border-subtle)",
-          }}
-        >
-          <span
+      {/* Tool Activity placeholder */}
+      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Tool Activity
+        </span>
+        <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 8 }}>No data</p>
+      </div>
 
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              color: "var(--text-3)",
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-            }}
-          >
-            {section}
-          </span>
-          <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-3)" }}>
-            No data
-          </div>
-        </div>
-      ))}
+      {/* Suggested Saves placeholder */}
+      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Suggested Saves
+        </span>
+        <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 8 }}>No data</p>
+      </div>
+
+      {/* Permissions placeholder */}
+      <div style={{ padding: "12px 16px" }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Permissions
+        </span>
+        <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 8 }}>No data</p>
+      </div>
     </aside>
   );
 }
