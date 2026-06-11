@@ -19,6 +19,9 @@ interface ComposerProps {
   onKnowledgeToggle: () => void;
   webSearchEnabled: boolean;
   onWebSearchToggle: () => void;
+  /** Pre-fill the textarea with this text and focus it. Clear after use. */
+  draft?: string;
+  onDraftApplied?: () => void;
 }
 
 export function Composer({
@@ -32,6 +35,8 @@ export function Composer({
   onKnowledgeToggle,
   webSearchEnabled,
   onWebSearchToggle,
+  draft,
+  onDraftApplied,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -46,6 +51,20 @@ export function Composer({
   useEffect(() => {
     resize();
   }, [resize]);
+
+  // When a draft is injected from outside, set it and focus
+  useEffect(() => {
+    if (!draft) return;
+    const el = textareaRef.current;
+    if (el) {
+      el.value = draft;
+      el.focus();
+      // Place cursor at end
+      el.selectionStart = el.selectionEnd = draft.length;
+      resize();
+    }
+    onDraftApplied?.();
+  }, [draft, resize, onDraftApplied]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -228,7 +247,7 @@ export function Composer({
                   height: 28,
                   borderRadius: 4,
                   backgroundColor: disabled ? "var(--surface-2)" : "var(--accent)",
-                  color: disabled ? "var(--text-3)" : "#fff",
+                               color: disabled ? "var(--text-3)" : "#fff",
                   cursor: disabled ? "not-allowed" : "pointer",
                 }}
               >
