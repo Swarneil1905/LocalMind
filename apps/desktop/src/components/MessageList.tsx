@@ -162,11 +162,59 @@ function FollowUpChips({ questions, onSelect }: FollowUpChipsProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Content preprocessor — converts bare □/☐/☑ Unicode to GFM task list syntax
+// ---------------------------------------------------------------------------
+
+function preprocessContent(content: string): string {
+  // Replace Unicode ballot/checkbox glyphs at the start of list items
+  return content
+    .replace(/^(\s*[-*+])\s+[□☐]\s*/gm, "$1 [ ] ")
+    .replace(/^(\s*[-*+])\s+[☑■✓✔]\s*/gm, "$1 [x] ")
+    // Also handle bare glyphs used as paragraph-level bullets (no leading hyphen)
+    .replace(/^[□☐]\s+/gm, "- [ ] ")
+    .replace(/^[☑■]\s+/gm, "- [x] ");
+}
+
+// ---------------------------------------------------------------------------
 // Markdown component overrides
 // ---------------------------------------------------------------------------
 
 const mdComponents: React.ComponentProps<typeof ReactMarkdown>["components"] =
   {
+    // Render GFM task list checkboxes as styled boxes instead of browser inputs
+    input({ type, checked }) {
+      if (type !== "checkbox") return null;
+      return (
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 14,
+            height: 14,
+            border: `1.5px solid ${checked ? "var(--accent)" : "var(--text-3)"}`,
+            borderRadius: 3,
+            marginRight: 6,
+            marginBottom: -2,
+            backgroundColor: checked ? "var(--accent)" : "transparent",
+            flexShrink: 0,
+            verticalAlign: "middle",
+          }}
+        >
+          {checked && (
+            <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+              <path
+                d="M1 3L3 5L7 1"
+                stroke="white"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+        </span>
+      );
+    },
     p({ children }) {
       return (
         <p
@@ -640,7 +688,7 @@ function MessageBubble({ message, streaming }: MessageBubbleProps) {
         {message.content ? (
           <>
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
-              {message.content}
+              {preprocessContent(message.content)}
             </ReactMarkdown>
             {streaming && !stillThinking && <StreamingCursor />}
           </>
@@ -651,7 +699,7 @@ function MessageBubble({ message, streaming }: MessageBubbleProps) {
         )}
       </div>
 
-      {/* Action bar — shown on hover, hidden while streaming */}
+      {/* Action bar - shown on hover, hidden while streaming */}
       {!streaming && (
         <div
           style={{
@@ -691,10 +739,7 @@ function MessageBubble({ message, streaming }: MessageBubbleProps) {
   );
 }
 
-// ---------------------------------------------------------------------------
 // Streaming cursor
-// ---------------------------------------------------------------------------
-
 function StreamingCursor() {
   return (
     <span
@@ -706,7 +751,7 @@ function StreamingCursor() {
         borderRadius: 1,
         verticalAlign: "text-bottom",
         marginLeft: 2,
-         animation: "blink 1s step-end infinite",
+        animation: "blink 1s step-end infinite",
       }}
     />
   );
