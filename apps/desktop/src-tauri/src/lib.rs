@@ -958,6 +958,31 @@ async fn list_tasks(
 }
 
 #[tauri::command]
+async fn get_followup_questions(
+    last_user: String,
+    last_assistant: String,
+    model: Option<String>,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<Vec<String>, String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/chat/followups")?;
+    let body = serde_json::json!({
+        "last_user": last_user,
+        "last_assistant": last_assistant,
+        "model": model.unwrap_or_else(|| "qwen2.5:1.5b".to_string()),
+    });
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(serde_json::from_value(data["questions"].clone()).unwrap_or_default())
+}
+
+#[tauri::command]
 async fn list_all_tasks(
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<Vec<TaskWithProject>, String> {
@@ -1217,6 +1242,7 @@ pub fn run() {
             list_memory_links,
             create_memory_link,
             delete_memory_link,
+            get_followup_questions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
