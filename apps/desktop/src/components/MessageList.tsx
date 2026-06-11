@@ -11,12 +11,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { BrainCircuit, ChevronDown, ChevronRight, Copy, Check } from "lucide-react";
+import { BrainCircuit, ChevronDown, ChevronRight, Copy, Check, Globe } from "lucide-react";
 import { Message } from "../types";
 
 interface MessageListProps {
   messages: Message[];
   isStreaming: boolean;
+  isSearching?: boolean;
   followUpQuestions?: string[];
   onSendFollowUp?: (question: string) => void;
 }
@@ -24,6 +25,7 @@ interface MessageListProps {
 export function MessageList({
   messages,
   isStreaming,
+  isSearching = false,
   followUpQuestions = [],
   onSendFollowUp,
 }: MessageListProps) {
@@ -31,7 +33,7 @@ export function MessageList({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, followUpQuestions]);
+  }, [messages, followUpQuestions, isSearching]);
 
   if (messages.length === 0) {
     return <div style={{ flex: 1 }} />;
@@ -66,6 +68,37 @@ export function MessageList({
             }
           />
         ))}
+
+        {/* "Searching the web..." card — shown between user send and first token */}
+        {isSearching && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 10,
+              padding: "12px 14px",
+              borderRadius: 10,
+              border: "1px solid var(--border)",
+              backgroundColor: "var(--surface)",
+              maxWidth: 320,
+              animation: "fadeIn 0.2s ease",
+            }}
+          >
+            <Globe
+              size={14}
+              strokeWidth={1.5}
+              style={{ color: "var(--accent)", flexShrink: 0, marginTop: 1 }}
+            />
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", margin: 0, lineHeight: 1.4 }}>
+                Searching the web
+              </p>
+              <p style={{ fontSize: 11, color: "var(--text-3)", margin: "2px 0 0", lineHeight: 1.3 }}>
+                Looking for relevant information...
+              </p>
+            </div>
+          </div>
+        )}
 
         {showChips && onSendFollowUp && (
           <FollowUpChips
@@ -644,11 +677,12 @@ function MessageBubble({ message, streaming }: MessageBubbleProps) {
         <div
           style={{
             backgroundColor: "var(--surface-2)",
-            borderRadius: 6,
-            padding: "10px 14px",
+            borderRadius: "18px 18px 4px 18px",
+            padding: "10px 16px",
             fontSize: 14,
+            lineHeight: 1.6,
             color: message.error ? "var(--text-3)" : "var(--text)",
-            maxWidth: "80%",
+            maxWidth: "75%",
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
           }}
@@ -739,7 +773,6 @@ function MessageBubble({ message, streaming }: MessageBubbleProps) {
   );
 }
 
-// Streaming cursor
 function StreamingCursor() {
   return (
     <span
