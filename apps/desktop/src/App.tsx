@@ -4,7 +4,7 @@
 // Phase 4: Projects wired in, project selector in chat header.
 // Phase 5: webSearchEnabled wired through useChat + Composer.
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   LayoutDashboard,
@@ -18,6 +18,9 @@ import {
   ChevronRight,
   X,
   FolderOpen as FolderIcon,
+  Monitor,
+  Sun,
+  Moon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Composer } from "./components/Composer";
@@ -102,6 +105,21 @@ export default function App() {
   const [knowledgeEnabled, setKnowledgeEnabled] = useState(false);
   const [hydeEnabled, setHydeEnabled] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light" | "system">(
+    () => (localStorage.getItem("lm-theme") as "dark" | "light" | "system") ?? "dark"
+  );
+
+  // Apply theme class to <html> element
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === "system") {
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      root.classList.toggle("light", !prefersDark);
+    } else {
+      root.classList.toggle("light", theme === "light");
+    }
+    localStorage.setItem("lm-theme", theme);
+  }, [theme]);
 
   const ollamaStatus = useOllama();
   const { memories, links: memoryLinks, deleteMemory, deleteLink: deleteMemoryLink } = useMemory();
@@ -209,8 +227,10 @@ export default function App() {
         collapsed={sidebarCollapsed}
         activePage={activePage}
         ollamaRunning={ollamaStatus?.running ?? null}
+        theme={theme}
         onNavigate={setActivePage}
         onToggle={() => setSidebarCollapsed((c) => !c)}
+        onThemeChange={setTheme}
       />
       <MainArea
         activePage={activePage}
@@ -261,11 +281,13 @@ interface SidebarProps {
   collapsed: boolean;
   activePage: PageId;
   ollamaRunning: boolean | null;
+  theme: "dark" | "light" | "system";
   onNavigate: (page: PageId) => void;
   onToggle: () => void;
+  onThemeChange: (t: "dark" | "light" | "system") => void;
 }
 
-function Sidebar({ collapsed, activePage, ollamaRunning, onNavigate, onToggle }: SidebarProps) {
+function Sidebar({ collapsed, activePage, ollamaRunning, theme, onNavigate, onToggle, onThemeChange }: SidebarProps) {
   const width = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED;
 
   return (
@@ -349,38 +371,85 @@ function Sidebar({ collapsed, activePage, ollamaRunning, onNavigate, onToggle }:
         })}
       </nav>
 
-      {/* Ollama status dot */}
-      {!collapsed && (
+      {/* Footer: Ollama status + theme toggle */}
+      <div
+        style={{
+          padding: collapsed ? "10px 8px" : "10px 12px",
+          borderTop: "1px solid var(--border)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          flexShrink: 0,
+        }}
+      >
+        {/* Ollama status */}
+        {!collapsed && (
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                backgroundColor:
+                  ollamaRunning === null
+                    ? "var(--text-3)"
+                    : ollamaRunning
+                    ? "#22c55e"
+                    : "#ef4444",
+                display: "block",
+                flexShrink: 0,
+              }}
+            />
+            <span style={{ fontSize: 11, color: "var(--text-3)" }}>
+              {ollamaRunning === null ? "Checking..." : ollamaRunning ? "Ollama running" : "Ollama offline"}
+            </span>
+          </div>
+        )}
+
+        {/* Theme toggle: Monitor / Sun / Moon */}
         <div
           style={{
-            padding: "10px 16px",
-            borderTop: "1px solid var(--border)",
             display: "flex",
-            alignItems: "center",
-            gap: 7,
-            flexShrink: 0,
+            gap: 2,
+            backgroundColor: "var(--surface-2)",
+            borderRadius: 6,
+            padding: 2,
+            justifyContent: collapsed ? "center" : undefined,
           }}
         >
-          <span
-            style={{
-              width: 7,
-              height: 7,
-              borderRadius: "50%",
-              backgroundColor:
-                ollamaRunning === null
-                  ? "var(--text-3)"
-                  : ollamaRunning
-                  ? "#22c55e"
-                  : "#ef4444",
-              display: "block",
-              flexShrink: 0,
-            }}
-          />
-          <span style={{ fontSize: 11, color: "var(--text-3)" }}>
-            {ollamaRunning === null ? "Checking..." : ollamaRunning ? "Ollama running" : "Ollama offline"}
-          </span>
+          {(
+            [
+              { id: "system" as const, Icon: Monitor, label: "System theme" },
+              { id: "light"  as const, Icon: Sun,     label: "Light theme"  },
+              { id: "dark"   as const, Icon: Moon,    label: "Dark theme"   },
+            ] as const
+          ).map(({ id, Icon, label }) => {
+            const active = theme === id;
+            return (
+              <button
+                key={id}
+                onClick={() => onThemeChange(id)}
+                title={label}
+                style={{
+                  flex: collapsed ? undefined : 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "4px 0",
+                  borderRadius: 4,
+                  backgroundColor: active ? "var(--surface)" : "transparent",
+                  color: active ? "var(--accent)" : "var(--text-3)",
+                  border: active ? "1px solid var(--border)" : "1px solid transparent",
+                  cursor: "pointer",
+                  transition: "background-color 150ms, color 150ms",
+                }}
+              >
+                <Icon size={13} strokeWidth={1.5} />
+              </button>
+            );
+          })}
         </div>
-      )}
+      </div>
     </aside>
   );
 }
@@ -547,24 +616,123 @@ function MainArea({
             onRename={onRenameConversation}
           />
           <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            <MessageList
-                messages={messages}
-                isStreaming={isStreaming}
-                followUpQuestions={followUpQuestions}
-                onSendFollowUp={onSendFollowUp}
-              />
-            <Composer
-              onSend={onSend}
-              onStop={onStop}
-              isStreaming={isStreaming}
-              disabled={ollamaRunning === false}
-              memoryEnabled={memoryEnabled}
-              onMemoryToggle={onMemoryToggle}
-              knowledgeEnabled={knowledgeEnabled}
-              onKnowledgeToggle={onKnowledgeToggle}
-              webSearchEnabled={webSearchEnabled}
-              onWebSearchToggle={onWebSearchToggle}
-            />
+            {messages.length === 0 ? (
+              /* ── Empty state: centered hero + composer ── */
+              <div
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "0 24px 48px",
+                  gap: 28,
+                  overflow: "hidden",
+                }}
+              >
+                {/* Hero */}
+                <div style={{ textAlign: "center" }}>
+                  <h1
+                    style={{
+                      fontSize: 26,
+                      fontWeight: 700,
+                      color: "var(--text)",
+                      letterSpacing: "-0.03em",
+                      margin: 0,
+                      marginBottom: 8,
+                    }}
+                  >
+                    How can I help you?
+                  </h1>
+                  <p style={{ fontSize: 13, color: "var(--text-3)", margin: 0 }}>
+                    Private, local AI — no cloud, no tracking.
+                  </p>
+                </div>
+
+                {/* Starter prompt cards */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 10,
+                    width: "100%",
+                    maxWidth: 560,
+                  }}
+                >
+                  {[
+                    { label: "Summarize a document", prompt: "Please summarize the following document for me:" },
+                    { label: "Draft an email", prompt: "Help me draft a professional email about:" },
+                    { label: "Explain a concept", prompt: "Can you explain in simple terms:" },
+                    { label: "Brainstorm ideas", prompt: "Help me brainstorm ideas for:" },
+                  ].map(({ label, prompt }) => (
+                    <button
+                      key={label}
+                      onClick={() => onSend(prompt)}
+                      style={{
+                        padding: "12px 14px",
+                        backgroundColor: "var(--surface)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        fontSize: 13,
+                        color: "var(--text-2)",
+                        textAlign: "left",
+                        cursor: "pointer",
+                        transition: "border-color 0.15s, color 0.15s",
+                        lineHeight: 1.4,
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)";
+                        (e.currentTarget as HTMLButtonElement).style.color = "var(--text)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
+                        (e.currentTarget as HTMLButtonElement).style.color = "var(--text-2)";
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Composer centered below cards */}
+                <div style={{ width: "100%", maxWidth: 620 }}>
+                  <Composer
+                    onSend={onSend}
+                    onStop={onStop}
+                    isStreaming={isStreaming}
+                    disabled={ollamaRunning === false}
+                    memoryEnabled={memoryEnabled}
+                    onMemoryToggle={onMemoryToggle}
+                    knowledgeEnabled={knowledgeEnabled}
+                    onKnowledgeToggle={onKnowledgeToggle}
+                    webSearchEnabled={webSearchEnabled}
+                    onWebSearchToggle={onWebSearchToggle}
+                  />
+                </div>
+              </div>
+            ) : (
+              /* ── Normal chat layout ── */
+              <>
+                <MessageList
+                  messages={messages}
+                  isStreaming={isStreaming}
+                  followUpQuestions={followUpQuestions}
+                  onSendFollowUp={onSendFollowUp}
+                />
+                <Composer
+                  onSend={onSend}
+                  onStop={onStop}
+                  isStreaming={isStreaming}
+                  disabled={ollamaRunning === false}
+                  memoryEnabled={memoryEnabled}
+                  onMemoryToggle={onMemoryToggle}
+                  knowledgeEnabled={knowledgeEnabled}
+                  onKnowledgeToggle={onKnowledgeToggle}
+                  webSearchEnabled={webSearchEnabled}
+                  onWebSearchToggle={onWebSearchToggle}
+                />
+              </>
+            )}
           </div>
         </div>
       ) : activePage === "knowledge" ? (
@@ -718,7 +886,7 @@ function ModelModeSelector({ value, onChange, ollamaRunning }: ModelModeSelector
         return (
           <button
             key={mode}
-            onClick={() => !boostDisabled && onChange(mode)}
+                        onClick={() => !boostDisabled && onChange(mode)}
             disabled={boostDisabled || ollamaRunning === false}
             title={boostDisabled ? "Boost requires an API key (Phase 2)" : undefined}
             style={{
@@ -772,17 +940,9 @@ function RightPanel({ memories, webSources, onDeleteMemory }: RightPanelProps) {
         overflowY: "auto",
       }}
     >
-      {/* Used Memory - active in Phase 2 */}
+      {/* Used Memory */}
       <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            color: "var(--text-3)",
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-          }}
-        >
+        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
           Used Memory
         </span>
         <div style={{ marginTop: 8 }}>
@@ -829,17 +989,9 @@ function RightPanel({ memories, webSources, onDeleteMemory }: RightPanelProps) {
         </div>
       </div>
 
-      {/* Sources - populated by web search (Phase 5) */}
+      {/* Sources */}
       <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            color: "var(--text-3)",
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-          }}
-        >
+        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
           Sources
         </span>
         <div style={{ marginTop: 8 }}>
@@ -899,6 +1051,14 @@ function RightPanel({ memories, webSources, onDeleteMemory }: RightPanelProps) {
       {/* Permissions placeholder */}
       <div style={{ padding: "12px 16px" }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Permissions
+        </span>
+        <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 8 }}>No data</p>
+      </div>
+    </aside>
+  );
+}
+-text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
           Permissions
         </span>
         <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 8 }}>No data</p>
