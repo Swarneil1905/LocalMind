@@ -1,12 +1,12 @@
 // Spec reference: Section 14 (Main Chat Area - Message list) + Phase 5.5 Reasoning UI
 //
 // User messages:   right-aligned, surface-2 background, 14px
-// Assistant msgs:  left-aligned, no background, Markdown rendered
+// Assistant msgs:  left-aligned, no background, full Markdown rendering
 // Reasoning block: collapsible panel showing <think> content above the answer
-//   - Auto-expands when thinking starts so user can watch the model reason
-//   - Stays expanded after thinking ends (user controls it from there)
-//   - Shows approximate token count and elapsed time in the header
-// Streaming cursor is rendered inline inside the last assistant message.
+// Follow-up chips: 3-4 clickable question suggestions after last assistant turn
+//
+// Markdown component overrides cover: p, h1-h6, ul, ol, li, blockquote,
+// a, strong, em, hr, code (inline + block), table/th/td.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -17,14 +17,21 @@ import { Message } from "../types";
 interface MessageListProps {
   messages: Message[];
   isStreaming: boolean;
+  followUpQuestions?: string[];
+  onSendFollowUp?: (question: string) => void;
 }
 
-export function MessageList({ messages, isStreaming }: MessageListProps) {
+export function MessageList({
+  messages,
+  isStreaming,
+  followUpQuestions = [],
+  onSendFollowUp,
+}: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, followUpQuestions]);
 
   if (messages.length === 0) {
     return (
@@ -56,6 +63,12 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
     );
   }
 
+  const showChips =
+    !isStreaming &&
+    followUpQuestions.length > 0 &&
+    messages.length > 0 &&
+    messages[messages.length - 1].role === "assistant";
+
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "16px 0" }}>
       <div
@@ -79,11 +92,369 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
             }
           />
         ))}
+
+        {showChips && onSendFollowUp && (
+          <FollowUpChips
+            questions={followUpQuestions}
+            onSelect={onSendFollowUp}
+          />
+        )}
+
         <div ref={bottomRef} />
       </div>
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Follow-up question chips
+// ---------------------------------------------------------------------------
+
+interface FollowUpChipsProps {
+  questions: string[];
+  onSelect: (question: string) => void;
+}
+
+function FollowUpChips({ questions, onSelect }: FollowUpChipsProps) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        marginTop: 4,
+        paddingLeft: 0,
+      }}
+    >
+      <p
+        style={{
+          fontSize: 11,
+          color: "var(--text-3)",
+          fontWeight: 500,
+          letterSpacing: "0.03em",
+          textTransform: "uppercase",
+          marginBottom: 2,
+        }}
+      >
+        Follow-up
+      </p>
+      {questions.map((q, i) => (
+        <button
+          key={i}
+          onClick={() => onSelect(q)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 12px",
+            backgroundColor: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            fontSize: 13,
+            color: "var(--text-2)",
+            textAlign: "left",
+            cursor: "pointer",
+            transition: "border-color 0.15s, color 0.15s",
+            width: "100%",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.borderColor =
+              "var(--accent)";
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--text)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.borderColor =
+              "var(--border)";
+            (e.currentTarget as HTMLButtonElement).style.color =
+              "var(--text-2)";
+          }}
+        >
+          <span
+            style={{
+              fontSize: 10,
+              color: "var(--accent)",
+              fontWeight: 600,
+              flexShrink: 0,
+              minWidth: 14,
+            }}
+          >
+            {i + 1}
+          </span>
+          {q}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Markdown component overrides
+// ---------------------------------------------------------------------------
+
+const mdComponents: React.ComponentProps<typeof ReactMarkdown>["components"] =
+  {
+    p({ children }) {
+      return (
+        <p
+          style={{
+            fontSize: 14,
+            lineHeight: 1.75,
+            marginBottom: 12,
+            marginTop: 0,
+            color: "var(--text)",
+          }}
+        >
+          {children}
+        </p>
+      );
+    },
+    h1({ children }) {
+      return (
+        <h1
+          style={{
+            fontSize: 20,
+            fontWeight: 700,
+            color: "var(--text)",
+            marginTop: 20,
+            marginBottom: 12,
+            paddingBottom: 8,
+            borderBottom: "1px solid var(--border)",
+            lineHeight: 1.3,
+          }}
+        >
+          {children}
+        </h1>
+      );
+    },
+    h2({ children }) {
+      return (
+        <h2
+          style={{
+            fontSize: 17,
+            fontWeight: 600,
+            color: "var(--text)",
+            marginTop: 18,
+            marginBottom: 10,
+            lineHeight: 1.4,
+          }}
+        >
+          {children}
+        </h2>
+      );
+    },
+    h3({ children }) {
+      return (
+        <h3
+          style={{
+            fontSize: 15,
+            fontWeight: 600,
+            color: "var(--text)",
+            marginTop: 14,
+            marginBottom: 8,
+            lineHeight: 1.4,
+          }}
+        >
+          {children}
+        </h3>
+      );
+    },
+    h4({ children }) {
+      return (
+        <h4
+          style={{
+            fontSize: 14,
+            fontWeight: 600,
+            color: "var(--text)",
+            marginTop: 12,
+            marginBottom: 6,
+          }}
+        >
+          {children}
+        </h4>
+      );
+    },
+    ul({ children }) {
+      return (
+        <ul
+          style={{
+            paddingLeft: 22,
+            marginBottom: 12,
+            marginTop: 0,
+            listStyleType: "disc",
+          }}
+        >
+          {children}
+        </ul>
+      );
+    },
+    ol({ children }) {
+      return (
+        <ol
+          style={{
+            paddingLeft: 22,
+            marginBottom: 12,
+            marginTop: 0,
+            listStyleType: "decimal",
+          }}
+        >
+          {children}
+        </ol>
+      );
+    },
+    li({ children }) {
+      return (
+        <li
+          style={{
+            fontSize: 14,
+            lineHeight: 1.7,
+            marginBottom: 4,
+            color: "var(--text)",
+          }}
+        >
+          {children}
+        </li>
+      );
+    },
+    blockquote({ children }) {
+      return (
+        <blockquote
+          style={{
+            borderLeft: "3px solid var(--accent)",
+            paddingLeft: 12,
+            marginLeft: 0,
+            marginRight: 0,
+            marginTop: 0,
+            marginBottom: 12,
+            color: "var(--text-2)",
+            fontStyle: "italic",
+          }}
+        >
+          {children}
+        </blockquote>
+      );
+    },
+    a({ href, children }) {
+      return (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            color: "var(--accent)",
+            textDecoration: "underline",
+            textDecorationColor: "var(--accent-dim)",
+          }}
+        >
+          {children}
+        </a>
+      );
+    },
+    strong({ children }) {
+      return (
+        <strong style={{ fontWeight: 600, color: "var(--text)" }}>
+          {children}
+        </strong>
+      );
+    },
+    em({ children }) {
+      return (
+        <em style={{ fontStyle: "italic", color: "var(--text-2)" }}>
+          {children}
+        </em>
+      );
+    },
+    hr() {
+      return (
+        <hr
+          style={{
+            border: "none",
+            borderTop: "1px solid var(--border)",
+            margin: "16px 0",
+          }}
+        />
+      );
+    },
+    code({ className, children, ...props }) {
+      const isBlock = className?.startsWith("language-");
+      return isBlock ? (
+        <pre
+          style={{
+            backgroundColor: "var(--surface-2)",
+            borderRadius: 4,
+            padding: "10px 14px",
+            overflowX: "auto",
+            fontSize: 13,
+            margin: "8px 0",
+          }}
+        >
+          <code
+            style={{
+              fontFamily: "monospace",
+              color: "var(--text)",
+            }}
+          >
+            {children}
+          </code>
+        </pre>
+      ) : (
+        <code
+          style={{
+            backgroundColor: "var(--surface-2)",
+            borderRadius: 3,
+            padding: "1px 5px",
+            fontSize: 13,
+            fontFamily: "monospace",
+            color: "var(--text)",
+          }}
+          {...props}
+        >
+          {children}
+        </code>
+      );
+    },
+    table({ children }) {
+      return (
+        <div style={{ overflowX: "auto", margin: "8px 0" }}>
+          <table
+            style={{
+              borderCollapse: "collapse",
+              fontSize: 13,
+              width: "100%",
+            }}
+          >
+            {children}
+          </table>
+        </div>
+      );
+    },
+    th({ children }) {
+      return (
+        <th
+          style={{
+            border: "1px solid var(--border)",
+            padding: "6px 12px",
+            backgroundColor: "var(--surface-2)",
+            textAlign: "left",
+            fontWeight: 600,
+          }}
+        >
+          {children}
+        </th>
+      );
+    },
+    td({ children }) {
+      return (
+        <td
+          style={{
+            border: "1px solid var(--border)",
+            padding: "6px 12px",
+          }}
+        >
+          {children}
+        </td>
+      );
+    },
+  };
 
 // ---------------------------------------------------------------------------
 // Reasoning block
@@ -96,17 +467,14 @@ interface ReasoningBlockProps {
 
 function ReasoningBlock({ thinking, isThinking }: ReasoningBlockProps) {
   const [expanded, setExpanded] = useState(false);
-  // Elapsed seconds: counts up while thinking, freezes when done
   const [elapsedSec, setElapsedSec] = useState<number | null>(null);
 
   const startTimeRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Track whether we have already auto-expanded for this message
   const hasAutoExpandedRef = useRef(false);
 
   useEffect(() => {
     if (isThinking && !hasAutoExpandedRef.current) {
-      // First time thinking starts: auto-expand and start the clock
       setExpanded(true);
       hasAutoExpandedRef.current = true;
       startTimeRef.current = Date.now();
@@ -118,18 +486,15 @@ function ReasoningBlock({ thinking, isThinking }: ReasoningBlockProps) {
     }
 
     if (!isThinking && startTimeRef.current !== null) {
-      // Thinking finished: freeze the elapsed display, stop the timer
       setElapsedSec(Math.round((Date.now() - startTimeRef.current) / 1000));
       startTimeRef.current = null;
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
-      // Do NOT auto-collapse - leave expanded so user can read it
     }
   }, [isThinking]);
 
-  // Cleanup timer on unmount
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -140,8 +505,9 @@ function ReasoningBlock({ thinking, isThinking }: ReasoningBlockProps) {
 
   if (!thinking && !isThinking) return null;
 
-  // Approximate token count: split on whitespace
-  const approxTokens = thinking ? thinking.split(/\s+/).filter(Boolean).length : 0;
+  const approxTokens = thinking
+    ? thinking.split(/\s+/).filter(Boolean).length
+    : 0;
 
   return (
     <div
@@ -153,7 +519,6 @@ function ReasoningBlock({ thinking, isThinking }: ReasoningBlockProps) {
         fontSize: 12,
       }}
     >
-      {/* Header row */}
       <button
         onClick={toggle}
         style={{
@@ -184,7 +549,6 @@ function ReasoningBlock({ thinking, isThinking }: ReasoningBlockProps) {
           {isThinking ? "Reasoning..." : "Reasoning"}
         </span>
 
-        {/* Token count + elapsed time */}
         {approxTokens > 0 && (
           <span
             style={{
@@ -195,9 +559,7 @@ function ReasoningBlock({ thinking, isThinking }: ReasoningBlockProps) {
             }}
           >
             ~{approxTokens} tokens
-            {elapsedSec !== null && (
-              <> &middot; {elapsedSec}s</>
-            )}
+            {elapsedSec !== null && <> &middot; {elapsedSec}s</>}
           </span>
         )}
 
@@ -208,7 +570,6 @@ function ReasoningBlock({ thinking, isThinking }: ReasoningBlockProps) {
         )}
       </button>
 
-      {/* Thinking content */}
       {expanded && thinking && (
         <div
           style={{
@@ -275,12 +636,11 @@ function MessageBubble({ message, streaming }: MessageBubbleProps) {
           fontSize: 14,
           color: message.error ? "var(--text-3)" : "var(--text)",
           maxWidth: "100%",
-          lineHeight: 1.6,
+          lineHeight: 1.75,
           width: "100%",
         }}
         className="assistant-message"
       >
-        {/* Reasoning block - shown above the answer for R1/reasoning models */}
         {hasThinking && (
           <ReasoningBlock
             thinking={message.thinking ?? ""}
@@ -288,93 +648,9 @@ function MessageBubble({ message, streaming }: MessageBubbleProps) {
           />
         )}
 
-        {/* Answer */}
         {message.content ? (
           <>
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                code({ className, children, ...props }) {
-                  const isBlock = className?.startsWith("language-");
-                  return isBlock ? (
-                    <pre
-                      style={{
-                        backgroundColor: "var(--surface-2)",
-                        borderRadius: 4,
-                        padding: "10px 14px",
-                        overflowX: "auto",
-                        fontSize: 13,
-                        margin: "8px 0",
-                      }}
-                    >
-                      <code
-                        style={{
-                          fontFamily: "monospace",
-                          color: "var(--text)",
-                        }}
-                      >
-                        {children}
-                      </code>
-                    </pre>
-                  ) : (
-                    <code
-                      style={{
-                        backgroundColor: "var(--surface-2)",
-                        borderRadius: 3,
-                        padding: "1px 5px",
-                        fontSize: 13,
-                        fontFamily: "monospace",
-                      }}
-                      {...props}
-                    >
-                      {children}
-                    </code>
-                  );
-                },
-                table({ children }) {
-                  return (
-                    <div style={{ overflowX: "auto", margin: "8px 0" }}>
-                      <table
-                        style={{
-                          borderCollapse: "collapse",
-                          fontSize: 13,
-                          width: "100%",
-                        }}
-                      >
-                        {children}
-                      </table>
-                    </div>
-                  );
-                },
-                th({ children }) {
-                  return (
-                    <th
-                      style={{
-                        border: "1px solid var(--border)",
-                        padding: "6px 12px",
-                        backgroundColor: "var(--surface-2)",
-                        textAlign: "left",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {children}
-                    </th>
-                  );
-                },
-                td({ children }) {
-                  return (
-                    <td
-                      style={{
-                        border: "1px solid var(--border)",
-                        padding: "6px 12px",
-                      }}
-                    >
-                      {children}
-                    </td>
-                  );
-                },
-              }}
-            >
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
               {message.content}
             </ReactMarkdown>
             {streaming && !stillThinking && <StreamingCursor />}
