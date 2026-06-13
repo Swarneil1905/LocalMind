@@ -148,11 +148,42 @@ jobs:
           cp /tmp/ollama-extract/bin/ollama apps/desktop/src-tauri/binaries/ollama-x86_64-unknown-linux-gnu
           chmod +x apps/desktop/src-tauri/binaries/ollama-x86_64-unknown-linux-gnu
 
-      # ── Build (run from workspace root so pnpm resolves the lockfile) ──
+      # ── Build with signing key so Tauri generates .sig files ──
       - name: Build Tauri application
         run: pnpm --filter desktop tauri build ${{ matrix.args }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
-      # ── Upload artifacts to GitHub Release ──
+      # ── Collect updater bundles + .sig files into a flat directory ──
+      # These are the archives the auto-updater downloads (not the user-facing
+      # installers). Tauri generates them automatically when a signing key is set.
+      - name: Collect updater artifacts
+        shell: bash
+        run: |
+          mkdir -p updater-artifacts
+          BUNDLE_DIR="apps/desktop/src-tauri/target/${{ matrix.rust-target }}/release/bundle"
+          for dir in macos nsis msi appimage; do
+            if [ -d "$BUNDLE_DIR/$dir" ]; then
+              find "$BUNDLE_DIR/$dir" \( \
+                -name "*.app.tar.gz"       -o -name "*.app.tar.gz.sig"       \
+                -o -name "*.nsis.zip"      -o -name "*.nsis.zip.sig"         \
+                -o -name "*.msi.zip"       -o -name "*.msi.zip.sig"          \
+                -o -name "*.AppImage.tar.gz" -o -name "*.AppImage.tar.gz.sig" \
+              \) -exec cp {} updater-artifacts/ \;
+            fi
+          done
+          echo "=== updater-artifacts ==="
+          ls -lh updater-artifacts/ 2>/dev/null || echo "(none found)"
+
+      - name: Upload updater artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-${{ matrix.label }}
+          path: updater-artifacts/
+          if-no-files-found: warn
+
+      # ── Upload installers + updater bundles to GitHub Release ──
       - name: Upload release artifacts
         uses: softprops/action-gh-release@v2
         with:
@@ -182,6 +213,10 @@ jobs:
             target/${{ matrix.rust-target }}/release/bundle/dmg/*.dmg
             target/${{ matrix.rust-target }}/release/bundle/appimage/*.AppImage
             target/${{ matrix.rust-target }}/release/bundle/deb/*.deb
+            updater-artifacts/*.app.tar.gz
+            updater-artifacts/*.nsis.zip
+            updater-artifacts/*.msi.zip
+            updater-artifacts/*.AppImage.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -213,5 +248,93 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           files: release-assets/SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ─────────────────────────────────────────────
+  # Post-release: generate latest.json for the
+  # Tauri auto-updater endpoint
+  # ─────────────────────────────────────────────
+  publish-updater:
+    name: Publish updater manifest
+    needs: build
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Download all updater sig artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: updater-*
+          merge-multiple: true
+          path: sigs
+
+      - name: List collected sig files
+        run: ls -lh sigs/ 2>/dev/null || echo "(no sig files found)"
+
+      - name: Generate latest.json
+        run: |
+          python3 << 'PYEOF'
+          import json, os, glob, datetime
+
+          tag = os.environ['GITHUB_REF_NAME']          # e.g. "v0.5.1"
+          version = tag.lstrip('v')                    # e.g. "0.5.1"
+          repo = os.environ['GITHUB_REPOSITORY']
+          base_url = f"https://github.com/{repo}/releases/download/{tag}"
+
+          def read_sig(pattern):
+              """Find a .sig file matching pattern, return (sig_content, bundle_filename)."""
+              files = glob.glob(os.path.join('sigs', pattern))
+              if not files:
+                  return None, None
+              sig_file = sorted(files)[0]
+              bundle_name = os.path.basename(sig_file)[:-4]  # strip trailing .sig
+              return open(sig_file).read().strip(), bundle_name
+
+          platforms = {}
+
+          # macOS Apple Silicon
+          sig, bundle = read_sig('*aarch64*.app.tar.gz.sig')
+          if sig:
+              platforms['darwin-aarch64'] = {'signature': sig, 'url': f'{base_url}/{bundle}'}
+
+          # macOS Intel
+          sig, bundle = read_sig('*x64*.app.tar.gz.sig')
+          if sig:
+              platforms['darwin-x86_64'] = {'signature': sig, 'url': f'{base_url}/{bundle}'}
+
+          # Windows x64 — prefer NSIS, fall back to MSI
+          sig, bundle = read_sig('*.nsis.zip.sig')
+          if not sig:
+              sig, bundle = read_sig('*.msi.zip.sig')
+          if sig:
+              platforms['windows-x86_64'] = {'signature': sig, 'url': f'{base_url}/{bundle}'}
+
+          # Linux x64 (AppImage)
+          sig, bundle = read_sig('*.AppImage.tar.gz.sig')
+          if sig:
+              platforms['linux-x86_64'] = {'signature': sig, 'url': f'{base_url}/{bundle}'}
+
+          manifest = {
+              'version': version,
+              'notes': f'LocalMind {tag}',
+              'pub_date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+              'platforms': platforms,
+          }
+
+          with open('latest.json', 'w') as f:
+              json.dump(manifest, f, indent=2)
+
+          print(json.dumps(manifest, indent=2))
+          print(f"\nPlatforms covered: {list(platforms.keys())}")
+          PYEOF
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Upload latest.json to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

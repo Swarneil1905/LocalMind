@@ -27,6 +27,7 @@ import type { LucideIcon } from "lucide-react";
 import { Composer } from "./components/Composer";
 import { ConversationList } from "./components/ConversationList";
 import { FirstRunSetup } from "./components/FirstRunSetup";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { KnowledgePage } from "./components/KnowledgePage";
 import { MessageList } from "./components/MessageList";
 import { MemoryPage } from "./components/MemoryPage";
@@ -225,6 +226,7 @@ export default function App() {
       {!setupComplete && (
         <FirstRunSetup onComplete={() => setSetupComplete(true)} />
       )}
+      {setupComplete && <UpdateBanner />}
       <div
         style={{
           display: "flex",

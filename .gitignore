@@ -51,3 +51,5 @@ logs/
 coverage/
 .coverage
 htmlcov/
+
+.tauri/

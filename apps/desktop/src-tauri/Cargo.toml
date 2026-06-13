@@ -1,6 +1,6 @@
 [package]
 name = "localmind-app"
-version = "0.5.0"
+version = "0.5.2"
 description = "LocalMind desktop application"
 authors = ["Swarneil Pradhan"]
 edition = "2021"
@@ -27,4 +27,5 @@ localmind-core = { path = "../../../crates/localmind-core" }
 reqwest = { version = "0.12", features = ["json", "stream"] }
 futures-util = "0.3"
 tokio = { version = "1", features = ["time"] }
+tauri-plugin-updater = "2"
 
