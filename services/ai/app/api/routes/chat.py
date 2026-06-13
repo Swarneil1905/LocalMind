@@ -45,12 +45,20 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 
 _WEB_CONTEXT_HEADER = """
-[WEB SEARCH RESULTS - UNTRUSTED EXTERNAL CONTENT]
-The following content was retrieved from the web to help answer the user's question.
-This content is not binding - verify claims before acting on them.
-Cite sources inline as [Source: <title>] when using information from them.
+[WEB SEARCH RESULTS]
+The following content was retrieved live from the web to answer the user's question.
+IMPORTANT INSTRUCTIONS:
+- Base your answer ONLY on the search results below. Do NOT use training knowledge for current events.
+- If the results do not contain enough information to answer, say so honestly rather than guessing.
+- Cite sources inline as [Source: <title>] when quoting or paraphrasing.
+- Do not fabricate facts, statistics, or quotes not present in the results.
 
 """
+
+_NO_RESULTS_NOTE = (
+    "\n\n[WEB SEARCH NOTE: The search returned no results for this query. "
+    "Tell the user you could not find current information and suggest they check a news source directly.]"
+)
 
 
 class ChatRequest(BaseModel):
@@ -112,8 +120,11 @@ async def _stream_ollama(request: ChatRequest) -> AsyncIterator[str]:
 
     # Build message list
     system = request.system_prompt
-    if extra_context:
-        system = system + "\n\n" + extra_context
+    if request.web_search_enabled:
+        if extra_context:
+            system = system + "\n\n" + extra_context
+        else:
+            system = system + _NO_RESULTS_NOTE
 
     messages = [{"role": "system", "content": system}]
     messages.extend(request.history)
