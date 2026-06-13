@@ -111,7 +111,8 @@ jobs:
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          $version = (Invoke-RestMethod "https://api.github.com/repos/ollama/ollama/releases/latest").tag_name.TrimStart('v')
+          $headers = @{ Authorization = "Bearer ${{ github.token }}" }
+          $version = (Invoke-RestMethod -Uri "https://api.github.com/repos/ollama/ollama/releases/latest" -Headers $headers).tag_name.TrimStart('v')
           Write-Host "Downloading Ollama v${version} for Windows"
           $url = "https://github.com/ollama/ollama/releases/download/v${version}/ollama-windows-amd64.zip"
           Invoke-WebRequest -Uri $url -OutFile ollama.zip
@@ -123,7 +124,8 @@ jobs:
       - name: Download Ollama binary (macOS)
         if: matrix.platform == 'macos-latest'
         run: |
-          VERSION=$(curl -fsSL https://api.github.com/repos/ollama/ollama/releases/latest \
+          VERSION=$(curl -fsSL -H "Authorization: Bearer ${{ github.token }}" \
+            https://api.github.com/repos/ollama/ollama/releases/latest \
             | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))")
           echo "Downloading Ollama v${VERSION} for macOS (universal)"
           mkdir -p apps/desktop/src-tauri/binaries
@@ -136,7 +138,8 @@ jobs:
       - name: Download Ollama binary (Linux x64)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
-          VERSION=$(curl -fsSL https://api.github.com/repos/ollama/ollama/releases/latest \
+          VERSION=$(curl -fsSL -H "Authorization: Bearer ${{ github.token }}" \
+            https://api.github.com/repos/ollama/ollama/releases/latest \
             | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))")
           echo "Downloading Ollama v${VERSION} for Linux"
           sudo apt-get install -y zstd
