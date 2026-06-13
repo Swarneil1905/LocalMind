@@ -26,6 +26,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { Composer } from "./components/Composer";
 import { ConversationList } from "./components/ConversationList";
+import { FirstRunSetup } from "./components/FirstRunSetup";
 import { KnowledgePage } from "./components/KnowledgePage";
 import { MessageList } from "./components/MessageList";
 import { MemoryPage } from "./components/MemoryPage";
@@ -97,6 +98,7 @@ function dbMsgToMessage(m: ConversationMessage): Message {
 // ---------------------------------------------------------------------------
 
 export default function App() {
+  const [setupComplete, setSetupComplete] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activePage, setActivePage] = useState<PageId>("chats");
   const [modelMode, setModelMode] = useState<ModelMode>("balanced");
@@ -219,14 +221,19 @@ export default function App() {
   );
 
   return (
-    <div
-      style={{
-        display: "flex",
-        height: "100vh",
-        overflow: "hidden",
-        backgroundColor: "var(--bg)",
-      }}
-    >
+    <>
+      {!setupComplete && (
+        <FirstRunSetup onComplete={() => setSetupComplete(true)} />
+      )}
+      <div
+        style={{
+          display: "flex",
+          height: "100vh",
+          overflow: "hidden",
+          backgroundColor: "var(--bg)",
+          visibility: setupComplete ? "visible" : "hidden",
+        }}
+      >
       <Sidebar
         collapsed={sidebarCollapsed}
         activePage={activePage}
@@ -282,7 +289,8 @@ export default function App() {
       {rightPanelOpen && (memories.length > 0 || webSources.length > 0) && (
         <RightPanel memories={memories} webSources={webSources} onDeleteMemory={deleteMemory} />
       )}
-    </div>
+      </div>
+    </>
   );
 }
 
