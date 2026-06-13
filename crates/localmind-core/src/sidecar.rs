@@ -157,6 +157,35 @@ impl SidecarHandle {
         Ok(SidecarHandle { child, port, token })
     }
 
+    /// Launches the pre-compiled sidecar binary directly (production mode).
+    ///
+    /// Used when the app is installed and `services/ai/main.py` is not on disk.
+    /// The binary accepts the same environment variables as the script:
+    /// `LOCALMIND_PORT`, `LOCALMIND_TOKEN`, `LOCALMIND_DATA_DIR`.
+    pub fn launch_binary(binary_path: PathBuf) -> Result<Self, SidecarError> {
+        let port = find_available_port().map_err(SidecarError::PortBinding)?;
+        let token = generate_bearer_token();
+
+        let data_dir = dirs::data_dir()
+            .map(|d| d.join("LocalMind"))
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+        eprintln!(
+            "[localmind] launching bundled sidecar: {:?} (port {port})",
+            binary_path
+        );
+
+        let child = Command::new(&binary_path)
+            .env("LOCALMIND_PORT", port.to_string())
+            .env("LOCALMIND_TOKEN", &token)
+            .env("LOCALMIND_DATA_DIR", data_dir.to_string_lossy().as_ref())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .map_err(SidecarError::Spawn)?;
+
+        Ok(SidecarHandle { child, port, token })
+    }
+
     /// Polls `GET /health` every 500 ms until a 200 response arrives.
     ///
     /// Times out after 30 seconds (60 attempts). The bearer token is included

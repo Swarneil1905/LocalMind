@@ -100,6 +100,50 @@ jobs:
         working-directory: services/ai
         run: pip install -r requirements.txt --break-system-packages || pip install -r requirements.txt
 
+      # ── Build Python sidecar into a standalone binary with PyInstaller ──
+      # This produces a self-contained executable that runs without Python
+      # being installed on the user's machine.
+      - name: Build sidecar binary (Unix)
+        if: matrix.platform != 'windows-latest'
+        working-directory: services/ai
+        run: |
+          pip install pyinstaller --break-system-packages || pip install pyinstaller
+          pyinstaller --onefile --name localmind-sidecar \
+            --hidden-import=uvicorn.logging \
+            --hidden-import=uvicorn.loops \
+            --hidden-import=uvicorn.loops.auto \
+            --hidden-import=uvicorn.protocols \
+            --hidden-import=uvicorn.protocols.http \
+            --hidden-import=uvicorn.protocols.http.auto \
+            --hidden-import=uvicorn.lifespan \
+            --hidden-import=uvicorn.lifespan.on \
+            main.py
+          mkdir -p ../../apps/desktop/src-tauri/binaries
+          cp dist/localmind-sidecar \
+            ../../apps/desktop/src-tauri/binaries/localmind-sidecar-${{ matrix.rust-target }}
+          chmod +x \
+            ../../apps/desktop/src-tauri/binaries/localmind-sidecar-${{ matrix.rust-target }}
+
+      - name: Build sidecar binary (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        working-directory: services/ai
+        run: |
+          pip install pyinstaller
+          pyinstaller --onefile --name localmind-sidecar `
+            --hidden-import=uvicorn.logging `
+            --hidden-import=uvicorn.loops `
+            --hidden-import=uvicorn.loops.auto `
+            --hidden-import=uvicorn.protocols `
+            --hidden-import=uvicorn.protocols.http `
+            --hidden-import=uvicorn.protocols.http.auto `
+            --hidden-import=uvicorn.lifespan `
+            --hidden-import=uvicorn.lifespan.on `
+            main.py
+          New-Item -ItemType Directory -Force -Path "..\..\apps\desktop\src-tauri\binaries" | Out-Null
+          Copy-Item "dist\localmind-sidecar.exe" `
+            "..\..\apps\desktop\src-tauri\binaries\localmind-sidecar-x86_64-pc-windows-msvc.exe"
+
       # ── Download Ollama binary for this platform ──
       # Ollama changed its distribution format: binaries are now archives.
       # macOS: ollama-darwin.tgz (universal binary ~130 MB, works for both x64 + arm64)

@@ -1383,7 +1383,25 @@ pub fn run() {
                 ensure_ollama(app_handle.clone()).await;
 
                 // 2. Launch Python sidecar.
-                let sidecar = match SidecarHandle::launch() {
+                // In production the sidecar is bundled as a standalone binary
+                // (built with PyInstaller) in the app's resource dir.
+                // In dev mode the binary won't exist, so we fall back to
+                // spawning `python main.py` from the source tree.
+                let sidecar_result = {
+                    let bundled = app_handle.path().resource_dir().ok().map(|d| {
+                        #[cfg(target_os = "windows")]
+                        let name = "localmind-sidecar.exe";
+                        #[cfg(not(target_os = "windows"))]
+                        let name = "localmind-sidecar";
+                        d.join("binaries").join(name)
+                    });
+                    if let Some(path) = bundled.filter(|p| p.exists()) {
+                        SidecarHandle::launch_binary(path)
+                    } else {
+                        SidecarHandle::launch()
+                    }
+                };
+                let sidecar = match sidecar_result {
                     Ok(s) => s,
                     Err(e) => {
                         eprintln!("[localmind] sidecar launch failed: {e}");

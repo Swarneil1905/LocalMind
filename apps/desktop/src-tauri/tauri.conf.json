@@ -42,7 +42,8 @@
       "icons/icon.ico"
     ],
     "externalBin": [
-      "binaries/ollama"
+      "binaries/ollama",
+      "binaries/localmind-sidecar"
     ]
   }
 }

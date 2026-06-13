@@ -45,11 +45,12 @@ jobs:
 
       # Tauri's build script checks that externalBin paths exist at compile
       # time. Create empty placeholders so cargo check / clippy pass without
-      # needing to download the real ~200 MB Ollama binary.
-      - name: Create Ollama binary placeholder
+      # needing to download the real binaries (~200 MB Ollama + sidecar).
+      - name: Create binary placeholders
         run: |
           mkdir -p apps/desktop/src-tauri/binaries
           touch apps/desktop/src-tauri/binaries/ollama-x86_64-unknown-linux-gnu
+          touch apps/desktop/src-tauri/binaries/localmind-sidecar-x86_64-unknown-linux-gnu
 
       - name: cargo check (all workspace crates)
         run: cargo check --workspace
