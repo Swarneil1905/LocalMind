@@ -100,6 +100,41 @@ jobs:
         working-directory: services/ai
         run: pip install -r requirements.txt --break-system-packages || pip install -r requirements.txt
 
+      # ── Download Ollama binary for this platform ──
+      - name: Download Ollama binary (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $version = "0.7.1"
+          $url = "https://github.com/ollama/ollama/releases/download/v${version}/ollama-windows-amd64.zip"
+          Invoke-WebRequest -Uri $url -OutFile ollama.zip
+          Expand-Archive -Path ollama.zip -DestinationPath ollama-bin
+          Copy-Item "ollama-bin\ollama.exe" "apps\desktop\src-tauri\binaries\ollama-x86_64-pc-windows-msvc.exe"
+
+      - name: Download Ollama binary (macOS x64)
+        if: matrix.label == 'macos-x64'
+        run: |
+          VERSION="0.7.1"
+          curl -fsSL "https://github.com/ollama/ollama/releases/download/v${VERSION}/ollama-darwin" \
+            -o apps/desktop/src-tauri/binaries/ollama-x86_64-apple-darwin
+          chmod +x apps/desktop/src-tauri/binaries/ollama-x86_64-apple-darwin
+
+      - name: Download Ollama binary (macOS arm64)
+        if: matrix.label == 'macos-arm64'
+        run: |
+          VERSION="0.7.1"
+          curl -fsSL "https://github.com/ollama/ollama/releases/download/v${VERSION}/ollama-darwin" \
+            -o apps/desktop/src-tauri/binaries/ollama-aarch64-apple-darwin
+          chmod +x apps/desktop/src-tauri/binaries/ollama-aarch64-apple-darwin
+
+      - name: Download Ollama binary (Linux x64)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          VERSION="0.7.1"
+          curl -fsSL "https://github.com/ollama/ollama/releases/download/v${VERSION}/ollama-linux-amd64" \
+            -o apps/desktop/src-tauri/binaries/ollama-x86_64-unknown-linux-gnu
+          chmod +x apps/desktop/src-tauri/binaries/ollama-x86_64-unknown-linux-gnu
+
       # ── Build (run from workspace root so pnpm resolves the lockfile) ──
       - name: Build Tauri application
         run: pnpm --filter desktop tauri build ${{ matrix.args }}

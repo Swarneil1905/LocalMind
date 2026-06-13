@@ -15,6 +15,92 @@ use tauri_plugin_dialog::DialogExt;
 
 struct SidecarState(Mutex<Option<SidecarHandle>>);
 struct OllamaState(Mutex<Option<OllamaStatus>>);
+/// Holds the child process for a bundled Ollama we started ourselves.
+struct OllamaProcess(Mutex<Option<std::process::Child>>);
+
+// ---------------------------------------------------------------------------
+// Bundled Ollama helpers
+// ---------------------------------------------------------------------------
+
+/// Returns the filename of the bundled Ollama binary for the current platform.
+fn ollama_binary_name() -> Option<&'static str> {
+    if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        Some("ollama-x86_64-pc-windows-msvc.exe")
+    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+        Some("ollama-x86_64-apple-darwin")
+    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        Some("ollama-aarch64-apple-darwin")
+    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+        Some("ollama-x86_64-unknown-linux-gnu")
+    } else {
+        None
+    }
+}
+
+/// Ensures Ollama is running. If no system Ollama is detected, launches the
+/// bundled binary (if present). Waits up to 30 s for it to become ready.
+async fn ensure_ollama(app_handle: tauri::AppHandle) {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+        .unwrap_or_default();
+
+    // Already running (system or previously started) — nothing to do.
+    if client
+        .get("http://localhost:11434/api/tags")
+        .send()
+        .await
+        .is_ok()
+    {
+        println!("[localmind] Ollama already running");
+        return;
+    }
+
+    // Locate bundled binary.
+    let Some(bin_name) = ollama_binary_name() else {
+        println!("[localmind] Unsupported platform for bundled Ollama");
+        return;
+    };
+
+    let Ok(resource_dir) = app_handle.path().resource_dir() else {
+        println!("[localmind] Could not resolve resource dir");
+        return;
+    };
+
+    let ollama_path = resource_dir.join("binaries").join(bin_name);
+    if !ollama_path.exists() {
+        // Dev mode — binary not bundled, expect system Ollama.
+        println!("[localmind] Bundled Ollama not found (dev mode?), expecting system Ollama");
+        return;
+    }
+
+    println!("[localmind] Starting bundled Ollama: {:?}", ollama_path);
+    match std::process::Command::new(&ollama_path)
+        .arg("serve")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        Ok(child) => {
+            *app_handle.state::<OllamaProcess>().0.lock().unwrap() = Some(child);
+            // Wait up to 30 s for the server to become ready.
+            for _ in 0..30 {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                if client
+                    .get("http://localhost:11434/api/tags")
+                    .send()
+                    .await
+                    .is_ok()
+                {
+                    println!("[localmind] Bundled Ollama ready");
+                    return;
+                }
+            }
+            eprintln!("[localmind] Bundled Ollama did not become ready in 30 s");
+        }
+        Err(e) => eprintln!("[localmind] Failed to start bundled Ollama: {e}"),
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -1166,6 +1252,85 @@ fn build_system_prompt(memories: &[MemoryEntry]) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Model management commands
+// ---------------------------------------------------------------------------
+
+/// Returns the names of all locally pulled Ollama models.
+#[tauri::command]
+async fn list_ollama_models() -> Result<Vec<String>, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let resp = client
+        .get("http://localhost:11434/api/tags")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let models = json["models"]
+        .as_array()
+        .unwrap_or(&vec![])
+        .iter()
+        .filter_map(|m| m["name"].as_str().map(String::from))
+        .collect();
+
+    Ok(models)
+}
+
+/// Pulls an Ollama model, emitting `pull-progress` events as it downloads.
+/// Event payload: `{ model, status, percent, completed, total }`.
+#[tauri::command]
+async fn pull_ollama_model(app: tauri::AppHandle, name: String) -> Result<(), String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3600))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let resp = client
+        .post("http://localhost:11434/api/pull")
+        .json(&serde_json::json!({ "name": name, "stream": true }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| e.to_string())?;
+        let text = std::str::from_utf8(&chunk).unwrap_or("");
+        for line in text.lines() {
+            if line.is_empty() {
+                continue;
+            }
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(line) {
+                let status = val["status"].as_str().unwrap_or("").to_string();
+                let completed = val["completed"].as_u64().unwrap_or(0);
+                let total = val["total"].as_u64().unwrap_or(1);
+                let percent = if total > 0 { completed * 100 / total } else { 0 };
+
+                let _ = app.emit(
+                    "pull-progress",
+                    serde_json::json!({
+                        "model": &name,
+                        "status": &status,
+                        "percent": percent,
+                        "completed": completed,
+                        "total": total,
+                    }),
+                );
+
+                if status == "success" {
+                    return Ok(());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // App entry point
 // ---------------------------------------------------------------------------
 
@@ -1176,9 +1341,14 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(SidecarState(Mutex::new(None)))
         .manage(OllamaState(Mutex::new(None)))
+        .manage(OllamaProcess(Mutex::new(None)))
         .setup(|app| {
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
+                // 1. Ensure Ollama is running (bundled or system).
+                ensure_ollama(app_handle.clone()).await;
+
+                // 2. Launch Python sidecar.
                 let sidecar = match SidecarHandle::launch() {
                     Ok(s) => s,
                     Err(e) => {
@@ -1196,6 +1366,8 @@ pub fn run() {
                         eprintln!("[localmind] sidecar health check failed: {e}");
                     }
                 }
+
+                // 3. Record Ollama status for the settings page.
                 let status = ollama_check().await;
                 println!(
                     "[localmind] Ollama running={} models={} gpu={:?}",
@@ -1207,6 +1379,17 @@ pub fn run() {
                 *ollama_state.0.lock().unwrap() = Some(status);
             });
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Kill bundled Ollama when the last window closes.
+            if let tauri::WindowEvent::Destroyed = event {
+                let proc_state = window.app_handle().state::<OllamaProcess>();
+                if let Ok(mut lock) = proc_state.0.lock() {
+                    if let Some(mut child) = lock.take() {
+                        let _ = child.kill();
+                    }
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             get_ollama_status,
@@ -1243,6 +1426,8 @@ pub fn run() {
             create_memory_link,
             delete_memory_link,
             get_followup_questions,
+            list_ollama_models,
+            pull_ollama_model,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

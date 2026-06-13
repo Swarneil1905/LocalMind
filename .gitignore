@@ -40,6 +40,9 @@ Thumbs.db
 # Local dev spec (not for public repo)
 LOCALMIND_MASTER_SPEC.md
 
+# Bundled Ollama binaries (downloaded by CI, not committed)
+apps/desktop/src-tauri/binaries/ollama*
+
 # Logs
 *.log
 logs/
