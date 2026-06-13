@@ -1383,7 +1383,8 @@ pub fn run() {
         .on_window_event(|window, event| {
             // Kill bundled Ollama when the last window closes.
             if let tauri::WindowEvent::Destroyed = event {
-                let proc_state = window.app_handle().state::<OllamaProcess>();
+                let handle = window.app_handle().clone();
+                let proc_state = handle.state::<OllamaProcess>();
                 if let Ok(mut lock) = proc_state.0.lock() {
                     if let Some(mut child) = lock.take() {
                         let _ = child.kill();
