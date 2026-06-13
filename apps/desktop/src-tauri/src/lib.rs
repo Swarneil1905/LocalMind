@@ -1308,7 +1308,7 @@ async fn pull_ollama_model(app: tauri::AppHandle, name: String) -> Result<(), St
                 let status = val["status"].as_str().unwrap_or("").to_string();
                 let completed = val["completed"].as_u64().unwrap_or(0);
                 let total = val["total"].as_u64().unwrap_or(1);
-                let percent = if total > 0 { completed * 100 / total } else { 0 };
+                let percent = (completed * 100).checked_div(total).unwrap_or(0);
 
                 let _ = app.emit(
                     "pull-progress",
