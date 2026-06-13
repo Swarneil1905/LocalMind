@@ -43,6 +43,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      # Tauri's build script checks that externalBin paths exist at compile
+      # time. Create empty placeholders so cargo check / clippy pass without
+      # needing to download the real ~200 MB Ollama binary.
+      - name: Create Ollama binary placeholder
+        run: |
+          mkdir -p apps/desktop/src-tauri/binaries
+          touch apps/desktop/src-tauri/binaries/ollama-x86_64-unknown-linux-gnu
+
       - name: cargo check (all workspace crates)
         run: cargo check --workspace
 
