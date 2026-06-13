@@ -101,38 +101,51 @@ jobs:
         run: pip install -r requirements.txt --break-system-packages || pip install -r requirements.txt
 
       # ── Download Ollama binary for this platform ──
+      # Ollama changed its distribution format: binaries are now archives.
+      # macOS: ollama-darwin.tgz (universal binary ~130 MB, works for both x64 + arm64)
+      # Linux: ollama-linux-amd64.tar.zst  (extracts to bin/ollama)
+      # Windows: ollama-windows-amd64.zip  (extracts to ollama.exe)
+      # We fetch the latest release version dynamically so we never hit a 404.
+
       - name: Download Ollama binary (Windows)
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          $version = "0.7.1"
+          $version = (Invoke-RestMethod "https://api.github.com/repos/ollama/ollama/releases/latest").tag_name.TrimStart('v')
+          Write-Host "Downloading Ollama v${version} for Windows"
           $url = "https://github.com/ollama/ollama/releases/download/v${version}/ollama-windows-amd64.zip"
           Invoke-WebRequest -Uri $url -OutFile ollama.zip
-          Expand-Archive -Path ollama.zip -DestinationPath ollama-bin
-          Copy-Item "ollama-bin\ollama.exe" "apps\desktop\src-tauri\binaries\ollama-x86_64-pc-windows-msvc.exe"
+          Expand-Archive -Path ollama.zip -DestinationPath ollama-extracted
+          New-Item -ItemType Directory -Force -Path "apps\desktop\src-tauri\binaries" | Out-Null
+          Copy-Item "ollama-extracted\ollama.exe" "apps\desktop\src-tauri\binaries\ollama-x86_64-pc-windows-msvc.exe"
 
-      - name: Download Ollama binary (macOS x64)
-        if: matrix.label == 'macos-x64'
+      # macOS: ollama-darwin.tgz is a universal binary — one download covers both x64 and arm64.
+      - name: Download Ollama binary (macOS)
+        if: matrix.platform == 'macos-latest'
         run: |
-          VERSION="0.7.1"
-          curl -fsSL "https://github.com/ollama/ollama/releases/download/v${VERSION}/ollama-darwin" \
-            -o apps/desktop/src-tauri/binaries/ollama-x86_64-apple-darwin
-          chmod +x apps/desktop/src-tauri/binaries/ollama-x86_64-apple-darwin
-
-      - name: Download Ollama binary (macOS arm64)
-        if: matrix.label == 'macos-arm64'
-        run: |
-          VERSION="0.7.1"
-          curl -fsSL "https://github.com/ollama/ollama/releases/download/v${VERSION}/ollama-darwin" \
-            -o apps/desktop/src-tauri/binaries/ollama-aarch64-apple-darwin
-          chmod +x apps/desktop/src-tauri/binaries/ollama-aarch64-apple-darwin
+          VERSION=$(curl -fsSL https://api.github.com/repos/ollama/ollama/releases/latest \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))")
+          echo "Downloading Ollama v${VERSION} for macOS (universal)"
+          mkdir -p apps/desktop/src-tauri/binaries
+          curl -fsSL "https://github.com/ollama/ollama/releases/download/v${VERSION}/ollama-darwin.tgz" \
+            | tar -xz
+          # The tgz extracts to ./ollama in the current directory
+          cp ollama apps/desktop/src-tauri/binaries/ollama-${{ matrix.rust-target }}
+          chmod +x apps/desktop/src-tauri/binaries/ollama-${{ matrix.rust-target }}
 
       - name: Download Ollama binary (Linux x64)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
-          VERSION="0.7.1"
-          curl -fsSL "https://github.com/ollama/ollama/releases/download/v${VERSION}/ollama-linux-amd64" \
-            -o apps/desktop/src-tauri/binaries/ollama-x86_64-unknown-linux-gnu
+          VERSION=$(curl -fsSL https://api.github.com/repos/ollama/ollama/releases/latest \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))")
+          echo "Downloading Ollama v${VERSION} for Linux"
+          sudo apt-get install -y zstd
+          mkdir -p /tmp/ollama-extract
+          curl -fsSL "https://github.com/ollama/ollama/releases/download/v${VERSION}/ollama-linux-amd64.tar.zst" \
+            | tar -I zstd -xf - -C /tmp/ollama-extract
+          mkdir -p apps/desktop/src-tauri/binaries
+          # The tar.zst extracts to bin/ollama inside the archive
+          cp /tmp/ollama-extract/bin/ollama apps/desktop/src-tauri/binaries/ollama-x86_64-unknown-linux-gnu
           chmod +x apps/desktop/src-tauri/binaries/ollama-x86_64-unknown-linux-gnu
 
       # ── Build (run from workspace root so pnpm resolves the lockfile) ──
