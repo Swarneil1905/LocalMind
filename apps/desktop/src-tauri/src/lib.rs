@@ -1384,11 +1384,16 @@ pub fn run() {
             // Kill bundled Ollama when the last window closes.
             if let tauri::WindowEvent::Destroyed = event {
                 let handle = window.app_handle().clone();
-                let proc_state = handle.state::<OllamaProcess>();
-                if let Ok(mut lock) = proc_state.0.lock() {
-                    if let Some(mut child) = lock.take() {
-                        let _ = child.kill();
-                    }
+                // Extract the child process while the State/MutexGuard are still
+                // alive, then drop them before touching the child — this satisfies
+                // the borrow checker (guard must be dropped before State, which
+                // must be dropped before AppHandle).
+                let child: Option<std::process::Child> = {
+                    let state: tauri::State<'_, OllamaProcess> = handle.state();
+                    state.0.lock().ok().and_then(|mut g| g.take())
+                };
+                if let Some(mut c) = child {
+                    let _ = c.kill();
                 }
             }
         })
