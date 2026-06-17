@@ -71,7 +71,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            apps/desktop/src-tauri/target/
+            target/
           key: ${{ runner.os }}-${{ matrix.rust-target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.rust-target }}-cargo-
@@ -209,7 +209,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p updater-artifacts
-          BUNDLE_DIR="apps/desktop/src-tauri/target/${{ matrix.rust-target }}/release/bundle"
+          BUNDLE_DIR="target/${{ matrix.rust-target }}/release/bundle"
           for dir in macos nsis msi appimage; do
             if [ -d "$BUNDLE_DIR/$dir" ]; then
               find "$BUNDLE_DIR/$dir" \( \
@@ -282,7 +282,6 @@ jobs:
           tag: ${{ github.ref_name }}
           fileName: "*"
           out-file-path: release-assets
-          errorOnNoAssetsFound: false
 
       - name: Generate SHA256SUMS.txt
         run: |
