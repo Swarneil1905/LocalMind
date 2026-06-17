@@ -1395,7 +1395,7 @@ pub fn run() {
                         let name = "localmind-sidecar";
                         d.join("binaries").join(name)
                     });
-                    if let Some(path) = bundled.filter(|p| p.exists()) {
+                    if let Some(path) = bundled.filter(|p| p.metadata().map(|m| m.len() > 0).unwrap_or(false)) {
                         SidecarHandle::launch_binary(path)
                     } else {
                         SidecarHandle::launch()
