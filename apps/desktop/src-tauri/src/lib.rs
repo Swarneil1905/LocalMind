@@ -1388,13 +1388,21 @@ pub fn run() {
                 // In dev mode the binary won't exist, so we fall back to
                 // spawning `python main.py` from the source tree.
                 let sidecar_result = {
-                    let bundled = app_handle.path().resource_dir().ok().map(|d| {
-                        #[cfg(target_os = "windows")]
-                        let name = "localmind-sidecar.exe";
-                        #[cfg(not(target_os = "windows"))]
-                        let name = "localmind-sidecar";
-                        d.join("binaries").join(name)
-                    });
+                    // External binaries bundled via Tauri's `externalBin` end up
+                    // next to the main executable (no `binaries/` sub-folder):
+                    //   Windows: <install_dir>/localmind-sidecar.exe
+                    //   macOS:   <App>.app/Contents/MacOS/localmind-sidecar
+                    //   Linux:   <install_dir>/localmind-sidecar
+                    // current_exe().parent() resolves correctly on all platforms.
+                    let bundled = std::env::current_exe()
+                        .ok()
+                        .and_then(|exe| exe.parent().map(|d| {
+                            #[cfg(target_os = "windows")]
+                            let name = "localmind-sidecar.exe";
+                            #[cfg(not(target_os = "windows"))]
+                            let name = "localmind-sidecar";
+                            d.join(name)
+                        }));
                     if let Some(path) = bundled.filter(|p| p.metadata().map(|m| m.len() > 0).unwrap_or(false)) {
                         SidecarHandle::launch_binary(path)
                     } else {
