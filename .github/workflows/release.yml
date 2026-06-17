@@ -202,6 +202,18 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
+      # ── Debug: find all generated bundle files ──
+      - name: Debug bundle output
+        shell: bash
+        run: |
+          echo "=== All .sig files ==="
+          find . -name "*.sig" 2>/dev/null | head -50 || echo "(none)"
+          echo "=== All bundle directories ==="
+          find . -name "bundle" -type d 2>/dev/null | head -20 || echo "(none)"
+          echo "=== Contents of target/ bundle dirs ==="
+          find . -path "*/release/bundle" -type d 2>/dev/null \
+            | while read d; do echo "--- $d ---"; ls "$d" 2>/dev/null; done
+
       # ── Collect updater bundles + .sig files into a flat directory ──
       # These are the archives the auto-updater downloads (not the user-facing
       # installers). Tauri generates them automatically when a signing key is set.
