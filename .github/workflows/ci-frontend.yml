@@ -18,7 +18,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: "11"
+          version: "11.0.9"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -39,4 +39,4 @@ jobs:
 
       - name: Vitest
         working-directory: apps/desktop
-        run: pnpm test
+        run: pnpm t
