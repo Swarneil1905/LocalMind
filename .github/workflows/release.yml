@@ -109,6 +109,7 @@ jobs:
         run: |
           pip install pyinstaller --break-system-packages || pip install pyinstaller
           pyinstaller --onefile --name localmind-sidecar \
+            --collect-all app \
             --hidden-import=uvicorn.logging \
             --hidden-import=uvicorn.loops \
             --hidden-import=uvicorn.loops.auto \
@@ -131,6 +132,7 @@ jobs:
         run: |
           pip install pyinstaller
           pyinstaller --onefile --name localmind-sidecar `
+            --collect-all app `
             --hidden-import=uvicorn.logging `
             --hidden-import=uvicorn.loops `
             --hidden-import=uvicorn.loops.auto `
