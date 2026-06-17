@@ -25,7 +25,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE4MjgyNzgzMDJDRDNDMkEKUldRcVBNMENneWNvcU0vNWlwd0lySUwzN3paNk1ZeU9hOVNZOHBzcnFiQnh0Zy8zRGhjT0wzVGcK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQwQ0JBRUU1QzU2NzM4QjIKUldTeU9HZkY1YTdMMEFKUVVabXhPNEhFVkF2T045MUcwNWlhYWJiZG5DQ0t0azZWSS8xMTJ0Y3YK",
       "endpoints": [
         "https://github.com/Swarneil1905/LocalMind/releases/latest/download/latest.json"
       ]
