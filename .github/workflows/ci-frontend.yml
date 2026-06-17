@@ -39,4 +39,4 @@ jobs:
 
       - name: Vitest
         working-directory: apps/desktop
-        run: pnpm t
+        run: pnpm test
