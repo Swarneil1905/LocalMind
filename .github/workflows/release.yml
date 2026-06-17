@@ -201,7 +201,7 @@ jobs:
       - name: Setup signing key
         shell: bash
         run: |
-          echo "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" > "$RUNNER_TEMP/tauri-signing.key"
+          printf '%s' "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" | tr -d '\r\n' > "$RUNNER_TEMP/tauri-signing.key"
           echo "TAURI_SIGNING_PRIVATE_KEY=$RUNNER_TEMP/tauri-signing.key" >> "$GITHUB_ENV"
 
       # ── Build with signing key so Tauri generates .sig files ──
