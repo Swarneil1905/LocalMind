@@ -195,11 +195,19 @@ jobs:
           cp /tmp/ollama-extract/bin/ollama apps/desktop/src-tauri/binaries/ollama-x86_64-unknown-linux-gnu
           chmod +x apps/desktop/src-tauri/binaries/ollama-x86_64-unknown-linux-gnu
 
+      # ── Write signing key to a temp file so newlines are preserved ──
+      # GitHub Secrets strips trailing newlines from multiline values when
+      # passed as env vars; writing to a file avoids the stripping issue.
+      - name: Setup signing key
+        shell: bash
+        run: |
+          echo "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" > "$RUNNER_TEMP/tauri-signing.key"
+          echo "TAURI_SIGNING_PRIVATE_KEY=$RUNNER_TEMP/tauri-signing.key" >> "$GITHUB_ENV"
+
       # ── Build with signing key so Tauri generates .sig files ──
       - name: Build Tauri application
         run: pnpm --filter desktop tauri build ${{ matrix.args }}
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
       # ── Debug: find all generated bundle files ──
