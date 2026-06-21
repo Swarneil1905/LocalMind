@@ -196,6 +196,12 @@ def list_memories() -> dict:
     return {"memories": mem_db.list_all()}
 
 
+@router.delete("/all")
+def delete_all_memories() -> dict:
+    count = mem_db.delete_all()
+    return {"ok": True, "deleted": count}
+
+
 @router.delete("/{memory_id}")
 def delete_memory(memory_id: str) -> dict:
     deleted = mem_db.delete_by_id(memory_id)
