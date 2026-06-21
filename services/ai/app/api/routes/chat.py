@@ -39,9 +39,12 @@ OLLAMA_BASE = "http://127.0.0.1:11434"
 STREAM_TIMEOUT = httpx.Timeout(connect=5.0, read=120.0, write=10.0, pool=5.0)
 
 DEFAULT_SYSTEM_PROMPT = (
-    "You are LocalMind, a private desktop AI assistant. "
-    "You help the user with memory, projects, documents, and work tasks. "
-    "You are precise, direct, and do not add unnecessary commentary."
+    "You are LocalMind, a private local AI assistant. "
+    "Be concise and direct. No filler phrases like 'Certainly!' or 'Of course!'. "
+    "When real-time context from Gmail or other apps is provided, use ONLY those facts. "
+    "Never guess or make up details not explicitly in the context. "
+    "If something isn't in the provided data, say so plainly. "
+    "Always address the user as 'you' — never use any name or third person."
 )
 
 _WEB_CONTEXT_HEADER = """
@@ -68,6 +71,7 @@ class ChatRequest(BaseModel):
     history: list[dict] = []
     web_search_enabled: bool = False
     web_search_query: str | None = None
+    connector_context_enabled: bool = True   # inject real-time data from connected sources
 
 
 async def _run_web_search(query: str) -> tuple[str, list[dict]]:
@@ -108,10 +112,64 @@ async def _run_web_search(query: str) -> tuple[str, list[dict]]:
     return context_block, sources
 
 
+async def _gather_connector_context(message: str) -> str:
+    """
+    Check all connected connectors and gather relevant real-time context.
+    Also check if message mentions a person name — inject their profile if so.
+    Returns a formatted context block to prepend to the system prompt.
+    """
+    try:
+        from app.connectors.registry import registry
+        from app.connectors.base import ConnectorStatus
+        from app.db.people import person_context_for_buddy
+
+        blocks: list[str] = []
+
+        # Gather context from each connected connector
+        import logging as _log
+        for connector in registry.all():
+            try:
+                status = await connector.status()
+                if status == ConnectorStatus.CONNECTED:
+                    ctx = await connector.context_for_buddy(message)
+                    if ctx:
+                        blocks.append(ctx)
+                    else:
+                        _log.warning("[connector] %s returned empty context", connector.__class__.__name__)
+            except Exception as _exc:
+                _log.exception("[connector] %s context_for_buddy failed: %s", connector.__class__.__name__, _exc)
+                continue
+
+        # Check if message mentions someone's name — inject their profile
+        # Simple heuristic: look for capitalised words after "from", "about", "with"
+        import re
+        name_triggers = re.findall(
+            r'\b(?:from|about|with|message from|email from|text from|talking to)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)',
+            message
+        )
+        for name in name_triggers:
+            profile_ctx = person_context_for_buddy(name)
+            if profile_ctx:
+                blocks.append(f"\n**Person Profile — {name}:**\n{profile_ctx}")
+
+        if not blocks:
+            return ""
+
+        return "\n\n[REAL-TIME CONTEXT FROM YOUR CONNECTED APPS]\n" + "\n\n".join(blocks)
+
+    except Exception:
+        return ""
+
+
 async def _stream_ollama(request: ChatRequest) -> AsyncIterator[str]:
     """Yield SSE-formatted strings from Ollama's streaming chat API."""
     sources: list[dict] = []
     extra_context = ""
+
+    # Gather connector context (Gmail, WhatsApp, People Profiles)
+    connector_context = ""
+    if request.connector_context_enabled:
+        connector_context = await _gather_connector_context(request.message)
 
     # Phase 5: run web search before calling the model
     if request.web_search_enabled:
@@ -120,6 +178,8 @@ async def _stream_ollama(request: ChatRequest) -> AsyncIterator[str]:
 
     # Build message list
     system = request.system_prompt
+    if connector_context:
+        system = system + "\n\n" + connector_context
     if request.web_search_enabled:
         if extra_context:
             system = system + "\n\n" + extra_context
