@@ -540,6 +540,24 @@ async fn delete_memory(
 }
 
 #[tauri::command]
+async fn delete_all_memories(
+    app_handle: tauri::AppHandle,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<(), String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/memory/all")?;
+    let client = reqwest::Client::new();
+    client
+        .delete(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    // Emit empty memories list so the UI clears immediately
+    app_handle.emit("memories-updated", MemoriesUpdatedPayload { memories: vec![] }).ok();
+    Ok(())
+}
+
+#[tauri::command]
 async fn list_memory_links(
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<Vec<MemoryLink>, String> {
@@ -1232,9 +1250,12 @@ async fn update_search_config(
 // ---------------------------------------------------------------------------
 
 fn default_system_prompt() -> String {
-    "You are LocalMind, a private desktop AI assistant. \
-     You help the user with memory, projects, documents, and work tasks. \
-     You are precise, direct, and do not add unnecessary commentary."
+    "You are LocalMind, a private local AI assistant. \
+     Be concise and direct. No unnecessary filler, no \"Certainly!\", no \"Of course!\". \
+     When real-time context from Gmail or other apps is provided, use ONLY those facts. \
+     Never guess, hallucinate, or fill in details not explicitly stated in the context. \
+     If you don't know something from the provided context, say so plainly. \
+     Always address the user as 'you' — never use any name or refer to them in third person."
         .to_string()
 }
 
@@ -1248,7 +1269,9 @@ fn build_system_prompt(memories: &[MemoryEntry]) -> String {
         .map(|m| format!("- {}", m.content))
         .collect::<Vec<_>>()
         .join("\n");
-    format!("{base}\n\nThings you remember about the user:\n{facts}")
+    format!(
+        "{base}\n\nBackground facts you remember (use as context, NOT to analyze — always respond directly to the user as 'you'):\n{facts}"
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1364,6 +1387,106 @@ async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
+// Connector commands
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+async fn list_connectors(
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<serde_json::Value, String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/connectors")?;
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn connect_connector(
+    connector_id: String,
+    credentials: Option<serde_json::Value>,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<serde_json::Value, String> {
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/connectors/{connector_id}/connect"))?;
+    let body = serde_json::json!({ "credentials": credentials.unwrap_or(serde_json::json!({})) });
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn disconnect_connector(
+    connector_id: String,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<(), String> {
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/connectors/{connector_id}"))?;
+    let client = reqwest::Client::new();
+    client
+        .delete(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn sync_connector(
+    connector_id: String,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<serde_json::Value, String> {
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/connectors/{connector_id}/sync"))?;
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn list_people(
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<serde_json::Value, String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/connectors/people")?;
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn gmail_debug(
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<serde_json::Value, String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/connectors/gmail/debug")?;
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
 // App entry point
 // ---------------------------------------------------------------------------
 
@@ -1463,6 +1586,7 @@ pub fn run() {
             extract_memories,
             list_memories,
             delete_memory,
+            delete_all_memories,
             pick_folder,
             index_knowledge,
             list_knowledge_sources,
@@ -1496,6 +1620,12 @@ pub fn run() {
             pull_ollama_model,
             check_for_updates,
             install_update,
+            list_connectors,
+            connect_connector,
+            disconnect_connector,
+            sync_connector,
+            list_people,
+            gmail_debug,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
