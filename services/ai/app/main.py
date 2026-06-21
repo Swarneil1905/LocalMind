@@ -8,11 +8,13 @@ and is generated fresh by the Rust core on every application launch.
 
 import os
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.api.routes import (
     chat,
+    connectors,
     conversations,
     health,
     knowledge,
@@ -21,12 +23,37 @@ from app.api.routes import (
     projects,
     search_config,
 )
+from app.connectors.registry import setup_registry
+from app.db.messages import init_db as init_messages_db
+from app.db.people import init_db as init_people_db
 
-app = FastAPI(title="LocalMind AI Service", version="0.1.0", docs_url=None, redoc_url=None)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: initialise DBs, register connectors, start background sync
+    init_messages_db()
+    init_people_db()
+    setup_registry()
+    from app.sync_engine import start_background_sync
+    await start_background_sync()
+    yield
+    # Shutdown: nothing to clean up for now
+
+
+app = FastAPI(
+    title="LocalMind AI Service",
+    version="0.2.0",
+    docs_url=None,
+    redoc_url=None,
+    lifespan=lifespan,
+)
 
 
 @app.middleware("http")
 async def verify_bearer_token(request: Request, call_next):  # type: ignore[no-untyped-def]
+    # Health check is unauthenticated so Tauri can poll it
+    if request.url.path == "/health":
+        return await call_next(request)
     token = os.environ.get("LOCALMIND_TOKEN", "")
     auth_header = request.headers.get("Authorization", "")
     if auth_header != f"Bearer {token}":
@@ -42,3 +69,4 @@ app.include_router(knowledge.router)
 app.include_router(conversations.router)
 app.include_router(projects.router)
 app.include_router(search_config.router)
+app.include_router(connectors.router)

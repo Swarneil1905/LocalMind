@@ -3,3 +3,16 @@ uvicorn[standard]==0.32.1
 httpx==0.28.1
 lancedb==0.20.0
 pypdf==5.1.0
+
+# Connector dependencies
+google-auth==2.38.0
+google-auth-oauthlib==1.2.1
+google-auth-httplib2==0.2.0
+google-api-python-client==2.165.0
+
+playwright==1.50.0
+
+apscheduler==3.10.4
+
+# People Profiles — embeddings for semantic search over profiles
+sentence-transformers==3.4.1

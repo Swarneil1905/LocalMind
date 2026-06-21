@@ -8,11 +8,29 @@ then starts the FastAPI server bound to 127.0.0.1 only.
 import multiprocessing
 import os
 import sys
+from pathlib import Path
 
 import uvicorn
 
 
+def _load_dotenv() -> None:
+    """Load key=value pairs from services/ai/.env into os.environ (stdlib, no dotenv package)."""
+    env_path = Path(__file__).parent / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if key and value and key not in os.environ:
+            os.environ[key] = value
+
+
 def main() -> None:
+    _load_dotenv()
     port_str = os.environ.get("LOCALMIND_PORT")
     token = os.environ.get("LOCALMIND_TOKEN")
 
@@ -30,16 +48,11 @@ def main() -> None:
         print(f"LOCALMIND_PORT is not a valid integer: {port_str!r}", file=sys.stderr)
         sys.exit(1)
 
-    # Import the app object directly instead of passing a string to uvicorn.
-    # PyInstaller cannot detect dynamic string imports ("app.main:app"), so the
-    # app package would be missing from the bundle. Importing statically ensures
-    # PyInstaller includes the entire app package in the binary.
     from app.main import app as fastapi_app  # noqa: PLC0415
 
     uvicorn.run(fastapi_app, host="127.0.0.1", port=port)
 
 
 if __name__ == "__main__":
-    # Required by PyInstaller on Windows when using multiprocessing.
     multiprocessing.freeze_support()
     main()
