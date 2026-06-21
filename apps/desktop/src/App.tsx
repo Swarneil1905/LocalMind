@@ -7,15 +7,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  LayoutDashboard,
+  Home,
   MessageSquare,
-  FolderOpen,
+  Dog,
   Brain,
-  BookOpen,
-  CheckSquare,
+  Plug,
+  FolderOpen,
   Settings,
   ChevronLeft,
-  ChevronRight,
   X,
   FolderOpen as FolderIcon,
   Monitor,
@@ -28,12 +27,12 @@ import { Composer } from "./components/Composer";
 import { ConversationList } from "./components/ConversationList";
 import { FirstRunSetup } from "./components/FirstRunSetup";
 import { UpdateBanner } from "./components/UpdateBanner";
-import { KnowledgePage } from "./components/KnowledgePage";
 import { MessageList } from "./components/MessageList";
 import { MemoryPage } from "./components/MemoryPage";
-import { PlaceholderPage } from "./components/PlaceholderPage";
+import { ConnectionsPage } from "./components/ConnectionsPage";
+import { TodayPage } from "./components/TodayPage";
+import { BuddyPage } from "./components/BuddyPage";
 import { ProjectsPage } from "./components/ProjectsPage";
-import { TasksPage } from "./components/TasksPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { useChat } from "./hooks/useChat";
 import { ConversationMessage, useConversations } from "./hooks/useConversations";
@@ -50,10 +49,10 @@ import "./App.css";
 type PageId =
   | "today"
   | "chats"
+  | "buddy"
+  | "mind"
+  | "connections"
   | "projects"
-  | "memory"
-  | "knowledge"
-  | "tasks"
   | "settings";
 
 interface NavItem {
@@ -67,13 +66,13 @@ interface NavItem {
 // ---------------------------------------------------------------------------
 
 const NAV_ITEMS: NavItem[] = [
-  { id: "today",     label: "Today",     Icon: LayoutDashboard },
-  { id: "chats",     label: "Chats",     Icon: MessageSquare   },
-  { id: "projects",  label: "Projects",  Icon: FolderOpen      },
-  { id: "memory",    label: "Memory",    Icon: Brain           },
-  { id: "knowledge", label: "Knowledge", Icon: BookOpen        },
-  { id: "tasks",     label: "Tasks",     Icon: CheckSquare     },
-  { id: "settings",  label: "Settings",  Icon: Settings        },
+  { id: "today",       label: "Today",       Icon: Home          },
+  { id: "chats",       label: "Chat",        Icon: MessageSquare },
+  { id: "buddy",       label: "Buddy",       Icon: Dog           },
+  { id: "mind",        label: "Mind",        Icon: Brain         },
+  { id: "connections", label: "Connections", Icon: Plug          },
+  { id: "projects",    label: "Projects",    Icon: FolderOpen    },
+  { id: "settings",    label: "Settings",    Icon: Settings      },
 ];
 
 
@@ -100,8 +99,8 @@ function dbMsgToMessage(m: ConversationMessage): Message {
 
 export default function App() {
   const [setupComplete, setSetupComplete] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [activePage, setActivePage] = useState<PageId>("chats");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [activePage, setActivePage] = useState<PageId>("today");
   const [modelMode, setModelMode] = useState<ModelMode>("balanced");
   const [speedModel, setSpeedModel] = useState(MODEL_MAP.speed);
   const [balancedModel, setBalancedModel] = useState(MODEL_MAP.balanced);
@@ -287,6 +286,7 @@ export default function App() {
         onToggleRightPanel={() => setRightPanelOpen((v) => !v)}
         hasRightPanelContent={memories.length > 0 || webSources.length > 0}
         isSearching={isSearching}
+        onNavigate={setActivePage}
       />
       {rightPanelOpen && (memories.length > 0 || webSources.length > 0) && (
         <RightPanel memories={memories} webSources={webSources} onDeleteMemory={deleteMemory} />
@@ -330,36 +330,57 @@ function Sidebar({ collapsed, activePage, ollamaRunning, theme, onNavigate, onTo
       {/* Logo / title row */}
       <div
         style={{
-          height: 48,
+          height: 52,
           display: "flex",
           alignItems: "center",
-          padding: "0 12px",
-          gap: 10,
+          padding: "0 10px",
+          gap: 8,
           borderBottom: "1px solid var(--border)",
           flexShrink: 0,
         }}
       >
-        {!collapsed && (
-          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", flex: 1, whiteSpace: "nowrap" }}>
-            LocalMind
-          </span>
-        )}
-        <button
+        {/* Paw logo mark */}
+        <div
           onClick={onToggle}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           style={{
+            width: 28,
+            height: 28,
+            borderRadius: 8,
+            background: "linear-gradient(135deg, var(--accent) 0%, #818cf8 100%)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            width: 24,
-            height: 24,
-            borderRadius: 4,
-            color: "var(--text-3)",
-            marginLeft: collapsed ? "auto" : undefined,
+            fontSize: 14,
+            flexShrink: 0,
+            cursor: "pointer",
+            userSelect: "none",
           }}
         >
-          {collapsed ? <ChevronRight size={14} strokeWidth={1.5} /> : <ChevronLeft size={14} strokeWidth={1.5} />}
-        </button>
+          🐾
+        </div>
+        {!collapsed && (
+          <>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", flex: 1, whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>
+              LocalMind
+            </span>
+            <button
+              onClick={onToggle}
+              title="Collapse sidebar"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 22,
+                height: 22,
+                borderRadius: 4,
+                color: "var(--text-3)",
+              }}
+            >
+              <ChevronLeft size={13} strokeWidth={1.5} />
+            </button>
+          </>
+        )}
       </div>
 
       {/* Nav items */}
@@ -389,7 +410,7 @@ function Sidebar({ collapsed, activePage, ollamaRunning, theme, onNavigate, onTo
                 transition: "background-color 120ms, color 120ms",
               }}
             >
-              <Icon size={15} strokeWidth={active ? 2 : 1.5} style={{ color: active ? "var(--accent)" : undefined }} />
+              <Icon size={collapsed ? 17 : 15} strokeWidth={active ? 2 : 1.5} style={{ color: active ? "var(--accent)" : undefined }} />
               {!collapsed && label}
             </button>
           );
@@ -525,6 +546,7 @@ interface MainAreaProps {
   onToggleRightPanel: () => void;
   hasRightPanelContent: boolean;
   isSearching: boolean;
+  onNavigate: (page: PageId) => void;
 }
 
 function MainArea({
@@ -569,6 +591,7 @@ function MainArea({
   onToggleRightPanel,
   hasRightPanelContent,
   isSearching,
+  onNavigate,
 }: MainAreaProps) {
   const ollamaRunning = ollamaStatus?.running ?? null;
   const activeLabel =
@@ -648,15 +671,8 @@ function MainArea({
           hydeEnabled={hydeEnabled}
           onHydeToggle={onHydeToggle}
         />
-      ) : activePage === "memory" ? (
-        <MemoryPage
-          memories={memories ?? []}
-          links={memoryLinks ?? []}
-          onDelete={onDeleteMemory}
-          onDeleteLink={onDeleteMemoryLink}
-        />
       ) : activePage === "chats" ? (
-        // Chats page: conversation list panel + chat area side by side
+        // Chat page: conversation list + companion chat area
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
           <ConversationList
             conversations={conversations}
@@ -668,144 +684,67 @@ function MainArea({
           />
           <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {messages.length === 0 ? (
-              /* ── Empty state ── */
-              <div
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: "0 24px 80px",
-                  gap: 20,
-                  overflow: "hidden",
-                }}
-              >
-                {/* Greeting */}
-                <div style={{ textAlign: "center", marginBottom: 4 }}>
-                  <h1
-                    style={{
-                      fontSize: 28,
-                      fontWeight: 700,
-                      color: "var(--text)",
-                      letterSpacing: "-0.03em",
-                      margin: "0 0 6px",
-                      lineHeight: 1.2,
-                    }}
-                  >
-                    What should we work on?
-                  </h1>
-                  <p style={{ fontSize: 14, color: "var(--text-3)", margin: 0 }}>
-                    LocalMind runs privately on your machine.
-                  </p>
+              /* ── Empty / welcome state ── */
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 24px 60px", gap: 24, overflow: "hidden" }}>
+                {/* Buddy avatar + greeting */}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 64, height: 64, borderRadius: "50%", background: "linear-gradient(135deg, #6366f1 0%, #818cf8 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, boxShadow: "0 4px 20px rgba(99,102,241,0.3)" }}>🐾</div>
+                  <div style={{ textAlign: "center" }}>
+                    <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-0.02em", margin: "0 0 6px" }}>
+                      Hey! What's on your mind?
+                    </h1>
+                    <p style={{ fontSize: 13, color: "var(--text-3)", margin: 0 }}>
+                      Everything stays on this machine. Speak freely.
+                    </p>
+                  </div>
                 </div>
-
-                {/* Composer prominent and centered */}
-                <div style={{ width: "100%", maxWidth: 680 }}>
-                  <Composer
-                    onSend={onSend}
-                    onStop={onStop}
-                    isStreaming={isStreaming}
-                    disabled={ollamaRunning === false}
-                    memoryEnabled={memoryEnabled}
-                    onMemoryToggle={onMemoryToggle}
-                    knowledgeEnabled={knowledgeEnabled}
-                    onKnowledgeToggle={onKnowledgeToggle}
-                    webSearchEnabled={webSearchEnabled}
-                    onWebSearchToggle={onWebSearchToggle}
-                    modelMode={modelMode}
-                    onModelModeChange={onModelModeChange}
-                    ollamaRunning={ollamaRunning}
-                    draft={composerDraft}
-                    onDraftApplied={onComposerDraftApplied}
-                  />
+                <div style={{ width: "100%", maxWidth: 660 }}>
+                  <Composer onSend={onSend} onStop={onStop} isStreaming={isStreaming} disabled={ollamaRunning === false} memoryEnabled={memoryEnabled} onMemoryToggle={onMemoryToggle} knowledgeEnabled={knowledgeEnabled} onKnowledgeToggle={onKnowledgeToggle} webSearchEnabled={webSearchEnabled} onWebSearchToggle={onWebSearchToggle} modelMode={modelMode} onModelModeChange={onModelModeChange} ollamaRunning={ollamaRunning} draft={composerDraft} onDraftApplied={onComposerDraftApplied} />
                 </div>
-
-                {/* Suggestion chips — two rows like Copilot */}
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", maxWidth: 680 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", maxWidth: 660 }}>
                   {[
-                    { label: "Summarize a document", text: "Please summarize this document:" },
-                    { label: "Draft an email", text: "Help me draft a professional email about:" },
-                    { label: "Explain a concept", text: "Can you explain this in simple terms:" },
-                    { label: "Brainstorm ideas", text: "Help me brainstorm ideas for:" },
-                    { label: "Write some code", text: "Help me write code to:" },
-                    { label: "Analyze data", text: "Help me analyze this data:" },
+                    { label: "📧 Check my emails", text: "Can you check my recent emails and summarize what's important?" },
+                    { label: "✍️ Draft a reply", text: "Help me draft a reply to:" },
+                    { label: "📅 What's on today?", text: "What do I have going on today based on my calendar and messages?" },
+                    { label: "💡 Brainstorm with me", text: "Help me brainstorm ideas for:" },
+                    { label: "🧠 What do you remember?", text: "What do you remember about me and my recent activities?" },
+                    { label: "💬 Catch me up", text: "Give me a quick catch-up on what happened while I was away." },
                   ].map(({ label, text }) => (
-                    <button
-                      key={label}
-                      onClick={() => onSetComposerDraft(text)}
-                      style={{
-                        padding: "7px 16px",
-                        backgroundColor: "var(--surface)",
-                        border: "1px solid var(--border)",
-                        borderRadius: 999,
-                        fontSize: 12,
-                        fontWeight: 400,
-                        color: "var(--text-2)",
-                        cursor: "pointer",
-                        transition: "border-color 0.12s, color 0.12s, background-color 0.12s",
-                        whiteSpace: "nowrap",
-                      }}
-                      onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)";
-                        (e.currentTarget as HTMLButtonElement).style.color = "var(--text)";
-                        (e.currentTarget as HTMLButtonElement).style.backgroundColor = "var(--surface-2)";
-                      }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
-                        (e.currentTarget as HTMLButtonElement).style.color = "var(--text-2)";
-                        (e.currentTarget as HTMLButtonElement).style.backgroundColor = "var(--surface)";
-                      }}
-                    >
-                      {label}
-                    </button>
+                    <button key={label} onClick={() => onSetComposerDraft(text)}
+                      style={{ padding: "7px 14px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 20, fontSize: 12, color: "var(--text-2)", cursor: "pointer", whiteSpace: "nowrap", transition: "border-color 0.12s, color 0.12s" }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text)"; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-2)"; }}
+                    >{label}</button>
                   ))}
                 </div>
               </div>
             ) : (
-              /* ── Normal chat layout ── */
+              /* ── Active chat ── */
               <>
-                <MessageList
-                  messages={messages}
-                  isStreaming={isStreaming}
-                  followUpQuestions={followUpQuestions}
-                  onSendFollowUp={onSendFollowUp}
-                  isSearching={isSearching}
-                />
-                <Composer
-                  onSend={onSend}
-                  onStop={onStop}
-                  isStreaming={isStreaming}
-                  disabled={ollamaRunning === false}
-                  memoryEnabled={memoryEnabled}
-                  onMemoryToggle={onMemoryToggle}
-                  knowledgeEnabled={knowledgeEnabled}
-                  onKnowledgeToggle={onKnowledgeToggle}
-                  webSearchEnabled={webSearchEnabled}
-                  onWebSearchToggle={onWebSearchToggle}
-                  modelMode={modelMode}
-                  onModelModeChange={onModelModeChange}
-                  ollamaRunning={ollamaRunning}
-                  draft={composerDraft}
-                  onDraftApplied={onComposerDraftApplied}
-                />
+                <MessageList messages={messages} isStreaming={isStreaming} followUpQuestions={followUpQuestions} onSendFollowUp={onSendFollowUp} isSearching={isSearching} />
+                <Composer onSend={onSend} onStop={onStop} isStreaming={isStreaming} disabled={ollamaRunning === false} memoryEnabled={memoryEnabled} onMemoryToggle={onMemoryToggle} knowledgeEnabled={knowledgeEnabled} onKnowledgeToggle={onKnowledgeToggle} webSearchEnabled={webSearchEnabled} onWebSearchToggle={onWebSearchToggle} modelMode={modelMode} onModelModeChange={onModelModeChange} ollamaRunning={ollamaRunning} draft={composerDraft} onDraftApplied={onComposerDraftApplied} />
               </>
             )}
           </div>
         </div>
-      ) : activePage === "knowledge" ? (
-        <KnowledgePage embedModel={EMBED_MODEL} />
+      ) : activePage === "today" ? (
+        <TodayPage onNavigateToChat={(prompt) => {
+          onNavigate("chats");
+          if (prompt) setTimeout(() => onSetComposerDraft(prompt), 100);
+        }} />
+      ) : activePage === "buddy" ? (
+        <BuddyPage />
+      ) : activePage === "mind" ? (
+        <MemoryPage
+          memories={memories ?? []}
+          links={memoryLinks ?? []}
+          onDelete={onDeleteMemory}
+          onDeleteLink={onDeleteMemoryLink}
+        />
+      ) : activePage === "connections" ? (
+        <ConnectionsPage />
       ) : activePage === "projects" ? (
         <ProjectsPage />
-      ) : activePage === "today" ? (
-        <PlaceholderPage
-          Icon={NAV_ITEMS.find((n) => n.id === "today")!.Icon}
-          title="Today"
-          description="Your daily digest - open tasks, recent context, and suggested actions."
-          phase="Coming in Phase 5"
-        />
-      ) : activePage === "tasks" ? (
-        <TasksPage projects={projects} />
       ) : null}
     </main>
   );
