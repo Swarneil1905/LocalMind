@@ -140,6 +140,16 @@ def delete_by_id(memory_id: str) -> bool:
     return deleted
 
 
+def delete_all() -> int:
+    """Delete every memory and all links. Returns number of memories deleted."""
+    conn = _ensure_schema()
+    cursor = conn.execute("DELETE FROM memories")
+    count = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return count
+
+
 # ---------------------------------------------------------------------------
 # Memory links API
 # ---------------------------------------------------------------------------
