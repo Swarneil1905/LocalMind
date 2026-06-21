@@ -1,7 +1,9 @@
 // Spec reference: Phase 2 - Memory page
 // Shows all stored memories with delete controls and linked-memory chips.
 
-import { Brain, Link, X } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { Brain, Link, Trash2, X } from "lucide-react";
+import { useState } from "react";
 import { Memory, MemoryLink } from "../hooks/useMemory";
 
 interface MemoryPageProps {
@@ -84,6 +86,18 @@ export function MemoryPage({
   onDelete,
   onDeleteLink,
 }: MemoryPageProps) {
+  const [clearing, setClearing] = useState(false);
+
+  async function handleClearAll() {
+    if (!confirm(`Delete all ${memories.length} memories? This cannot be undone.`)) return;
+    setClearing(true);
+    try {
+      await invoke("delete_all_memories");
+    } finally {
+      setClearing(false);
+    }
+  }
+
   const linksByMemory = new Map<string, MemoryLink[]>();
   for (const link of links) {
     for (const mid of [link.from_id, link.to_id]) {
@@ -115,19 +129,41 @@ export function MemoryPage({
               Facts extracted from your conversations. Used to personalize responses.
             </p>
           </div>
-          <span
-            style={{
-              marginLeft: "auto",
-              fontSize: 11,
-              color: "var(--text-3)",
-              backgroundColor: "var(--surface-2)",
-              border: "1px solid var(--border)",
-              borderRadius: 10,
-              padding: "2px 8px",
-            }}
-          >
-            {memories.length} {memories.length === 1 ? "item" : "items"}
-          </span>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            <span
+              style={{
+                fontSize: 11,
+                color: "var(--text-3)",
+                backgroundColor: "var(--surface-2)",
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                padding: "2px 8px",
+              }}
+            >
+              {memories.length} {memories.length === 1 ? "item" : "items"}
+            </span>
+            <button
+              onClick={handleClearAll}
+              disabled={clearing || memories.length === 0}
+              title={memories.length === 0 ? "No memories to clear" : "Clear all memories"}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "4px 10px",
+                fontSize: 11,
+                color: memories.length === 0 ? "var(--text-3)" : "#ef4444",
+                background: "transparent",
+                border: `1px solid ${memories.length === 0 ? "var(--border)" : "rgba(239,68,68,0.3)"}`,
+                borderRadius: 6,
+                cursor: clearing || memories.length === 0 ? "not-allowed" : "pointer",
+                opacity: clearing || memories.length === 0 ? 0.4 : 1,
+              }}
+            >
+              <Trash2 size={11} />
+              {clearing ? "Clearing…" : "Clear all"}
+            </button>
+          </div>
         </div>
 
         {/* Empty state */}
