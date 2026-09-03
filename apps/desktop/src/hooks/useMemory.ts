@@ -36,7 +36,7 @@ export function useMemory() {
   const refreshLinks = useCallback(async () => {
     try {
       const result = await invoke<MemoryLink[]>("list_memory_links");
-      setLinks(result);
+      setLinks(Array.isArray(result) ? result : []);
     } catch {
       // sidecar may not be ready - silently skip
     }
@@ -47,10 +47,12 @@ export function useMemory() {
     let cancelled = false;
     let unlisten: (() => void) | undefined;
 
-    // Fetch current memory list on mount (via .then callback, not synchronously)
+    // Fetch current memory list on mount (via .then callback, not synchronously).
+    // Guard against a non-array response (e.g. mocked invoke() in tests, or a
+    // sidecar hiccup) so a bad payload can't null out state and crash the render.
     invoke<Memory[]>("list_memories")
       .then((list) => {
-        if (!cancelled) setMemories(list);
+        if (!cancelled) setMemories(Array.isArray(list) ? list : []);
       })
       .catch(() => {}); // sidecar may not be ready yet - silently skip
 
@@ -58,7 +60,7 @@ export function useMemory() {
     async function initialLinkLoad() {
       try {
         const result = await invoke<MemoryLink[]>("list_memory_links");
-        if (!cancelled) setLinks(result);
+        if (!cancelled) setLinks(Array.isArray(result) ? result : []);
       } catch {
         // sidecar not ready
       }
@@ -67,7 +69,7 @@ export function useMemory() {
 
     listen<MemoriesUpdatedPayload>("memories-updated", (event) => {
       // These setState calls are inside an event callback - not synchronous in effect body
-      setMemories(event.payload.memories);
+      setMemories(Array.isArray(event.payload?.memories) ? event.payload.memories : []);
       refreshLinks();
     }).then((fn) => {
       if (cancelled) fn();

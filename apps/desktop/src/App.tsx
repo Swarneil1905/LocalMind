@@ -284,12 +284,12 @@ export default function App() {
         onSetComposerDraft={setComposerDraft}
         rightPanelOpen={rightPanelOpen}
         onToggleRightPanel={() => setRightPanelOpen((v) => !v)}
-        hasRightPanelContent={memories.length > 0 || webSources.length > 0}
+        hasRightPanelContent={(memories?.length ?? 0) > 0 || (webSources?.length ?? 0) > 0}
         isSearching={isSearching}
         onNavigate={setActivePage}
       />
-      {rightPanelOpen && (memories.length > 0 || webSources.length > 0) && (
-        <RightPanel memories={memories} webSources={webSources} onDeleteMemory={deleteMemory} />
+      {rightPanelOpen && ((memories?.length ?? 0) > 0 || (webSources?.length ?? 0) > 0) && (
+        <RightPanel memories={memories ?? []} webSources={webSources ?? []} onDeleteMemory={deleteMemory} />
       )}
       </div>
     </>

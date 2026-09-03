@@ -47,14 +47,16 @@ export function useKnowledge(): UseKnowledgeReturn {
   const [error, setError] = useState<string | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
 
-  // Load sources on mount and subscribe to updates
+  // Load sources on mount and subscribe to updates.
+  // Guard against a non-array response (e.g. mocked invoke() in tests, or a
+  // sidecar hiccup) so a bad payload can't null out state and crash the render.
   useEffect(() => {
     invoke<KnowledgeSource[]>("list_knowledge_sources")
-      .then(setSources)
+      .then((list) => setSources(Array.isArray(list) ? list : []))
       .catch((e) => setError(String(e)));
 
     listen<KnowledgeUpdatedPayload>("knowledge-updated", (event) => {
-      setSources(event.payload.sources);
+      setSources(Array.isArray(event.payload?.sources) ? event.payload.sources : []);
     }).then((unlisten) => {
       unlistenRef.current = unlisten;
     });
@@ -105,7 +107,7 @@ export function useKnowledge(): UseKnowledgeReturn {
     embedModel: string,
     limit = 5
   ): Promise<KnowledgeChunk[]> => {
-    return invoke<KnowledgeChunk[]>("search_knowledge", {
+    const result = await invoke<KnowledgeChunk[]>("search_knowledge", {
       query,
       embedModel,
       limit,
@@ -113,6 +115,9 @@ export function useKnowledge(): UseKnowledgeReturn {
       setError(String(e));
       return [];
     });
+    // Guard against a non-array response (e.g. mocked invoke() in tests, or a
+    // sidecar hiccup) - callers immediately .map()/.length this result.
+    return Array.isArray(result) ? result : [];
   };
 
   return { sources, loading, error, addFolder, deleteSource, search };

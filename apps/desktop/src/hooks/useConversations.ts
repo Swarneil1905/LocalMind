@@ -32,15 +32,17 @@ export function useConversations() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  // Load list on mount and subscribe to server-push updates (e.g. after delete)
+  // Load list on mount and subscribe to server-push updates (e.g. after delete).
+  // Guard against a non-array response (e.g. mocked invoke() in tests, or a
+  // sidecar hiccup) so a bad payload can't null out state and crash the render.
   useEffect(() => {
     invoke<Conversation[]>("list_conversations")
-      .then(setConversations)
+      .then((list) => setConversations(Array.isArray(list) ? list : []))
       .catch(() => {});
 
     let unlisten: (() => void) | undefined;
     listen<ConversationsUpdatedPayload>("conversations-updated", (event) => {
-      setConversations(event.payload.conversations);
+      setConversations(Array.isArray(event.payload?.conversations) ? event.payload.conversations : []);
     }).then((fn) => {
       unlisten = fn;
     });
@@ -66,7 +68,9 @@ export function useConversations() {
         "get_conversation_messages",
         { conversationId: id }
       );
-      return messages;
+      // Guard against a non-array response (e.g. mocked invoke() in tests, or a
+      // sidecar hiccup) - the caller immediately calls .map() on this result.
+      return Array.isArray(messages) ? messages : [];
     },
     []
   );
