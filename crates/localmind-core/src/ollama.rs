@@ -114,11 +114,8 @@ pub async fn check() -> OllamaStatus {
             .send()
             .await
             .ok()
-            .and_then(|r| {
-                // status check without consuming the body yet
-                if r.status().is_success() { Some(r) } else { None }
-            })
-            // .and_then cannot be async, so we flatten with a separate match
+            // status check without consuming the body yet
+            .filter(|r| r.status().is_success())
     } else {
         None
     };
