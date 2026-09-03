@@ -38,6 +38,7 @@ import { useChat } from "./hooks/useChat";
 import { ConversationMessage, useConversations } from "./hooks/useConversations";
 import { Memory, useMemory } from "./hooks/useMemory";
 import { useOllama } from "./hooks/useOllama";
+import { useSidecarStatus } from "./hooks/useSidecarStatus";
 import { useProjects } from "./hooks/useProjects";
 import { Message, ModelMode, MODEL_MAP } from "./types";
 import "./App.css";
@@ -125,6 +126,7 @@ export default function App() {
   }, [theme]);
 
   const ollamaStatus = useOllama();
+  const { status: sidecarStatus, error: sidecarError } = useSidecarStatus();
   const { memories, links: memoryLinks, deleteMemory, deleteLink: deleteMemoryLink } = useMemory();
 
   const {
@@ -250,6 +252,8 @@ export default function App() {
         isStreaming={isStreaming}
         modelMode={modelMode}
         ollamaStatus={ollamaStatus}
+        sidecarStatus={sidecarStatus}
+        sidecarError={sidecarError}
         speedModel={speedModel}
         balancedModel={balancedModel}
         memoryEnabled={memoryEnabled}
@@ -510,6 +514,8 @@ interface MainAreaProps {
   isStreaming: boolean;
   modelMode: ModelMode;
   ollamaStatus: ReturnType<typeof useOllama>;
+  sidecarStatus: ReturnType<typeof useSidecarStatus>["status"];
+  sidecarError: ReturnType<typeof useSidecarStatus>["error"];
   speedModel: string;
   balancedModel: string;
   memoryEnabled: boolean;
@@ -555,6 +561,8 @@ function MainArea({
   isStreaming,
   modelMode,
   ollamaStatus,
+  sidecarStatus,
+  sidecarError,
   speedModel,
   balancedModel,
   memoryEnabled,
@@ -594,6 +602,21 @@ function MainArea({
   onNavigate,
 }: MainAreaProps) {
   const ollamaRunning = ollamaStatus?.running ?? null;
+  const sidecarReady = sidecarStatus === "ready";
+  // Ollama can show as "running" while the sidecar (the FastAPI service that
+  // actually talks to it) is still starting up - gate the composer on both,
+  // otherwise sending here is a guaranteed "Sidecar not ready yet" error.
+  const composerDisabled = ollamaRunning === false || !sidecarReady;
+  const sidecarHint =
+    sidecarStatus === "starting" ? (
+      <p style={{ fontSize: 11, color: "var(--text-3)", textAlign: "center", margin: "0 0 6px" }}>
+        Starting up local AI service…
+      </p>
+    ) : sidecarStatus === "failed" ? (
+      <p style={{ fontSize: 11, color: "#ef4444", textAlign: "center", margin: "0 0 6px" }}>
+        Local AI service failed to start{sidecarError ? `: ${sidecarError}` : ""} — try restarting LocalMind.
+      </p>
+    ) : null;
   const activeLabel =
     NAV_ITEMS.find((n) => n.id === activePage)?.label ?? activePage;
 
@@ -699,7 +722,8 @@ function MainArea({
                   </div>
                 </div>
                 <div style={{ width: "100%", maxWidth: 660 }}>
-                  <Composer onSend={onSend} onStop={onStop} isStreaming={isStreaming} disabled={ollamaRunning === false} memoryEnabled={memoryEnabled} onMemoryToggle={onMemoryToggle} knowledgeEnabled={knowledgeEnabled} onKnowledgeToggle={onKnowledgeToggle} webSearchEnabled={webSearchEnabled} onWebSearchToggle={onWebSearchToggle} modelMode={modelMode} onModelModeChange={onModelModeChange} ollamaRunning={ollamaRunning} draft={composerDraft} onDraftApplied={onComposerDraftApplied} />
+                  {sidecarHint}
+                  <Composer onSend={onSend} onStop={onStop} isStreaming={isStreaming} disabled={composerDisabled} memoryEnabled={memoryEnabled} onMemoryToggle={onMemoryToggle} knowledgeEnabled={knowledgeEnabled} onKnowledgeToggle={onKnowledgeToggle} webSearchEnabled={webSearchEnabled} onWebSearchToggle={onWebSearchToggle} modelMode={modelMode} onModelModeChange={onModelModeChange} ollamaRunning={ollamaRunning} draft={composerDraft} onDraftApplied={onComposerDraftApplied} />
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", maxWidth: 660 }}>
                   {[
@@ -722,7 +746,8 @@ function MainArea({
               /* ── Active chat ── */
               <>
                 <MessageList messages={messages} isStreaming={isStreaming} followUpQuestions={followUpQuestions} onSendFollowUp={onSendFollowUp} isSearching={isSearching} />
-                <Composer onSend={onSend} onStop={onStop} isStreaming={isStreaming} disabled={ollamaRunning === false} memoryEnabled={memoryEnabled} onMemoryToggle={onMemoryToggle} knowledgeEnabled={knowledgeEnabled} onKnowledgeToggle={onKnowledgeToggle} webSearchEnabled={webSearchEnabled} onWebSearchToggle={onWebSearchToggle} modelMode={modelMode} onModelModeChange={onModelModeChange} ollamaRunning={ollamaRunning} draft={composerDraft} onDraftApplied={onComposerDraftApplied} />
+                {sidecarHint}
+                <Composer onSend={onSend} onStop={onStop} isStreaming={isStreaming} disabled={composerDisabled} memoryEnabled={memoryEnabled} onMemoryToggle={onMemoryToggle} knowledgeEnabled={knowledgeEnabled} onKnowledgeToggle={onKnowledgeToggle} webSearchEnabled={webSearchEnabled} onWebSearchToggle={onWebSearchToggle} modelMode={modelMode} onModelModeChange={onModelModeChange} ollamaRunning={ollamaRunning} draft={composerDraft} onDraftApplied={onComposerDraftApplied} />
               </>
             )}
           </div>

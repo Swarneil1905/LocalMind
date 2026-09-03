@@ -259,6 +259,13 @@ fn sidecar_url(state: &SidecarState, path: &str) -> Result<(String, String), Str
     }
 }
 
+/// Lets the frontend check sidecar readiness on mount (in case it became ready
+/// before the UI subscribed) instead of only relying on the "sidecar-ready" event.
+#[tauri::command]
+fn get_sidecar_status(state: tauri::State<'_, SidecarState>) -> bool {
+    state.0.lock().map(|g| g.is_some()).unwrap_or(false)
+}
+
 // ---------------------------------------------------------------------------
 // Ollama command
 // ---------------------------------------------------------------------------
@@ -1536,6 +1543,7 @@ pub fn run() {
                     Ok(s) => s,
                     Err(e) => {
                         eprintln!("[localmind] sidecar launch failed: {e}");
+                        app_handle.emit("sidecar-failed", e.to_string()).ok();
                         return;
                     }
                 };
@@ -1544,9 +1552,15 @@ pub fn run() {
                         println!("[localmind] sidecar ready on port {}", sidecar.port);
                         let state = app_handle.state::<SidecarState>();
                         *state.0.lock().unwrap() = Some(sidecar);
+                        // Tell the frontend it can stop showing the startup state and
+                        // re-enable the composer. The frontend also calls
+                        // get_sidecar_status on mount in case it missed this (e.g. it
+                        // subscribed after this already fired).
+                        app_handle.emit("sidecar-ready", ()).ok();
                     }
                     Err(e) => {
                         eprintln!("[localmind] sidecar health check failed: {e}");
+                        app_handle.emit("sidecar-failed", e.to_string()).ok();
                     }
                 }
 
@@ -1582,6 +1596,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_ollama_status,
+            get_sidecar_status,
             chat_stream,
             extract_memories,
             list_memories,
