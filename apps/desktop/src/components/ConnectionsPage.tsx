@@ -334,8 +334,13 @@ export function ConnectionsPage() {
   }, []);
 
   useEffect(() => {
+    // Intentional fetch-on-mount + poll (see https://react.dev/learn/you-might-not-need-an-effect#fetching-data).
+    // These sync local state with the Tauri sidecar, not derived from props/state, so the
+    // react-hooks/set-state-in-effect check is a false positive here.
+    /* eslint-disable react-hooks/set-state-in-effect */
     loadConnectors();
     loadPeople();
+    /* eslint-enable react-hooks/set-state-in-effect */
     const interval = setInterval(loadConnectors, 10_000);
     return () => clearInterval(interval);
   }, [loadConnectors, loadPeople]);

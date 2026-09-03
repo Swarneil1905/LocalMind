@@ -9,12 +9,11 @@ This is what lets Buddy say:
    deadline twice this week. Should I draft something short?"
 """
 import json
-from datetime import datetime
 
 import httpx
 
 from ..db.messages import get_conn as get_messages_conn
-from ..db.people import upsert_person, add_interaction, get_person_by_identifier
+from ..db.people import upsert_person, add_interaction
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 EXTRACTION_MODEL = "qwen3:8b"

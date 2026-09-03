@@ -7,7 +7,6 @@ No export needed. Reads Apple's own database directly.
 Apple's epoch starts 2001-01-01, not Unix epoch — all date math accounts for this.
 """
 import sqlite3
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any

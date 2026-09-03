@@ -1,5 +1,5 @@
 """Connector registry — central lookup for all installed connectors."""
-from .base import BaseConnector, ConnectorMeta, ConnectorStatus
+from .base import BaseConnector
 
 
 class ConnectorRegistry:

@@ -97,7 +97,6 @@ class OAuthCallbackBody(BaseModel):
 
 @router.post("/gmail/oauth-callback")
 async def gmail_oauth_callback(body: OAuthCallbackBody):
-    from ...connectors.gmail import GmailConnector
     gmail = registry.get("gmail")
     if not gmail:
         raise HTTPException(404, "Gmail connector not registered")
@@ -112,7 +111,6 @@ async def gmail_oauth_callback(body: OAuthCallbackBody):
 @router.get("/people")
 async def list_people(limit: int = 50):
     """List all extracted people profiles."""
-    import json
     people = all_people(limit=limit)
     return [dict(p) for p in people]
 
@@ -142,7 +140,7 @@ async def gmail_debug():
     import time
     import asyncio
     from ...connectors.gmail import (
-        _load_client, _load_tokens, _get_valid_access_token, GmailConnector,
+        _load_client, _load_tokens, _get_valid_access_token,
         TOKENS_PATH, CLIENT_PATH,
     )
     client = _load_client()
