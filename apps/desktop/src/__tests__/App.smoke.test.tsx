@@ -11,16 +11,21 @@ describe("App smoke test", () => {
     render(<App />);
   });
 
-  it("renders the LocalMind brand name in the sidebar", () => {
+  it("renders the LocalMind brand name in the sidebar", async () => {
     render(<App />);
+    // App shows a "Connecting to local AI..." overlay until the mocked
+    // invoke("list_ollama_models") promise resolves. Use the async findBy*
+    // query (retries under the hood) instead of asserting immediately,
+    // otherwise this runs before that microtask settles.
     // "LocalMind" now appears in both the sidebar header and the chat empty
-    // state, so use getAllByText and assert at least one match exists.
-    expect(screen.getAllByText("LocalMind").length).toBeGreaterThan(0);
+    // state, so use findAllByText and assert at least one match exists.
+    expect((await screen.findAllByText("LocalMind")).length).toBeGreaterThan(0);
   });
 
-  it("renders the composer textarea", () => {
+  it("renders the composer textarea", async () => {
     render(<App />);
-    // Placeholder is a textarea attribute, not a text node - use getByPlaceholderText
-    expect(screen.getByPlaceholderText("Message LocalMind...")).toBeDefined();
+    // Placeholder is a textarea attribute, not a text node - use findByPlaceholderText
+    // (async, waits for the post-loading render) rather than getByPlaceholderText.
+    expect(await screen.findByPlaceholderText("Message LocalMind...")).toBeDefined();
   });
 });
