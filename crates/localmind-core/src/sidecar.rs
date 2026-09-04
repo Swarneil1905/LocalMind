@@ -15,6 +15,25 @@ use std::time::Duration;
 use rand::Rng;
 
 // ---------------------------------------------------------------------------
+// Windows: hide the console window
+// ---------------------------------------------------------------------------
+
+/// `CREATE_NO_WINDOW`. Raw `std::process::Command` (unlike Tauri's own
+/// `Command.sidecar()` shell-plugin API) does not set this automatically, so
+/// without it every launch pops a visible console/terminal window on Windows.
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+#[cfg(target_os = "windows")]
+fn hide_console(cmd: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn hide_console(_cmd: &mut Command) {}
+
+// ---------------------------------------------------------------------------
 // Port selection
 // ---------------------------------------------------------------------------
 
@@ -145,14 +164,15 @@ impl SidecarHandle {
             .map(|d| d.join("LocalMind"))
             .unwrap_or_else(|| std::path::PathBuf::from("."));
 
-        let child = Command::new(python_exe())
+        let mut command = Command::new(python_exe());
+        command
             .arg(&script)
             .env("LOCALMIND_PORT", port.to_string())
             .env("LOCALMIND_TOKEN", &token)
             .env("LOCALMIND_DATA_DIR", data_dir.to_string_lossy().as_ref())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .map_err(SidecarError::Spawn)?;
+            .stderr(Stdio::inherit());
+        hide_console(&mut command);
+        let child = command.spawn().map_err(SidecarError::Spawn)?;
 
         Ok(SidecarHandle { child, port, token })
     }
@@ -175,26 +195,31 @@ impl SidecarHandle {
             binary_path
         );
 
-        let child = Command::new(&binary_path)
+        let mut command = Command::new(&binary_path);
+        command
             .env("LOCALMIND_PORT", port.to_string())
             .env("LOCALMIND_TOKEN", &token)
             .env("LOCALMIND_DATA_DIR", data_dir.to_string_lossy().as_ref())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .map_err(SidecarError::Spawn)?;
+            .stderr(Stdio::inherit());
+        hide_console(&mut command);
+        let child = command.spawn().map_err(SidecarError::Spawn)?;
 
         Ok(SidecarHandle { child, port, token })
     }
 
     /// Polls `GET /health` every 500 ms until a 200 response arrives.
     ///
-    /// Times out after 30 seconds (60 attempts). The bearer token is included
-    /// in every poll request because all routes on the sidecar require it.
+    /// Times out after 90 seconds (180 attempts). The production sidecar is a
+    /// PyInstaller `--onefile` binary, which self-extracts to a temp dir on
+    /// every launch; on a cold disk or with antivirus scanning the fresh exe,
+    /// this can take much longer than a typical process start. The bearer
+    /// token is included in every poll request because all routes on the
+    /// sidecar require it.
     pub async fn wait_until_ready(&self) -> Result<(), SidecarError> {
         let client = reqwest::Client::new();
         let url = format!("http://127.0.0.1:{}/health", self.port);
 
-        for _ in 0..60 {
+        for _ in 0..180 {
             tokio::time::sleep(Duration::from_millis(500)).await;
 
             let result = client
@@ -246,7 +271,7 @@ impl std::fmt::Display for SidecarError {
             ),
             SidecarError::Spawn(e) => write!(f, "failed to spawn Python sidecar: {e}"),
             SidecarError::HealthTimeout => {
-                write!(f, "sidecar health check timed out after 30 seconds")
+                write!(f, "sidecar health check timed out after 90 seconds")
             }
         }
     }

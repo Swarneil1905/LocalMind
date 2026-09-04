@@ -19,6 +19,23 @@ struct OllamaState(Mutex<Option<OllamaStatus>>);
 struct OllamaProcess(Mutex<Option<std::process::Child>>);
 
 // ---------------------------------------------------------------------------
+// Windows: hide the console window
+// ---------------------------------------------------------------------------
+
+/// `CREATE_NO_WINDOW`. Raw `std::process::Command` (unlike Tauri's own
+/// `Command.sidecar()` shell-plugin API) does not set this automatically, so
+/// without it launching the bundled Ollama binary pops a visible
+/// console/terminal window on Windows.
+#[cfg(target_os = "windows")]
+fn hide_console(cmd: &mut std::process::Command) {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(0x0800_0000);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn hide_console(_cmd: &mut std::process::Command) {}
+
+// ---------------------------------------------------------------------------
 // Bundled Ollama helpers
 // ---------------------------------------------------------------------------
 
@@ -75,12 +92,13 @@ async fn ensure_ollama(app_handle: tauri::AppHandle) {
     }
 
     println!("[localmind] Starting bundled Ollama: {:?}", ollama_path);
-    match std::process::Command::new(&ollama_path)
+    let mut ollama_command = std::process::Command::new(&ollama_path);
+    ollama_command
         .arg("serve")
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-    {
+        .stderr(std::process::Stdio::null());
+    hide_console(&mut ollama_command);
+    match ollama_command.spawn() {
         Ok(child) => {
             *app_handle.state::<OllamaProcess>().0.lock().unwrap() = Some(child);
             // Wait up to 30 s for the server to become ready.
