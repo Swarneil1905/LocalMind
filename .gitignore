@@ -54,3 +54,7 @@ coverage/
 htmlcov/
 
 .tauri/
+# Local verification dependencies and artifacts
+.local-test-deps/
+.local-test-data/
+artifacts/
