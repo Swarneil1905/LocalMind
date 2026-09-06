@@ -70,6 +70,7 @@ struct VersionResponse {
 /// `running = false` if Ollama is not reachable.
 pub async fn check() -> OllamaStatus {
     let client = match reqwest::Client::builder()
+        .no_proxy()
         .timeout(Duration::from_secs(TIMEOUT_SECS))
         .build()
     {
