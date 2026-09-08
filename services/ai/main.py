@@ -48,6 +48,10 @@ def main() -> None:
         print(f"LOCALMIND_PORT is not a valid integer: {port_str!r}", file=sys.stderr)
         sys.exit(1)
 
+    if not 1 <= port <= 65535:
+        print("LOCALMIND_PORT must be between 1 and 65535", file=sys.stderr)
+        sys.exit(1)
+
     from app.main import app as fastapi_app  # noqa: PLC0415
 
     uvicorn.run(fastapi_app, host="127.0.0.1", port=port)
