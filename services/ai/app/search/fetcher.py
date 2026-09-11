@@ -12,7 +12,12 @@ Security measures applied before and during every request:
   - Strip HTML to plain text, truncate to 2000 chars
 """
 
+from html import unescape
+from html.parser import HTMLParser
+from urllib.parse import urljoin
+from dataclasses import dataclass
 import ipaddress
+import json
 import re
 import socket
 from urllib.parse import urlparse
@@ -120,17 +125,77 @@ def _check_url(url: str) -> None:
                 raise SSRFError(f"Blocked network: {addr_str} is in {net}")
 
 
+class ArticleParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.skip = 0
+        self.article_depth = 0
+        self.text = []
+        self.article = []
+        self.published_at = None
+        self.structured_data = False
+        self.json_parts = []
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "script" and attrs.get("type") == "application/ld+json":
+            self.structured_data = True
+            self.json_parts = []
+        if tag in ("script", "style", "nav", "header", "footer", "noscript"):
+            self.skip += 1
+        if tag in ("article", "main"):
+            self.article_depth += 1
+        if tag == "meta" and attrs.get("property", attrs.get("name", "")).lower() in (
+            "article:published_time", "datepublished", "pubdate", "date", "parsely-pub-date"
+        ):
+            self.published_at = attrs.get("content") or self.published_at
+
+    def handle_endtag(self, tag):
+        if tag == "script" and self.structured_data:
+            self.structured_data = False
+            try:
+                self._read_dates(json.loads("".join(self.json_parts)))
+            except (ValueError, TypeError):
+                pass
+        if tag in ("script", "style", "nav", "header", "footer", "noscript"):
+            self.skip = max(0, self.skip - 1)
+        if tag in ("article", "main"):
+            self.article_depth = max(0, self.article_depth - 1)
+
+    def handle_data(self, data):
+        if self.structured_data:
+            self.json_parts.append(data)
+        if not self.skip and data.strip():
+            self.text.append(data.strip())
+            if self.article_depth:
+                self.article.append(data.strip())
+
+    def _read_dates(self, value):
+        if isinstance(value, list):
+            for item in value:
+                self._read_dates(item)
+        elif isinstance(value, dict):
+            kind = value.get("@type", "")
+            if kind in ("NewsArticle", "Article", "BlogPosting") and isinstance(value.get("datePublished"), str):
+                self.published_at = self.published_at or value["datePublished"]
+            if "@graph" in value:
+                self._read_dates(value["@graph"])
+
+
+@dataclass
+class PageEvidence:
+    text: str
+    published_at: str | None = None
+
+
+def extract_article(html: str) -> PageEvidence:
+    parser = ArticleParser()
+    parser.feed(html)
+    return PageEvidence(_sanitize_for_prompt(" ".join(parser.article or parser.text)), parser.published_at)
+
+
 def _strip_html(html: str) -> str:
-    """Remove HTML tags, decode common entities, collapse whitespace."""
-    text = re.sub(r"<style[^>]*>.*?</style>", " ", html, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(r"<script[^>]*>.*?</script>", " ", text, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = re.sub(r"&nbsp;", " ", text)
-    text = re.sub(r"&amp;", "&", text)
-    text = re.sub(r"&lt;", "<", text)
-    text = re.sub(r"&gt;", ">", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text[:_STRIP_LENGTH]
+    return extract_article(html).text
 
 
 def _sanitize_for_prompt(text: str) -> str:
@@ -159,7 +224,7 @@ def _sanitize_for_prompt(text: str) -> str:
     return text.strip()[:_STRIP_LENGTH]
 
 
-async def fetch_page(url: str) -> str:
+async def fetch_evidence(url: str) -> PageEvidence:
     """
     Fetch a web page safely and return sanitized plain text up to 2000 chars.
 
@@ -180,21 +245,21 @@ async def fetch_page(url: str) -> str:
 
         while True:
             _check_url(current_url)
-            resp = await client.get(current_url, headers={"User-Agent": "LocalMind/0.5"})
+            request = client.build_request("GET", current_url, headers={"User-Agent": "LocalMind/0.6"})
+            resp = await client.send(request, stream=True)
 
             if resp.is_redirect:
+                await resp.aclose()
                 redirect_count += 1
                 if redirect_count > _MAX_REDIRECTS:
                     raise SSRFError("Too many redirects")
                 location = resp.headers.get("location", "")
                 if not location:
                     break
-                # Resolve relative redirects
-                if location.startswith("/"):
-                    parsed = urlparse(current_url)
-                    location = f"{parsed.scheme}://{parsed.netloc}{location}"
-                current_url = location
+                current_url = urljoin(current_url, location)
                 continue
+
+            resp.raise_for_status()
 
             # Content-type gate - check BEFORE reading the body to avoid
             # downloading binary files or PDFs.
@@ -212,10 +277,12 @@ async def fetch_page(url: str) -> str:
                 if len(content) > _MAX_BYTES:
                     break
 
+            await resp.aclose()
             text = content.decode("utf-8", errors="replace")
             if "html" in content_type:
-                text = _strip_html(text)
-            else:
-                text = text[:_STRIP_LENGTH]
+                return extract_article(text)
+            return PageEvidence(_sanitize_for_prompt(unescape(text)))
 
-            return _sanitize_for_prompt(text)
+
+async def fetch_page(url: str) -> str:
+    return (await fetch_evidence(url)).text
