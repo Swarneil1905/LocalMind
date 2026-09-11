@@ -9,6 +9,8 @@ import asyncio
 import logging
 
 logger = logging.getLogger("localmind.sync")
+_scheduler = None
+_initial_sync: asyncio.Task | None = None
 
 
 async def _sync_all_connectors():
@@ -40,6 +42,7 @@ async def _sync_all_connectors():
 
 async def start_background_sync():
     """Called at app startup. Schedules recurring sync every 15 minutes."""
+    global _scheduler, _initial_sync
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -53,10 +56,23 @@ async def start_background_sync():
             max_instances=1,          # never run two syncs in parallel
         )
         scheduler.start()
+        _scheduler = scheduler
         logger.info("[Sync] Background sync engine started (every 15 min)")
 
         # Run once immediately on startup
-        asyncio.create_task(_sync_all_connectors())
+        _initial_sync = asyncio.create_task(_sync_all_connectors())
 
     except ImportError:
         logger.warning("[Sync] apscheduler not installed — background sync disabled. Run: pip install apscheduler")
+
+
+async def stop_background_sync():
+    """Release scheduled and startup jobs before the profile lock is released."""
+    global _scheduler, _initial_sync
+    if _scheduler is not None:
+        _scheduler.shutdown(wait=False)
+        _scheduler = None
+    if _initial_sync is not None:
+        _initial_sync.cancel()
+        await asyncio.gather(_initial_sync, return_exceptions=True)
+        _initial_sync = None
