@@ -22,6 +22,7 @@ class SaveTurnRequest(BaseModel):
     user_content: str
     assistant_content: str
     assistant_thinking: str | None = None
+    sources: list[dict] = []
 
 
 class RenameRequest(BaseModel):
@@ -54,6 +55,7 @@ def save_turn(conversation_id: str, req: SaveTurnRequest) -> dict:
         req.user_content,
         req.assistant_content,
         req.assistant_thinking,
+        req.sources,
     )
     return {"ok": True}
 

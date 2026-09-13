@@ -9,27 +9,17 @@ All writes go through save_turn() which atomically inserts user +
 assistant messages and bumps the conversation updated_at timestamp.
 """
 
+import json
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-import os
+from app.storage import data_dir as _data_dir
 
 
 # ---------------------------------------------------------------------------
 # DB path (reuses the same data dir as memory / knowledge)
 # ---------------------------------------------------------------------------
-
-def _data_dir() -> Path:
-    d = os.environ.get("LOCALMIND_DATA_DIR", "")
-    if d:
-        p = Path(d)
-    else:
-        import tempfile
-        p = Path(tempfile.gettempdir()) / "localmind_dev"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
-
 
 def _db_path() -> Path:
     return _data_dir() / "conversations.db"
@@ -48,6 +38,7 @@ def _get_conn() -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS conversations (
             id         TEXT PRIMARY KEY,
             title      TEXT NOT NULL,
+            project_id TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
@@ -65,6 +56,12 @@ def _get_conn() -> sqlite3.Connection:
             ON conversation_messages(conversation_id, created_at);
         """
     )
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(conversation_messages)")}
+    if "sources" not in columns:
+        conn.execute("ALTER TABLE conversation_messages ADD COLUMN sources TEXT NOT NULL DEFAULT '[]'")
+    conversation_columns = {row[1] for row in conn.execute("PRAGMA table_info(conversations)")}
+    if "project_id" not in conversation_columns:
+        conn.execute("ALTER TABLE conversations ADD COLUMN project_id TEXT")
     conn.commit()
     return conn
 
@@ -102,15 +99,15 @@ def get_messages(conversation_id: str) -> list[dict]:
     conn = _get_conn()
     rows = conn.execute(
         """
-        SELECT id, conversation_id, role, content, thinking, created_at
+        SELECT id, conversation_id, role, content, thinking, created_at, sources
         FROM conversation_messages
         WHERE conversation_id = ?
-        ORDER BY created_at ASC
+        ORDER BY created_at ASC, rowid ASC
         """,
         (conversation_id,),
     ).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    return [{**dict(r), "sources": json.loads(r["sources"])} for r in rows]
 
 
 def save_turn(
@@ -118,6 +115,7 @@ def save_turn(
     user_content: str,
     assistant_content: str,
     assistant_thinking: str | None = None,
+    sources: list[dict] | None = None,
 ) -> None:
     """
     Atomically save a user + assistant message pair and bump updated_at.
@@ -130,12 +128,12 @@ def save_turn(
     conn = _get_conn()
     conn.executemany(
         """
-        INSERT INTO conversation_messages (id, conversation_id, role, content, thinking, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO conversation_messages (id, conversation_id, role, content, thinking, created_at, sources)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         [
-            (str(uuid.uuid4()), conversation_id, "user",      user_content,      None,               now),
-            (str(uuid.uuid4()), conversation_id, "assistant", assistant_content, assistant_thinking, now),
+            (str(uuid.uuid4()), conversation_id, "user",      user_content,      None,               now, "[]"),
+            (str(uuid.uuid4()), conversation_id, "assistant", assistant_content, assistant_thinking, now, json.dumps(sources or [])),
         ],
     )
     conn.execute(

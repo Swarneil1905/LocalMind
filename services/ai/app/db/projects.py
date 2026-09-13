@@ -12,31 +12,16 @@ import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-import os
+from app.storage import data_dir as _data_dir
+from app.db.conversations import _get_conn as _get_conversation_conn
 
 
 # ---------------------------------------------------------------------------
 # Shared data dir (same as memory / knowledge / conversations)
 # ---------------------------------------------------------------------------
 
-def _data_dir() -> Path:
-    d = os.environ.get("LOCALMIND_DATA_DIR", "")
-    if d:
-        p = Path(d)
-    else:
-        import tempfile
-        p = Path(tempfile.gettempdir()) / "localmind_dev"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
-
-
 def _db_path() -> Path:
     return _data_dir() / "projects.db"
-
-
-def _conv_db_path() -> Path:
-    """Conversations live in a separate DB; we write project_id there."""
-    return _data_dir() / "conversations.db"
 
 
 # ---------------------------------------------------------------------------
@@ -74,25 +59,6 @@ def _get_conn() -> sqlite3.Connection:
     )
     conn.commit()
     return conn
-
-
-def _ensure_conv_project_col() -> None:
-    """
-    Idempotently add project_id column to conversations.db if it is missing.
-    SQLite ALTER TABLE ADD COLUMN is safe to call repeatedly (we catch the error).
-    """
-    try:
-        conn = sqlite3.connect(str(_conv_db_path()))
-        conn.execute("ALTER TABLE conversations ADD COLUMN project_id TEXT")
-        conn.commit()
-        conn.close()
-    except sqlite3.OperationalError:
-        # Column already exists - normal on subsequent startups
-        pass
-
-
-# Run migration once at import time
-_ensure_conv_project_col()
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +224,7 @@ def delete_task(project_id: str, task_id: str) -> bool:
 
 def assign_conversation(conversation_id: str, project_id: str | None) -> bool:
     """Set or clear the project_id on a conversation."""
-    conn = sqlite3.connect(str(_conv_db_path()))
+    conn = _get_conversation_conn()
     cursor = conn.execute(
         "UPDATE conversations SET project_id = ? WHERE id = ?",
         (project_id, conversation_id),
@@ -271,8 +237,7 @@ def assign_conversation(conversation_id: str, project_id: str | None) -> bool:
 
 def get_project_conversations(project_id: str) -> list[dict]:
     """Return all conversations linked to this project, newest first."""
-    conn = sqlite3.connect(str(_conv_db_path()))
-    conn.row_factory = sqlite3.Row
+    conn = _get_conversation_conn()
     rows = conn.execute(
         "SELECT id, title, created_at, updated_at FROM conversations WHERE project_id = ? ORDER BY updated_at DESC",
         (project_id,),
