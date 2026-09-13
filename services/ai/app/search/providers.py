@@ -12,6 +12,8 @@ Each adapter returns a list of SearchResult dicts:
 """
 
 import re as _re
+from html import unescape
+from urllib.parse import urlparse, parse_qs, urljoin
 from dataclasses import dataclass
 
 import httpx
@@ -50,7 +52,7 @@ def _sanitize_query(query: str) -> str:
     q = query.replace("\t", " ").replace("\n", " ").replace("\r", " ")
     q = _QUERY_CTRL_RE.sub("", q)
     q = " ".join(q.split())
-    return q[:200]
+    return q[:500]
 
 
 def _scrub_key(text: str, key: str) -> str:
@@ -90,7 +92,10 @@ async def search_duckduckgo(query: str, max_results: int = 5) -> list[SearchResu
     for url, title_html, snippet_html in result_blocks[:max_results]:
         title = _re.sub(r"<[^>]+>", "", title_html).strip()
         snippet = _re.sub(r"<[^>]+>", "", snippet_html).strip()
-        if url and title:
+        url = unescape(urljoin("https://duckduckgo.com", url))
+        url = parse_qs(urlparse(url).query).get("uddg", [url])[0]
+        title, snippet = unescape(title), unescape(snippet)
+        if urlparse(url).scheme in ("http", "https") and title:
             results.append(SearchResult(title=title, url=url, snippet=snippet))
 
     return results
