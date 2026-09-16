@@ -23,7 +23,6 @@ SQLite table schema (sources):
     created_at  TEXT
 """
 
-import os
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -32,6 +31,7 @@ from pathlib import Path
 import httpx
 import lancedb
 import pyarrow as pa
+from app.storage import data_dir as _data_dir
 
 EMBED_TIMEOUT = httpx.Timeout(connect=5.0, read=120.0, write=5.0, pool=5.0)
 OLLAMA_BASE = "http://127.0.0.1:11434"
@@ -45,17 +45,6 @@ SUPPORTED_EXTENSIONS = {
 
 CHUNK_SIZE = 1800
 CHUNK_OVERLAP = 200
-
-
-def _data_dir() -> Path:
-    d = os.environ.get("LOCALMIND_DATA_DIR", "")
-    if d:
-        p = Path(d)
-    else:
-        import tempfile
-        p = Path(tempfile.gettempdir()) / "localmind_dev"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
 
 
 def _lance_dir() -> str:
@@ -104,7 +93,7 @@ def _get_lance_table():
 
 async def embed_text(text: str, model: str = DEFAULT_EMBED_MODEL) -> list[float]:
     """Call Ollama /api/embeddings and return the embedding vector."""
-    async with httpx.AsyncClient(timeout=EMBED_TIMEOUT) as client:
+    async with httpx.AsyncClient(trust_env=False, timeout=EMBED_TIMEOUT) as client:
         resp = await client.post(
             f"{OLLAMA_BASE}/api/embeddings",
             json={"model": model, "prompt": text},

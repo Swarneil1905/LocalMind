@@ -4,8 +4,7 @@ Memory persistence layer using Python's built-in sqlite3.
 The DB file is created at:
     {LOCALMIND_DATA_DIR}/memories.db
 
-If LOCALMIND_DATA_DIR is not set (e.g. running tests outside Tauri), falls back
-to a temp file so the import never fails.
+If LOCALMIND_DATA_DIR is not set, uses the current OS user's application data.
 
 Schema:
     memories(id TEXT PK, content TEXT, created_at TEXT)
@@ -19,22 +18,15 @@ Relation types:
     follows_from - from_id is a consequence/follow-up of to_id
 """
 
-import os
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from app.storage import data_path
 
 
 def _db_path() -> Path:
-    data_dir = os.environ.get("LOCALMIND_DATA_DIR", "")
-    if data_dir:
-        p = Path(data_dir)
-    else:
-        import tempfile
-        p = Path(tempfile.gettempdir()) / "localmind_dev"
-    p.mkdir(parents=True, exist_ok=True)
-    return p / "memories.db"
+    return data_path("memories.db")
 
 
 def _get_conn() -> sqlite3.Connection:
