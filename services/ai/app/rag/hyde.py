@@ -65,7 +65,7 @@ async def _generate_hypothetical_answer(
         },
     }
     timeout = httpx.Timeout(connect=2.0, read=timeout_sec, write=2.0, pool=2.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(trust_env=False, timeout=timeout) as client:
         resp = await client.post(f"{OLLAMA_BASE}/api/generate", json=payload)
         resp.raise_for_status()
         return resp.json().get("response", "").strip()

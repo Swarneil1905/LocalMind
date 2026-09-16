@@ -18,7 +18,7 @@ TIMEOUT = 3.0
 @router.get("/list")
 async def list_models() -> JSONResponse:
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        async with httpx.AsyncClient(trust_env=False, timeout=TIMEOUT) as client:
             resp = await client.get(f"{OLLAMA_BASE}/api/tags")
             resp.raise_for_status()
             data = resp.json()
@@ -34,7 +34,7 @@ async def list_models() -> JSONResponse:
 @router.get("/status")
 async def models_status() -> JSONResponse:
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        async with httpx.AsyncClient(trust_env=False, timeout=TIMEOUT) as client:
             resp = await client.get(f"{OLLAMA_BASE}/api/version")
             resp.raise_for_status()
             version = resp.json().get("version", "unknown")

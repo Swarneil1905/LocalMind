@@ -87,7 +87,7 @@ Based ONLY on these messages, extract a JSON profile with these fields:
 Return ONLY valid JSON, no explanation."""
 
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(trust_env=False, timeout=30) as client:
             resp = await client.post(OLLAMA_URL, json={
                 "model": EXTRACTION_MODEL,
                 "prompt": prompt,

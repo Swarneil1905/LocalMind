@@ -160,7 +160,7 @@ async def extract_memories(request: ExtractRequest) -> dict:
     extracted_texts: list[str] = []
     proposed_links: list[dict] = []
     try:
-        async with httpx.AsyncClient(timeout=EXTRACT_TIMEOUT) as client:
+        async with httpx.AsyncClient(trust_env=False, timeout=EXTRACT_TIMEOUT) as client:
             resp = await client.post(f"{OLLAMA_BASE}/api/chat", json=payload)
             resp.raise_for_status()
             data = resp.json()
