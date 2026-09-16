@@ -4,7 +4,7 @@ WhatsApp Web connector — Playwright browser bridge.
 How it works:
 1. First connect: launch Chromium headless=False, open web.whatsapp.com
 2. UI shows QR code screen — user scans with phone as normal
-3. After scan, session is saved to ~/.localmind/wa_session/ (persistent context)
+3. After scan, session is saved to the current LocalMind profile (persistent context)
 4. All future syncs: headless=True, session auto-restored, no QR needed
 5. Incremental sync: scrape new messages since last cursor timestamp
 
@@ -13,7 +13,6 @@ Privacy: Playwright runs 100% locally. No data leaves the machine.
 import asyncio
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from .base import BaseConnector, ConnectorMeta, ConnectorStatus, SyncResult
@@ -22,8 +21,10 @@ from ..db.messages import (
     get_cursor, set_cursor,
 )
 
-SESSION_DIR = Path.home() / ".localmind" / "wa_session"
-STATE_FILE = Path.home() / ".localmind" / "tokens" / "wa_state.json"
+from app.storage import data_path
+
+SESSION_DIR = data_path("wa_session")
+STATE_FILE = data_path("tokens") / "wa_state.json"
 
 
 class WhatsAppWebConnector(BaseConnector):

@@ -6,11 +6,9 @@ The token is set at sidecar startup via the LOCALMIND_TOKEN environment variable
 and is generated fresh by the Rust core on every application launch.
 """
 
-import os
-
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
+from app.api.middleware.auth import verify_bearer_token
 
 from app.api.routes import (
     chat,
@@ -26,18 +24,24 @@ from app.api.routes import (
 from app.connectors.registry import setup_registry
 from app.db.messages import init_db as init_messages_db
 from app.db.people import init_db as init_people_db
+from app.security import configured_token
+from app.storage import migrate_legacy_connectors, profile_lock
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: initialise DBs, register connectors, start background sync
-    init_messages_db()
-    init_people_db()
-    setup_registry()
-    from app.sync_engine import start_background_sync
-    await start_background_sync()
-    yield
-    # Shutdown: nothing to clean up for now
+    configured_token()
+    with profile_lock():
+        migrate_legacy_connectors()
+        init_messages_db()
+        init_people_db()
+        setup_registry()
+        from app.sync_engine import start_background_sync, stop_background_sync
+        await start_background_sync()
+        try:
+            yield
+        finally:
+            await stop_background_sync()
 
 
 app = FastAPI(
@@ -49,16 +53,7 @@ app = FastAPI(
 )
 
 
-@app.middleware("http")
-async def verify_bearer_token(request: Request, call_next):  # type: ignore[no-untyped-def]
-    # Health check is unauthenticated so Tauri can poll it
-    if request.url.path == "/health":
-        return await call_next(request)
-    token = os.environ.get("LOCALMIND_TOKEN", "")
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header != f"Bearer {token}":
-        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
-    return await call_next(request)
+app.middleware("http")(verify_bearer_token)
 
 
 app.include_router(health.router)

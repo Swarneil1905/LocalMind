@@ -3,15 +3,12 @@ messages.db — unified message store for all connectors.
 Shared by Gmail, WhatsApp Web, iMessage, Telegram.
 """
 import sqlite3
-from pathlib import Path
 from datetime import datetime
-
-DB_PATH = Path.home() / ".localmind" / "messages.db"
+from app.storage import data_path
 
 
 def get_conn() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    conn = sqlite3.connect(str(data_path("messages.db")), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 

@@ -29,8 +29,8 @@ import urllib.request
 from datetime import datetime, timezone
 from email.header import decode_header
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from pathlib import Path
 from typing import Any
+from app.storage import data_path
 
 from .base import BaseConnector, ConnectorMeta, ConnectorStatus, SyncResult
 from ..db.messages import (
@@ -39,7 +39,7 @@ from ..db.messages import (
 )
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-TOKENS_DIR   = Path.home() / ".localmind" / "tokens"
+TOKENS_DIR   = data_path("tokens")
 CLIENT_PATH  = TOKENS_DIR / "gmail_client.json"   # client_id + client_secret
 TOKENS_PATH  = TOKENS_DIR / "gmail_oauth.json"    # access + refresh tokens
 
@@ -58,7 +58,7 @@ def _load_client() -> dict | None:
     """
     Priority:
       1. GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET env vars (set via services/ai/.env)
-      2. ~/.localmind/tokens/gmail_client.json (saved from the UI one-time setup form)
+      2. tokens/gmail_client.json in this LocalMind profile (saved from the UI)
     """
     env_id     = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
     env_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
