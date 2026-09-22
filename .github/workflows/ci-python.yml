@@ -31,6 +31,10 @@ jobs:
         working-directory: services/ai
         run: ruff check .
 
+      - name: Chat and retrieval regression tests
+        working-directory: services/ai
+        run: python -m unittest discover -s tests -v
+
       - name: Verify sidecar entry point imports cleanly
         working-directory: services/ai
         run: python -c "import app.main; import app.api.routes.health"
