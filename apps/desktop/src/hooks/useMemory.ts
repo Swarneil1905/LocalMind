@@ -5,7 +5,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface Memory {
   id: string;
@@ -30,91 +30,143 @@ interface MemoriesUpdatedPayload {
 export function useMemory() {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [links, setLinks] = useState<MemoryLink[]>([]);
-
-  // refreshLinks is used from the event listener callback (async callback path, not
-  // synchronously in an effect body) so it stays as useCallback.
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const generation = useRef(0);
+  const memoryRevision = useRef(0);
+  const linkRevision = useRef(0);
   const refreshLinks = useCallback(async () => {
+    const epoch = generation.current;
+    const version = ++linkRevision.current;
     try {
       const result = await invoke<MemoryLink[]>("list_memory_links");
-      setLinks(Array.isArray(result) ? result : []);
+      if (epoch === generation.current && version === linkRevision.current)
+        setLinks(Array.isArray(result) ? result : []);
     } catch {
-      // sidecar may not be ready - silently skip
+      if (epoch === generation.current && version === linkRevision.current)
+        setError("Couldn't load memory links. Try refreshing.");
     }
   }, []);
-
-  // Load initial list and listen for updates
+  const refresh = useCallback(async () => {
+    const epoch = generation.current;
+    const version = ++memoryRevision.current;
+    setLoading(true);
+    setError(null);
+    const linksRequest = refreshLinks();
+    try {
+      const list = await invoke<Memory[]>("list_memories");
+      if (epoch === generation.current && version === memoryRevision.current)
+        setMemories(Array.isArray(list) ? list : []);
+    } catch {
+      if (epoch === generation.current && version === memoryRevision.current)
+        setError(
+          "Couldn't load memories. Try refreshing when the local service is ready.",
+        );
+    }
+    await linksRequest;
+    if (epoch === generation.current && version === memoryRevision.current)
+      setLoading(false);
+  }, [refreshLinks]);
   useEffect(() => {
     let cancelled = false;
-    let unlisten: (() => void) | undefined;
-
-    // Fetch current memory list on mount (via .then callback, not synchronously).
-    // Guard against a non-array response (e.g. mocked invoke() in tests, or a
-    // sidecar hiccup) so a bad payload can't null out state and crash the render.
-    invoke<Memory[]>("list_memories")
-      .then((list) => {
-        if (!cancelled) setMemories(Array.isArray(list) ? list : []);
-      })
-      .catch(() => {}); // sidecar may not be ready yet - silently skip
-
-    // Initial link load: defined inline so the linter can see setState is async
-    async function initialLinkLoad() {
-      try {
-        const result = await invoke<MemoryLink[]>("list_memory_links");
-        if (!cancelled) setLinks(Array.isArray(result) ? result : []);
-      } catch {
-        // sidecar not ready
-      }
-    }
-    initialLinkLoad();
-
-    listen<MemoriesUpdatedPayload>("memories-updated", (event) => {
-      // These setState calls are inside an event callback - not synchronous in effect body
-      setMemories(Array.isArray(event.payload?.memories) ? event.payload.memories : []);
-      refreshLinks();
-    }).then((fn) => {
-      if (cancelled) fn();
-      else unlisten = fn;
+    const epoch = ++generation.current;
+    const offs: (() => void)[] = [];
+    const keep = (off: () => void) => {
+      if (cancelled) off();
+      else offs.push(off);
+    };
+    // Install before fetching so readiness cannot fall between the initial read and subscription.
+    void Promise.allSettled([
+      listen("sidecar-ready", () => {
+        if (!cancelled) void refresh();
+      }).then(keep),
+      listen<MemoriesUpdatedPayload>("memories-updated", (event) => {
+        if (cancelled) return;
+        memoryRevision.current++;
+        setMemories(
+          Array.isArray(event.payload?.memories) ? event.payload.memories : [],
+        );
+        setError(null);
+        setLoading(false);
+        void refreshLinks();
+      }).then(keep),
+    ]).then(() => {
+      if (!cancelled) void refresh();
     });
-
     return () => {
       cancelled = true;
-      unlisten?.();
+      generation.current = epoch + 1;
+      offs.forEach((off) => off());
     };
-  }, [refreshLinks]);
+  }, [refresh, refreshLinks]);
 
   const deleteMemory = useCallback(async (id: string) => {
+    const epoch = generation.current;
     try {
       await invoke("delete_memory", { memoryId: id });
-    } catch {
-      // swallow - UI will sync on next memories-updated event
+      if (epoch !== generation.current) return;
+      memoryRevision.current++;
+      linkRevision.current++;
+      setMemories((prev) => prev.filter((m) => m.id !== id));
+      setLinks((prev) =>
+        prev.filter((link) => link.from_id !== id && link.to_id !== id),
+      );
+      setError(null);
+      setLoading(false);
+    } catch (cause) {
+      if (epoch === generation.current)
+        setError("Couldn't delete this memory. Try again.");
+      throw cause;
     }
   }, []);
 
   const deleteLink = useCallback(async (linkId: string) => {
+    const epoch = generation.current;
     try {
       await invoke("delete_memory_link", { linkId });
+      if (epoch !== generation.current) return;
+      linkRevision.current++;
       setLinks((prev) => prev.filter((l) => l.id !== linkId));
-    } catch {
-      // swallow
+      setError(null);
+    } catch (cause) {
+      if (epoch === generation.current)
+        setError("Couldn't remove this link. Try again.");
+      throw cause;
     }
   }, []);
 
   const createLink = useCallback(
     async (fromId: string, toId: string, relation: string) => {
+      const epoch = generation.current;
       try {
         const link = await invoke<MemoryLink>("create_memory_link", {
           fromId,
           toId,
           relation,
         });
-        setLinks((prev) => [link, ...prev]);
+        if (epoch === generation.current) {
+          linkRevision.current++;
+          setLinks((prev) => [link, ...prev.filter((l) => l.id !== link.id)]);
+          setError(null);
+        }
         return link;
-      } catch {
-        return null;
+      } catch (cause) {
+        if (epoch === generation.current)
+          setError("Couldn't create this link. Try again.");
+        throw cause;
       }
     },
     [],
   );
 
-  return { memories, links, deleteMemory, deleteLink, createLink };
+  return {
+    memories,
+    links,
+    error,
+    loading,
+    refresh,
+    deleteMemory,
+    deleteLink,
+    createLink,
+  };
 }

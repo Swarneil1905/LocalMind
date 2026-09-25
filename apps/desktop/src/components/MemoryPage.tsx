@@ -1,294 +1,192 @@
-// Spec reference: Phase 2 - Memory page
-// Shows all stored memories with delete controls and linked-memory chips.
-
 import { invoke } from "@tauri-apps/api/core";
-import { Brain, Link, Trash2, X } from "lucide-react";
+import { Brain, Link, LoaderCircle, Search, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { Memory, MemoryLink } from "../hooks/useMemory";
+import "./supporting-pages.css";
 
 interface MemoryPageProps {
   memories: Memory[];
   links: MemoryLink[];
   onDelete: (id: string) => void;
   onDeleteLink: (linkId: string) => void;
+  loading?: boolean;
+  loadError?: string | null;
+  onRefresh?: () => void;
 }
-
-const RELATION_COLORS: Record<string, string> = {
-  related_to: "var(--text-3)",
-  part_of: "#8b7cf8",
-  elaborates: "#3b82f6",
-  contradicts: "#ef4444",
-  follows_from: "#22c55e",
-};
-
-function LinkChip({
-  link,
-  memoryId,
-  onDelete,
-}: {
-  link: MemoryLink;
-  memoryId: string;
-  onDelete: (id: string) => void;
-}) {
-  const isFrom = link.from_id === memoryId;
-  const otherContent = isFrom ? link.to_content : link.from_content;
-  const label = isFrom ? link.relation : `← ${link.relation}`;
-  const color = RELATION_COLORS[link.relation] ?? "var(--text-3)";
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        backgroundColor: "var(--surface-2)",
-        border: "1px solid var(--border)",
-        borderRadius: 4,
-        padding: "4px 8px",
-        fontSize: 11,
-        color: "var(--text-2)",
-        maxWidth: "100%",
-      }}
-    >
-      <Link size={10} strokeWidth={1.5} color={color} style={{ flexShrink: 0 }} />
-      <span style={{ color, fontWeight: 500, flexShrink: 0 }}>{label}</span>
-      <span
-        style={{
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          flex: 1,
-        }}
-        title={otherContent}
-      >
-        {otherContent}
-      </span>
-      <button
-        onClick={() => onDelete(link.id)}
-        title="Remove link"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          color: "var(--text-3)",
-          flexShrink: 0,
-          marginLeft: 2,
-        }}
-      >
-        <X size={10} strokeWidth={1.5} />
-      </button>
-    </div>
-  );
-}
-
 export function MemoryPage({
   memories,
   links,
   onDelete,
   onDeleteLink,
+  loading = false,
+  loadError,
+  onRefresh,
 }: MemoryPageProps) {
   const [clearing, setClearing] = useState(false);
-
-  async function handleClearAll() {
-    if (!confirm(`Delete all ${memories.length} memories? This cannot be undone.`)) return;
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [busy, setBusy] = useState(false);
+  const visible = memories.filter((memory) =>
+    memory.content.toLowerCase().includes(query.toLowerCase()),
+  );
+  const linksByMemory = new Map<string, MemoryLink[]>();
+  for (const link of links) {
+    for (const id of [link.from_id, link.to_id])
+      linksByMemory.set(id, [...(linksByMemory.get(id) ?? []), link]);
+  }
+  async function clearAll() {
+    if (
+      !window.confirm(
+        `Delete all ${memories.length} memories? This cannot be undone.`,
+      )
+    )
+      return;
     setClearing(true);
+    setError(null);
     try {
       await invoke("delete_all_memories");
+    } catch {
+      setError("Couldn’t clear memories. Please try again.");
     } finally {
       setClearing(false);
     }
   }
-
-  const linksByMemory = new Map<string, MemoryLink[]>();
-  for (const link of links) {
-    for (const mid of [link.from_id, link.to_id]) {
-      if (!linksByMemory.has(mid)) linksByMemory.set(mid, []);
-      linksByMemory.get(mid)!.push(link);
+  async function remove(operation: () => void) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await operation();
+    } catch {
+      setError("Couldn’t remove this saved context. Please try again.");
+    } finally {
+      setBusy(false);
     }
   }
-
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "24px 32px" }}>
-      <div style={{ maxWidth: 640, margin: "0 auto" }}>
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            marginBottom: 24,
-            paddingBottom: 16,
-            borderBottom: "1px solid var(--border)",
-          }}
-        >
-          <Brain size={18} strokeWidth={1.5} color="var(--accent)" />
+    <div className="workspace-page">
+      <div className="workspace-page-inner">
+        <header className="page-heading">
           <div>
-            <h2 style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>
-              Memory
-            </h2>
-            <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-              Facts extracted from your conversations. Used to personalize responses.
+            <h1>Memory</h1>
+            <p>
+              Context saved from your conversations. Review it and keep what
+              matters.
             </p>
           </div>
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-            <span
-              style={{
-                fontSize: 11,
-                color: "var(--text-3)",
-                backgroundColor: "var(--surface-2)",
-                border: "1px solid var(--border)",
-                borderRadius: 10,
-                padding: "2px 8px",
-              }}
-            >
-              {memories.length} {memories.length === 1 ? "item" : "items"}
-            </span>
-            <button
-              onClick={handleClearAll}
-              disabled={clearing || memories.length === 0}
-              title={memories.length === 0 ? "No memories to clear" : "Clear all memories"}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-                padding: "4px 10px",
-                fontSize: 11,
-                color: memories.length === 0 ? "var(--text-3)" : "#ef4444",
-                background: "transparent",
-                border: `1px solid ${memories.length === 0 ? "var(--border)" : "rgba(239,68,68,0.3)"}`,
-                borderRadius: 6,
-                cursor: clearing || memories.length === 0 ? "not-allowed" : "pointer",
-                opacity: clearing || memories.length === 0 ? 0.4 : 1,
-              }}
-            >
-              <Trash2 size={11} />
-              {clearing ? "Clearing…" : "Clear all"}
-            </button>
-          </div>
-        </div>
-
-        {/* Empty state */}
-        {memories.length === 0 && (
-          <div
-            style={{
-              textAlign: "center",
-              padding: "48px 0",
-              color: "var(--text-3)",
-            }}
+          <button
+            className="page-button danger"
+            onClick={clearAll}
+            disabled={clearing || busy || loading || !memories.length}
           >
-            <Brain
-              size={32}
-              strokeWidth={1}
-              style={{ margin: "0 auto 12px", display: "block" }}
-            />
-            <p style={{ fontSize: 13 }}>No memories yet</p>
-            <p style={{ fontSize: 12, marginTop: 4 }}>
-              Send a few messages with Memory on - facts will appear here automatically.
-            </p>
+            <Trash2 size={14} />
+            {clearing ? "Clearing…" : "Clear all"}
+          </button>
+        </header>
+        {error && (
+          <p className="page-notice error" role="alert">
+            {error}
+          </p>
+        )}
+        {loadError && !error && (
+          <div className="page-notice error" role="alert">
+            <span>{loadError}</span>
+            {onRefresh && (
+              <button className="page-button" onClick={onRefresh}>
+                Retry
+              </button>
+            )}
           </div>
         )}
-
-        {/* Memory list */}
-        {memories.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {memories.map((m) => {
-              const memLinks = linksByMemory.get(m.id) ?? [];
-              return (
-                <div
-                  key={m.id}
-                  style={{
-                    backgroundColor: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 6,
-                    padding: "10px 14px",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 12,
-                    }}
+        <div className="section-heading">
+          <h2>
+            {memories.length} saved{" "}
+            {memories.length === 1 ? "memory" : "memories"}
+          </h2>
+          {memories.length > 0 && (
+            <label className="page-search">
+              <Search size={15} />
+              <input
+                aria-label="Search memories"
+                placeholder="Search memories"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
+          )}
+        </div>
+        {loading ? (
+          <div className="page-empty-state" role="status">
+            <LoaderCircle size={24} className="spin" />
+            <p>Loading memories…</p>
+          </div>
+        ) : loadError && !memories.length ? null : memories.length === 0 ? (
+          <section className="page-empty-state">
+            <div className="empty-icon">
+              <Brain size={25} strokeWidth={1.5} />
+            </div>
+            <h2>A little context goes a long way</h2>
+            <p>
+              Turn on Memory in a conversation to save useful facts. Your saved
+              memories will appear here for review.
+            </p>
+          </section>
+        ) : visible.length === 0 ? (
+          <div className="page-empty-state">
+            <Search size={24} />
+            <h2>No matching memories</h2>
+            <p>Try a different word or clear your search.</p>
+          </div>
+        ) : (
+          <div className="record-list">
+            {visible.map((memory) => (
+              <article className="memory-record" key={memory.id}>
+                <div className="record-main">
+                  <div className="record-copy">
+                    <p>{memory.content}</p>
+                    <time dateTime={memory.created_at}>
+                      {new Date(memory.created_at).toLocaleDateString(
+                        undefined,
+                        { month: "short", day: "numeric", year: "numeric" },
+                      )}
+                    </time>
+                  </div>
+                  <button
+                    className="page-icon-button"
+                    disabled={busy || clearing}
+                    aria-label={`Delete memory: ${memory.content}`}
+                    onClick={() => void remove(() => onDelete(memory.id))}
                   >
-                    <span
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: "50%",
-                        backgroundColor: "var(--accent)",
-                        flexShrink: 0,
-                        marginTop: 5,
-                        display: "block",
-                      }}
-                    />
-                    <div style={{ flex: 1 }}>
-                      <p
-                        style={{
-                          fontSize: 13,
-                          color: "var(--text)",
-                          lineHeight: 1.5,
-                        }}
-                      >
-                        {m.content}
-                      </p>
-                      <p
-                        style={{
-                          fontSize: 11,
-                          color: "var(--text-3)",
-                          marginTop: 3,
-                        }}
-                      >
-                        {new Date(m.created_at).toLocaleDateString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
-                      </p>
-                    </div>
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+                {(linksByMemory.get(memory.id) ?? []).map((link) => (
+                  <div className="memory-link" key={link.id}>
+                    <Link size={13} />
+                    <span>{link.relation.replace(/_/g, " ")}</span>
+                    <p>
+                      {link.from_id === memory.id
+                        ? link.to_content
+                        : link.from_content}
+                    </p>
                     <button
-                      onClick={() => onDelete(m.id)}
-                      title="Delete memory"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        width: 20,
-                        height: 20,
-                        borderRadius: 4,
-                        color: "var(--text-3)",
-                        flexShrink: 0,
-                        marginTop: 1,
-                      }}
+                      className="page-icon-button"
+                      disabled={busy || clearing}
+                      aria-label="Remove memory link"
+                      onClick={() => void remove(() => onDeleteLink(link.id))}
                     >
-                      <X size={12} strokeWidth={1.5} />
+                      <X size={13} />
                     </button>
                   </div>
-
-                  {/* Linked memory chips */}
-                  {memLinks.length > 0 && (
-                    <div
-                      style={{
-                        marginTop: 8,
-                        marginLeft: 18,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 4,
-                      }}
-                    >
-                      {memLinks.map((link) => (
-                        <LinkChip
-                          key={link.id}
-                          link={link}
-                          memoryId={m.id}
-                          onDelete={onDeleteLink}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                ))}
+              </article>
+            ))}
           </div>
         )}
+        <p className="page-footnote">
+          Memories are stored on this device. Removing one also removes its
+          links to other memories.
+        </p>
       </div>
     </div>
   );
