@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 
 // ---------------------------------------------------------------------------
 // Types (must match Rust structs in lib.rs)
@@ -36,89 +36,152 @@ interface UseKnowledgeReturn {
   sources: KnowledgeSource[];
   loading: boolean;
   error: string | null;
+  refreshing: boolean;
+  refresh: () => Promise<void>;
   addFolder: (embedModel: string) => Promise<void>;
   deleteSource: (sourceId: string) => Promise<void>;
-  search: (query: string, embedModel: string, limit?: number) => Promise<KnowledgeChunk[]>;
+  search: (
+    query: string,
+    embedModel: string,
+    limit?: number,
+  ) => Promise<KnowledgeChunk[]>;
 }
 
 export function useKnowledge(): UseKnowledgeReturn {
   const [sources, setSources] = useState<KnowledgeSource[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const unlistenRef = useRef<UnlistenFn | null>(null);
-
-  // Load sources on mount and subscribe to updates.
-  // Guard against a non-array response (e.g. mocked invoke() in tests, or a
-  // sidecar hiccup) so a bad payload can't null out state and crash the render.
-  useEffect(() => {
-    invoke<KnowledgeSource[]>("list_knowledge_sources")
-      .then((list) => setSources(Array.isArray(list) ? list : []))
-      .catch((e) => setError(String(e)));
-
-    listen<KnowledgeUpdatedPayload>("knowledge-updated", (event) => {
-      setSources(Array.isArray(event.payload?.sources) ? event.payload.sources : []);
-    }).then((unlisten) => {
-      unlistenRef.current = unlisten;
-    });
-
-    return () => {
-      unlistenRef.current?.();
-    };
+  const [refreshing, setRefreshing] = useState(true);
+  const generation = useRef(0);
+  const revision = useRef(0);
+  const adding = useRef(false);
+  const searchRevision = useRef(0);
+  const refresh = useCallback(async () => {
+    const epoch = generation.current;
+    const version = ++revision.current;
+    setRefreshing(true);
+    try {
+      const list = await invoke<KnowledgeSource[]>("list_knowledge_sources");
+      if (epoch === generation.current && version === revision.current) {
+        setSources(Array.isArray(list) ? list : []);
+        setError(null);
+      }
+    } catch {
+      if (epoch === generation.current && version === revision.current)
+        setError(
+          "Couldn't load your folders. Refresh when the local service is ready.",
+        );
+    } finally {
+      if (epoch === generation.current && version === revision.current)
+        setRefreshing(false);
+    }
   }, []);
+  useEffect(() => {
+    let cancelled = false;
+    const epoch = ++generation.current;
+    const offs: (() => void)[] = [];
+    const keep = (off: () => void) => {
+      if (cancelled) off();
+      else offs.push(off);
+    };
+    void Promise.allSettled([
+      listen("sidecar-ready", () => {
+        if (!cancelled) void refresh();
+      }).then(keep),
+      listen<KnowledgeUpdatedPayload>("knowledge-updated", (event) => {
+        if (cancelled) return;
+        revision.current++;
+        setSources(
+          Array.isArray(event.payload?.sources) ? event.payload.sources : [],
+        );
+        setRefreshing(false);
+        setError(null);
+      }).then(keep),
+    ]).then(() => {
+      if (!cancelled) void refresh();
+    });
+    return () => {
+      cancelled = true;
+      generation.current = epoch + 1;
+      offs.forEach((off) => off());
+    };
+  }, [refresh]);
 
   const addFolder = async (embedModel: string) => {
+    if (adding.current) return;
+    adding.current = true;
+    const epoch = generation.current;
     setError(null);
-    const picked = await invoke<string | null>("pick_folder").catch((e) => {
-      setError(String(e));
-      return null;
-    });
-    if (!picked) return;
-
     setLoading(true);
-    // Optimistically add an "indexing" entry so the UI updates immediately
-    const optimistic: KnowledgeSource = {
-      id: "__optimistic__",
-      path: picked,
-      name: picked.split(/[\\/]/).pop() ?? picked,
-      file_count: 0,
-      chunk_count: 0,
-      status: "indexing",
-      created_at: new Date().toISOString(),
-    };
-    setSources((prev) => [optimistic, ...prev]);
-
-    invoke("index_knowledge", { path: picked, embedModel })
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false));
-    // The "knowledge-updated" event will replace sources (including the optimistic entry)
+    try {
+      const picked = await invoke<string | null>("pick_folder");
+      if (!picked || epoch !== generation.current) return;
+      // Wait for the service to accept indexing, then use its real source IDs/statuses.
+      await invoke("index_knowledge", { path: picked, embedModel });
+      if (epoch === generation.current) await refresh();
+    } catch (cause) {
+      if (epoch === generation.current)
+        setError(
+          "Couldn't add this folder. Check the embedding model and try again.",
+        );
+      throw cause;
+    } finally {
+      adding.current = false;
+      if (epoch === generation.current) setLoading(false);
+    }
   };
 
   const deleteSource = async (sourceId: string) => {
+    const epoch = generation.current;
     setError(null);
-    invoke("delete_knowledge_source", { sourceId }).catch((e) =>
-      setError(String(e))
-    );
-    // Optimistically remove from list; "knowledge-updated" will confirm
-    setSources((prev) => prev.filter((s) => s.id !== sourceId));
+    try {
+      await invoke("delete_knowledge_source", { sourceId });
+      if (epoch === generation.current) {
+        revision.current++;
+        setSources((prev) => prev.filter((s) => s.id !== sourceId));
+        setRefreshing(false);
+      }
+    } catch (cause) {
+      if (epoch === generation.current)
+        setError(
+          "Couldn't remove this folder. Your indexed source is still available; try again.",
+        );
+      throw cause;
+    }
   };
 
   const search = async (
     query: string,
     embedModel: string,
-    limit = 5
+    limit = 5,
   ): Promise<KnowledgeChunk[]> => {
-    const result = await invoke<KnowledgeChunk[]>("search_knowledge", {
-      query,
-      embedModel,
-      limit,
-    }).catch((e) => {
-      setError(String(e));
-      return [];
-    });
-    // Guard against a non-array response (e.g. mocked invoke() in tests, or a
-    // sidecar hiccup) - callers immediately .map()/.length this result.
-    return Array.isArray(result) ? result : [];
+    const epoch = generation.current;
+    const version = ++searchRevision.current;
+    setError(null);
+    try {
+      const result = await invoke<KnowledgeChunk[]>("search_knowledge", {
+        query,
+        embedModel,
+        limit,
+      });
+      return Array.isArray(result) ? result : [];
+    } catch (cause) {
+      if (epoch === generation.current && version === searchRevision.current)
+        setError(
+          "Couldn't search your files. Check the embedding model and try again.",
+        );
+      throw cause;
+    }
   };
 
-  return { sources, loading, error, addFolder, deleteSource, search };
+  return {
+    sources,
+    loading,
+    refreshing,
+    error,
+    refresh,
+    addFolder,
+    deleteSource,
+    search,
+  };
 }
