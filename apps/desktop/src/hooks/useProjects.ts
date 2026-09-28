@@ -5,7 +5,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface Project {
   id: string;
@@ -34,135 +34,275 @@ export function useProjects() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
-
-  // Load project list on mount and subscribe to server-push updates
-  useEffect(() => {
-    invoke<{ projects: Project[] }>("list_projects")
-      .then((r) => setProjects(r.projects ?? r as unknown as Project[]))
-      .catch(() => {});
-
-    let unlisten: (() => void) | undefined;
-    listen<ProjectsUpdatedPayload>("projects-updated", (event) => {
-      setProjects(event.payload.projects);
-    }).then((fn) => {
-      unlisten = fn;
-    });
-    return () => unlisten?.();
-  }, []);
-
-  // Load tasks whenever active project changes.
-  // Wrapped in async function so setState is not called synchronously in the
-  // effect body (satisfies react-hooks/set-state-in-effect).
-  useEffect(() => {
-    async function load() {
-      if (!activeProjectId) {
-        setTasks([]);
-        return;
-      }
-      try {
-        const r = await invoke<{ tasks: Task[] }>("list_tasks", { projectId: activeProjectId });
-        setTasks(r.tasks ?? (r as unknown as Task[]));
-      } catch {
-        setTasks([]);
-      }
+  const [loading, setLoading] = useState(true);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const generation = useRef(0);
+  const projectRevision = useRef(0);
+  const taskRevision = useRef(0);
+  const selected = useRef<string | null>(null);
+  const refreshTasks = useCallback(async () => {
+    const projectId = selected.current;
+    const epoch = generation.current;
+    const version = ++taskRevision.current;
+    if (!projectId) {
+      setTasks([]);
+      setTasksLoading(false);
+      return;
     }
-    load();
-  }, [activeProjectId]);
-
-  const createProject = useCallback(async (name: string, path?: string): Promise<Project> => {
-    const project = await invoke<Project>("create_project", { name, path: path ?? null });
-    setProjects((prev) => [project, ...prev]);
-    return project;
+    setTasksLoading(true);
+    try {
+      const result = await invoke<{ tasks?: Task[] } | Task[] | null>(
+        "list_tasks",
+        { projectId },
+      );
+      const list = Array.isArray(result) ? result : result?.tasks;
+      if (
+        epoch === generation.current &&
+        version === taskRevision.current &&
+        selected.current === projectId
+      )
+        setTasks(Array.isArray(list) ? list : []);
+    } catch {
+      if (epoch === generation.current && version === taskRevision.current)
+        setError("Couldn't load this project's tasks. Try refreshing.");
+    } finally {
+      if (epoch === generation.current && version === taskRevision.current)
+        setTasksLoading(false);
+    }
   }, []);
+  const applyProjects = useCallback((list: Project[]) => {
+    setProjects(list);
+    if (selected.current && !list.some((p) => p.id === selected.current)) {
+      selected.current = null;
+      taskRevision.current++;
+      setActiveProjectId(null);
+      setTasks([]);
+      setTasksLoading(false);
+    }
+  }, []);
+  const refresh = useCallback(async () => {
+    const epoch = generation.current;
+    const version = ++projectRevision.current;
+    setLoading(true);
+    setError(null);
+    const taskRequest = refreshTasks();
+    try {
+      const result = await invoke<{ projects?: Project[] } | Project[] | null>(
+        "list_projects",
+      );
+      const list = Array.isArray(result) ? result : result?.projects;
+      if (epoch === generation.current && version === projectRevision.current)
+        applyProjects(Array.isArray(list) ? list : []);
+    } catch {
+      if (epoch === generation.current && version === projectRevision.current)
+        setError(
+          "Couldn't load projects. Refresh when the local service is ready.",
+        );
+    } finally {
+      if (epoch === generation.current && version === projectRevision.current)
+        setLoading(false);
+    }
+    await taskRequest;
+  }, [applyProjects, refreshTasks]);
+  useEffect(() => {
+    let cancelled = false;
+    const epoch = ++generation.current;
+    const offs: (() => void)[] = [];
+    const keep = (off: () => void) => {
+      if (cancelled) off();
+      else offs.push(off);
+    };
+    void Promise.allSettled([
+      listen("sidecar-ready", () => {
+        if (!cancelled) void refresh();
+      }).then(keep),
+      listen<ProjectsUpdatedPayload>("projects-updated", (event) => {
+        if (cancelled) return;
+        projectRevision.current++;
+        applyProjects(
+          Array.isArray(event.payload?.projects) ? event.payload.projects : [],
+        );
+        setLoading(false);
+      }).then(keep),
+    ]).then(() => {
+      if (!cancelled) void refresh();
+    });
+    return () => {
+      cancelled = true;
+      generation.current = epoch + 1;
+      offs.forEach((off) => off());
+    };
+  }, [applyProjects, refresh]);
+
+  const createProject = useCallback(
+    async (name: string, path?: string): Promise<Project> => {
+      const epoch = generation.current;
+      const project = await invoke<Project>("create_project", {
+        name,
+        path: path ?? null,
+      });
+      if (epoch === generation.current) {
+        projectRevision.current++;
+        setProjects((prev) => [
+          project,
+          ...prev.filter((p) => p.id !== project.id),
+        ]);
+        setLoading(false);
+      }
+      return project;
+    },
+    [],
+  );
 
   const updateProject = useCallback(
-    async (projectId: string, updates: { name?: string; path?: string; summary?: string }): Promise<Project> => {
+    async (
+      projectId: string,
+      updates: { name?: string; path?: string; summary?: string },
+    ): Promise<Project> => {
+      const epoch = generation.current;
       const updated = await invoke<Project>("update_project", {
         projectId,
         name: updates.name ?? null,
         path: updates.path ?? null,
         summary: updates.summary ?? null,
       });
-      setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
+      if (epoch === generation.current) {
+        projectRevision.current++;
+        setProjects((prev) =>
+          prev.map((p) => (p.id === projectId ? updated : p)),
+        );
+        setLoading(false);
+      }
       return updated;
     },
-    []
+    [],
   );
 
-  const deleteProject = useCallback(async (projectId: string): Promise<void> => {
-    await invoke("delete_project", { projectId });
-    // projects-updated event will refresh the list
-    if (activeProjectId === projectId) {
-      setActiveProjectId(null);
-      setTasks([]);
-    }
-  }, [activeProjectId]);
+  const deleteProject = useCallback(
+    async (projectId: string): Promise<void> => {
+      const epoch = generation.current;
+      await invoke("delete_project", { projectId });
+      if (epoch !== generation.current) return;
+      projectRevision.current++;
+      setProjects((prev) => prev.filter((p) => p.id !== projectId));
+      setLoading(false);
+      if (selected.current === projectId) {
+        selected.current = null;
+        taskRevision.current++;
+        setActiveProjectId(null);
+        setTasks([]);
+        setTasksLoading(false);
+      }
+    },
+    [],
+  );
 
   const generateSummary = useCallback(
     async (projectId: string, speedModel: string): Promise<string> => {
-      const summary = await invoke<string>("generate_project_summary", { projectId, speedModel });
-      setProjects((prev) =>
-        prev.map((p) => (p.id === projectId ? { ...p, summary } : p))
-      );
+      const epoch = generation.current;
+      const summary = await invoke<string>("generate_project_summary", {
+        projectId,
+        speedModel,
+      });
+      if (epoch === generation.current) {
+        projectRevision.current++;
+        setProjects((prev) =>
+          prev.map((p) => (p.id === projectId ? { ...p, summary } : p)),
+        );
+        setLoading(false);
+      }
       return summary;
     },
-    []
+    [],
   );
 
-  const selectProject = useCallback((projectId: string | null) => {
-    setActiveProjectId(projectId);
-  }, []);
+  const selectProject = useCallback(
+    (projectId: string | null) => {
+      selected.current = projectId;
+      setActiveProjectId(projectId);
+      setTasks([]);
+      setError(null);
+      void refreshTasks();
+    },
+    [refreshTasks],
+  );
 
   // Task operations
   const createTask = useCallback(
     async (title: string, dueAt?: string): Promise<Task> => {
-      if (!activeProjectId) throw new Error("No active project");
+      const projectId = selected.current;
+      const epoch = generation.current;
+      if (!projectId) throw new Error("No active project");
       const task = await invoke<Task>("create_task", {
-        projectId: activeProjectId,
+        projectId,
         title,
         dueAt: dueAt ?? null,
       });
-      setTasks((prev) => [...prev, task]);
+      if (epoch === generation.current && selected.current === projectId) {
+        taskRevision.current++;
+        setTasks((prev) => [...prev.filter((t) => t.id !== task.id), task]);
+        void refreshTasks();
+      }
       return task;
     },
-    [activeProjectId]
+    [refreshTasks],
   );
 
   const updateTaskStatus = useCallback(
     async (taskId: string, status: Task["status"]): Promise<void> => {
-      if (!activeProjectId) return;
+      const projectId = selected.current;
+      const epoch = generation.current;
+      if (!projectId) throw new Error("No active project");
       await invoke("update_task", {
-        projectId: activeProjectId,
+        projectId,
         taskId,
         title: null,
         status,
         dueAt: null,
       });
-      setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, status } : t))
-      );
+      if (epoch === generation.current && selected.current === projectId) {
+        taskRevision.current++;
+        setTasks((prev) =>
+          prev.map((t) => (t.id === taskId ? { ...t, status } : t)),
+        );
+        void refreshTasks();
+      }
     },
-    [activeProjectId]
+    [refreshTasks],
   );
 
   const deleteTask = useCallback(
     async (taskId: string): Promise<void> => {
-      if (!activeProjectId) return;
-      await invoke("delete_task", { projectId: activeProjectId, taskId });
-      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      const projectId = selected.current;
+      const epoch = generation.current;
+      if (!projectId) throw new Error("No active project");
+      await invoke("delete_task", { projectId, taskId });
+      if (epoch === generation.current && selected.current === projectId) {
+        taskRevision.current++;
+        setTasks((prev) => prev.filter((t) => t.id !== taskId));
+        void refreshTasks();
+      }
     },
-    [activeProjectId]
+    [refreshTasks],
   );
 
   const assignConversation = useCallback(
     async (conversationId: string, projectId: string | null): Promise<void> => {
-      await invoke("assign_conversation_to_project", { conversationId, projectId });
+      await invoke("assign_conversation_to_project", {
+        conversationId,
+        projectId,
+      });
     },
-    []
+    [],
   );
 
   return {
     projects,
+    loading,
+    tasksLoading,
+    error,
+    refresh,
     activeProjectId,
     tasks,
     selectProject,
