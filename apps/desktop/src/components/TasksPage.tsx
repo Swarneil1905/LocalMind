@@ -1,10 +1,17 @@
-// Spec reference: Phase 5.5 - TasksPage
-// Cross-project task view: create, status-cycle, and delete tasks.
-
 import { invoke } from "@tauri-apps/api/core";
-import { CheckSquare, Circle, CircleCheck, Loader, Plus, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  CheckSquare,
+  Circle,
+  CircleCheck,
+  CircleDot,
+  LoaderCircle,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Project } from "../hooks/useProjects";
+import "./supporting-pages.css";
 
 interface TaskWithProject {
   id: string;
@@ -16,422 +23,297 @@ interface TaskWithProject {
   updated_at: string;
   project_name: string | null;
 }
-
-type StatusFilter = "all" | "open" | "in_progress" | "done";
-
-const STATUS_CYCLE: Record<TaskWithProject["status"], TaskWithProject["status"]> = {
+type Filter = "all" | TaskWithProject["status"];
+const STATUS_LABEL = {
+  open: "Open",
+  in_progress: "In progress",
+  done: "Done",
+  cancelled: "Cancelled",
+};
+const NEXT_STATUS: Record<
+  TaskWithProject["status"],
+  TaskWithProject["status"]
+> = {
   open: "in_progress",
   in_progress: "done",
   done: "open",
   cancelled: "open",
 };
 
-const STATUS_LABEL: Record<TaskWithProject["status"], string> = {
-  open: "Open",
-  in_progress: "In progress",
-  done: "Done",
-  cancelled: "Cancelled",
-};
-
-const STATUS_COLOR: Record<TaskWithProject["status"], string> = {
-  open: "var(--text-3)",
-  in_progress: "#f59e0b",
-  done: "#22c55e",
-  cancelled: "var(--text-3)",
-};
-
-function StatusIcon({ status, size = 14 }: { status: TaskWithProject["status"]; size?: number }) {
-  const color = STATUS_COLOR[status];
-  if (status === "done") return <CircleCheck size={size} strokeWidth={1.5} color={color} />;
-  if (status === "in_progress") return <Loader size={size} strokeWidth={1.5} color={color} />;
-  return <Circle size={size} strokeWidth={1.5} color={color} />;
-}
-
-interface TasksPageProps {
-  projects: Project[];
-}
-
-export function TasksPage({ projects }: TasksPageProps) {
+export function TasksPage({ projects }: { projects: Project[] }) {
   const [tasks, setTasks] = useState<TaskWithProject[]>([]);
-  const [filter, setFilter] = useState<StatusFilter>("all");
-  const [selectedProject, setSelectedProject] = useState<string>("all");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [projectFilter, setProjectFilter] = useState("all");
   const [newTitle, setNewTitle] = useState("");
-  // Controlled project selector for the add-task row; falls back to first project
-  const [newProjectId, setNewProjectId] = useState<string>("");
+  const [newProjectId, setNewProjectId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  // Derive the effective new-task project without a setState-in-effect
-  const effectiveNewProjectId = newProjectId || projects[0]?.id || "";
-
+  const selectedId = projects.some((item) => item.id === newProjectId)
+    ? newProjectId
+    : (projects[0]?.id ?? "");
   useEffect(() => {
-    async function fetchTasks() {
-      try {
-        const result = await invoke<TaskWithProject[]>("list_all_tasks");
-        setTasks(result);
-      } catch {
-        // sidecar not ready
-      }
-    }
-    fetchTasks();
-  }, []);
-
-  const handleAdd = useCallback(async () => {
-    if (!newTitle.trim() || !effectiveNewProjectId) return;
+    let cancelled = false;
+    invoke<TaskWithProject[]>("list_all_tasks")
+      .then((result) => {
+        if (!cancelled) {
+          setTasks(Array.isArray(result) ? result : []);
+          setError(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setError("Couldn’t load tasks. Please try again.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [retry]);
+  async function add(event: React.FormEvent) {
+    event.preventDefault();
+    if (!newTitle.trim() || !selectedId || busy) return;
+    setBusy("new");
+    setError(null);
     try {
       const task = await invoke<TaskWithProject>("create_task", {
-        projectId: effectiveNewProjectId,
+        projectId: selectedId,
         title: newTitle.trim(),
         dueAt: null,
       });
-      setTasks((prev) => [task, ...prev]);
+      setTasks((previous) => [
+        {
+          ...task,
+          project_name:
+            projects.find((item) => item.id === selectedId)?.name ?? null,
+        },
+        ...previous,
+      ]);
       setNewTitle("");
       inputRef.current?.focus();
     } catch {
-      // swallow
-    }
-  }, [newTitle, effectiveNewProjectId]);
-
-  const handleStatusCycle = useCallback(async (task: TaskWithProject) => {
-    const next = STATUS_CYCLE[task.status];
-    try {
-      await invoke("update_task", {
-        projectId: task.project_id,
-        taskId: task.id,
-        title: null,
-        status: next,
-        dueAt: null,
-      });
-      setTasks((prev) =>
-        prev.map((t) => (t.id === task.id ? { ...t, status: next } : t))
+      setError(
+        "Couldn’t create the task. Your draft is still here; try again.",
       );
-    } catch {
-      // swallow
+    } finally {
+      setBusy(null);
     }
-  }, []);
-
-  const handleDelete = useCallback(async (task: TaskWithProject) => {
+  }
+  async function update(task: TaskWithProject, remove = false) {
+    if (busy) return;
+    setBusy(task.id);
+    setError(null);
     try {
-      await invoke("delete_task", {
-        projectId: task.project_id,
-        taskId: task.id,
-      });
-      setTasks((prev) => prev.filter((t) => t.id !== task.id));
+      if (remove) {
+        await invoke("delete_task", {
+          projectId: task.project_id,
+          taskId: task.id,
+        });
+        setTasks((previous) => previous.filter((item) => item.id !== task.id));
+      } else {
+        const next = NEXT_STATUS[task.status];
+        await invoke("update_task", {
+          projectId: task.project_id,
+          taskId: task.id,
+          title: null,
+          status: next,
+          dueAt: null,
+        });
+        setTasks((previous) =>
+          previous.map((item) =>
+            item.id === task.id ? { ...item, status: next } : item,
+          ),
+        );
+      }
     } catch {
-      // swallow
+      setError(
+        remove
+          ? "Couldn’t delete the task. Please try again."
+          : "Couldn’t update the task. Please try again.",
+      );
+    } finally {
+      setBusy(null);
     }
-  }, []);
-
-  const visible = tasks.filter((t) => {
-    const matchStatus = filter === "all" || t.status === filter;
-    const matchProject =
-      selectedProject === "all" || t.project_id === selectedProject;
-    return matchStatus && matchProject;
-  });
-
-  const counts: Record<StatusFilter, number> = {
-    all: tasks.length,
-    open: tasks.filter((t) => t.status === "open").length,
-    in_progress: tasks.filter((t) => t.status === "in_progress").length,
-    done: tasks.filter((t) => t.status === "done").length,
-  };
-
-  const FILTERS: { id: StatusFilter; label: string }[] = [
-    { id: "all", label: "All" },
-    { id: "open", label: "Open" },
-    { id: "in_progress", label: "In progress" },
-    { id: "done", label: "Done" },
-  ];
-
+  }
+  const projectTasks = tasks.filter(
+    (task) => projectFilter === "all" || task.project_id === projectFilter,
+  );
+  const visible = projectTasks.filter(
+    (task) => filter === "all" || task.status === filter,
+  );
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "24px 32px" }}>
-      <div style={{ maxWidth: 680, margin: "0 auto" }}>
-
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            marginBottom: 20,
-            paddingBottom: 16,
-            borderBottom: "1px solid var(--border)",
-          }}
-        >
-          <CheckSquare size={18} strokeWidth={1.5} color="var(--accent)" />
+    <div className="workspace-page">
+      <div className="workspace-page-inner">
+        <header className="page-heading">
           <div>
-            <h2 style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>
-              Tasks
-            </h2>
-            <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-              Manage tasks across all projects.
-            </p>
+            <h1>Tasks</h1>
+            <p>Keep track of the next steps across your projects.</p>
           </div>
-          <span
-            style={{
-              marginLeft: "auto",
-              fontSize: 11,
-              color: "var(--text-3)",
-              backgroundColor: "var(--surface-2)",
-              border: "1px solid var(--border)",
-              borderRadius: 10,
-              padding: "2px 8px",
-            }}
-          >
-            {counts.open} open · {counts.in_progress} in progress
-          </span>
-        </div>
-
-        {/* Add task row */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          <input
-            ref={inputRef}
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleAdd();
-            }}
-            placeholder="New task title..."
-            style={{
-              flex: 1,
-              fontSize: 13,
-              padding: "6px 10px",
-              backgroundColor: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: 6,
-              color: "var(--text)",
-              outline: "none",
-            }}
-          />
-          <select
-            value={effectiveNewProjectId}
-            onChange={(e) => setNewProjectId(e.target.value)}
-            style={{
-              fontSize: 12,
-              padding: "6px 8px",
-              backgroundColor: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: 6,
-              color: "var(--text)",
-              maxWidth: 160,
-            }}
-          >
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
           <button
-            onClick={handleAdd}
-            disabled={!newTitle.trim() || !effectiveNewProjectId}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "6px 12px",
-              fontSize: 12,
-              fontWeight: 500,
-              backgroundColor:
-                newTitle.trim() && effectiveNewProjectId
-                  ? "var(--accent)"
-                  : "var(--surface-2)",
-              color:
-                newTitle.trim() && effectiveNewProjectId
-                  ? "#fff"
-                  : "var(--text-3)",
-              border: "1px solid var(--border)",
-              borderRadius: 6,
-              cursor:
-                newTitle.trim() && effectiveNewProjectId ? "pointer" : "default",
-              flexShrink: 0,
+            className="page-icon-button"
+            aria-label="Refresh tasks"
+            disabled={loading}
+            onClick={() => {
+              setLoading(true);
+              setRetry((value) => value + 1);
             }}
           >
-            <Plus size={13} strokeWidth={2} />
-            Add
+            <RefreshCw size={16} />
           </button>
-        </div>
-
-        {/* Filter + project bar */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            marginBottom: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          {FILTERS.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setFilter(f.id)}
-              style={{
-                fontSize: 11,
-                padding: "3px 10px",
-                borderRadius: 10,
-                border: "1px solid var(--border)",
-                backgroundColor:
-                  filter === f.id ? "var(--accent)" : "var(--surface-2)",
-                color: filter === f.id ? "#fff" : "var(--text-3)",
-                cursor: "pointer",
-                fontWeight: filter === f.id ? 600 : 400,
-              }}
+        </header>
+        {error && (
+          <p className="page-notice error" role="alert">
+            {error}
+          </p>
+        )}
+        {projects.length ? (
+          <form className="page-form-row task-create" onSubmit={add}>
+            <input
+              ref={inputRef}
+              className="page-input grow"
+              aria-label="Task title"
+              placeholder="What needs to be done?"
+              value={newTitle}
+              onChange={(event) => setNewTitle(event.target.value)}
+            />
+            <select
+              className="page-select"
+              aria-label="Project for new task"
+              value={selectedId}
+              onChange={(event) => setNewProjectId(event.target.value)}
             >
-              {f.label}
-              {counts[f.id] > 0 && (
-                <span style={{ marginLeft: 4, opacity: 0.7 }}>
-                  {counts[f.id]}
-                </span>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+            <button
+              className="page-button primary"
+              disabled={!newTitle.trim() || !!busy}
+            >
+              {busy === "new" ? (
+                <LoaderCircle size={15} className="spin" />
+              ) : (
+                <Plus size={15} />
               )}
+              Add task
             </button>
-          ))}
+          </form>
+        ) : (
+          <p className="page-notice">
+            Create a project in Projects first. Each task belongs to a project.
+          </p>
+        )}
+        <div className="page-toolbar">
+          <div className="page-tabs" aria-label="Filter tasks">
+            {(
+              ["all", "open", "in_progress", "done", "cancelled"] as Filter[]
+            ).map((value) => (
+              <button
+                key={value}
+                aria-pressed={filter === value}
+                onClick={() => setFilter(value)}
+              >
+                {value === "all" ? "All tasks" : STATUS_LABEL[value]}
+                <span>
+                  {
+                    projectTasks.filter(
+                      (task) => value === "all" || task.status === value,
+                    ).length
+                  }
+                </span>
+              </button>
+            ))}
+          </div>
           {projects.length > 1 && (
             <select
-              value={selectedProject}
-              onChange={(e) => setSelectedProject(e.target.value)}
-              style={{
-                marginLeft: "auto",
-                fontSize: 11,
-                padding: "3px 8px",
-                backgroundColor: "var(--surface-2)",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                color: "var(--text-3)",
-              }}
+              className="page-select"
+              aria-label="Filter by project"
+              value={projectFilter}
+              onChange={(event) => setProjectFilter(event.target.value)}
             >
               <option value="all">All projects</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
                 </option>
               ))}
             </select>
           )}
         </div>
-
-        {/* Empty state */}
-        {visible.length === 0 && (
-          <div
-            style={{
-              textAlign: "center",
-              padding: "48px 0",
-              color: "var(--text-3)",
-            }}
-          >
-            <CheckSquare
-              size={32}
-              strokeWidth={1}
-              style={{ margin: "0 auto 12px", display: "block" }}
-            />
-            <p style={{ fontSize: 13 }}>
-              {tasks.length === 0
-                ? "No tasks yet"
-                : "No tasks match this filter"}
-            </p>
-            {tasks.length === 0 && (
-              <p style={{ fontSize: 12, marginTop: 4 }}>
-                Type a title above and pick a project to create your first task.
-              </p>
-            )}
+        {loading ? (
+          <div className="page-empty-state" role="status">
+            <LoaderCircle className="spin" size={23} />
+            <p>Loading tasks…</p>
           </div>
-        )}
-
-        {/* Task list */}
-        {visible.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        ) : !visible.length ? (
+          <div className="page-empty-state">
+            <div className="empty-icon">
+              <CheckSquare size={25} strokeWidth={1.5} />
+            </div>
+            <h2>
+              {tasks.length
+                ? "No tasks in this view"
+                : "A clear place for your next steps"}
+            </h2>
+            <p>
+              {tasks.length
+                ? "Choose a different status or project to see more tasks."
+                : "Add a task above to keep your work moving."}
+            </p>
+          </div>
+        ) : (
+          <div className="record-list">
             {visible.map((task) => (
-              <div
+              <article
+                className={`task-record ${task.status === "done" ? "is-complete" : ""}`}
                 key={task.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  backgroundColor: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 6,
-                  padding: "8px 12px",
-                  opacity: task.status === "cancelled" ? 0.5 : 1,
-                }}
               >
-                {/* Status toggle */}
                 <button
-                  onClick={() => handleStatusCycle(task)}
-                  title={`Status: ${STATUS_LABEL[task.status]} — click to advance`}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    flexShrink: 0,
-                    color: STATUS_COLOR[task.status],
-                  }}
+                  className="page-icon-button task-status"
+                  aria-label={`Mark “${task.title}” as ${STATUS_LABEL[NEXT_STATUS[task.status]].toLowerCase()}`}
+                  disabled={!!busy}
+                  onClick={() => void update(task)}
                 >
-                  <StatusIcon status={task.status} />
+                  {task.status === "done" ? (
+                    <CircleCheck size={18} />
+                  ) : task.status === "in_progress" ? (
+                    <CircleDot size={18} />
+                  ) : (
+                    <Circle size={18} />
+                  )}
                 </button>
-
-                {/* Title + meta */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p
-                    style={{
-                      fontSize: 13,
-                      color: "var(--text)",
-                      lineHeight: 1.4,
-                      textDecoration:
-                        task.status === "done" ? "line-through" : "none",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {task.title}
-                  </p>
-                  <p
-                    style={{ fontSize: 11, color: "var(--text-3)", marginTop: 1 }}
-                  >
-                    {task.project_name ?? "Unknown project"}
-                    {task.due_at && (
-                      <>
-                        {" · "}
-                        <span>
-                          Due{" "}
-                          {new Date(task.due_at).toLocaleDateString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                          })}
-                        </span>
-                      </>
-                    )}
+                <div className="record-copy">
+                  <h3>{task.title}</h3>
+                  <p className="muted">
+                    {task.project_name ??
+                      projects.find((project) => project.id === task.project_id)
+                        ?.name ??
+                      "Project"}
+                    {task.due_at
+                      ? ` · Due ${new Date(task.due_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+                      : ""}
                   </p>
                 </div>
-
-                {/* Status badge */}
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 500,
-                    color: STATUS_COLOR[task.status],
-                    backgroundColor: "var(--surface-2)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    padding: "1px 7px",
-                    flexShrink: 0,
-                  }}
-                >
+                <span className={`page-badge task-badge ${task.status}`}>
                   {STATUS_LABEL[task.status]}
                 </span>
-
-                {/* Delete */}
                 <button
-                  onClick={() => handleDelete(task)}
-                  title="Delete task"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    color: "var(--text-3)",
-                    flexShrink: 0,
+                  className="page-icon-button"
+                  disabled={!!busy}
+                  aria-label={`Delete task: ${task.title}`}
+                  onClick={() => {
+                    if (window.confirm(`Delete “${task.title}”?`))
+                      void update(task, true);
                   }}
                 >
-                  <Trash2 size={12} strokeWidth={1.5} />
+                  <Trash2 size={15} />
                 </button>
-              </div>
+              </article>
             ))}
           </div>
         )}
