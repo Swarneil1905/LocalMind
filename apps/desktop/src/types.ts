@@ -2,6 +2,14 @@
 
 export type ModelMode = "speed" | "balanced" | "boost";
 
+export interface WebSource {
+  title: string;
+  url: string;
+  snippet: string;
+  published_at?: string | null;
+  retrieved_at?: string;
+}
+
 export interface Message {
   id: string;
   role: "user" | "assistant";
@@ -12,6 +20,8 @@ export interface Message {
   isThinking?: boolean;
   /** true when the message contains an error from the sidecar or Ollama */
   error?: boolean;
+  cancelled?: boolean;
+  sources?: WebSource[];
 }
 
 // Model names sent to the Python sidecar.
