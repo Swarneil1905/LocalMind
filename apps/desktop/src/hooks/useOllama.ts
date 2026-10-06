@@ -26,9 +26,19 @@ export function useOllama(): OllamaStatus | null {
   const [status, setStatus] = useState<OllamaStatus | null>(null);
 
   useEffect(() => {
-    invoke<OllamaStatus>("get_ollama_status")
-      .then((s) => setStatus(s))
-      .catch((e) => console.error("[useOllama] failed to get status:", e));
+    let cancelled = false;
+    const refresh = () =>
+      void invoke<OllamaStatus>("get_ollama_status")
+        .then((s) => {
+          if (!cancelled) setStatus(s);
+        })
+        .catch(() => {});
+    refresh();
+    const timer = setInterval(refresh, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, []);
 
   return status;
