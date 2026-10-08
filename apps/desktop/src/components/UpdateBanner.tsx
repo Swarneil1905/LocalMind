@@ -1,119 +1,62 @@
-/**
- * UpdateBanner
- *
- * Checks for a new LocalMind release on mount (after first-run setup completes)
- * and shows a slim dismissable banner at the top of the window. Clicking
- * "Update & Restart" downloads the new version and relaunches the app.
- */
-
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { Download, X } from "lucide-react";
 
 interface UpdateInfo {
   version: string;
   currentVersion: string;
   body: string | null;
 }
-
-type UpdateState =
-  | { phase: "idle" }
-  | { phase: "available"; info: UpdateInfo }
-  | { phase: "downloading" }
-  | { phase: "dismissed" };
-
 export function UpdateBanner() {
-  const [state, setState] = useState<UpdateState>({ phase: "idle" });
-
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState(false);
   useEffect(() => {
-    // Check ~5 s after launch so it doesn't race with first-run setup
+    let disposed = false;
     const timer = setTimeout(() => {
-      invoke<UpdateInfo | null>("check_for_updates")
+      void invoke<UpdateInfo | null>("check_for_updates")
         .then((info) => {
-          if (info) setState({ phase: "available", info });
+          if (!disposed) setUpdate(info);
         })
-        .catch(() => {
-          // Silently ignore — updater errors shouldn't break the app
-        });
-    }, 5_000);
-    return () => clearTimeout(timer);
+        .catch(() => {});
+    }, 5000);
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+    };
   }, []);
-
-  if (state.phase !== "available" && state.phase !== "downloading") return null;
-
-  const isDownloading = state.phase === "downloading";
-  const version = state.phase === "available" ? state.info.version : "";
-
-  const handleUpdate = () => {
-    setState({ phase: "downloading" });
-    invoke("install_update").catch(() => {
-      // If install fails, go back to available so the user can retry
-      setState({
-        phase: "available",
-        info: (state as { phase: "downloading"; info?: UpdateInfo }).info ?? {
-          version,
-          currentVersion: "",
-          body: null,
-        },
-      });
-    });
-  };
-
+  if (!update) return null;
+  async function install() {
+    setDownloading(true);
+    setError(false);
+    try {
+      await invoke("install_update");
+    } catch {
+      setError(true);
+      setDownloading(false);
+    }
+  }
   return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 10000,
-        backgroundColor: "var(--accent)",
-        color: "#fff",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 12,
-        padding: "7px 16px",
-        fontSize: 13,
-        fontWeight: 500,
-        boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
-      }}
-    >
-      {isDownloading ? (
-        <span>Downloading update… app will restart automatically.</span>
-      ) : (
+    <div className="app-notice update-notice" role="status">
+      <Download size={17} />
+      <span>
+        {downloading
+          ? "Downloading update. LocalMind will restart when it is ready."
+          : error
+            ? "The update could not be installed. Your current version is still available."
+            : `LocalMind ${update.version} is available.`}
+      </span>
+      {!downloading && (
         <>
-          <span>
-            LocalMind {version} is available
-          </span>
-          <button
-            onClick={handleUpdate}
-            style={{
-              background: "rgba(255,255,255,0.2)",
-              border: "1px solid rgba(255,255,255,0.4)",
-              borderRadius: 5,
-              color: "#fff",
-              fontSize: 12,
-              fontWeight: 600,
-              padding: "3px 10px",
-              cursor: "pointer",
-            }}
-          >
-            Update &amp; Restart
+          <button className="secondary-button" onClick={() => void install()}>
+            {error ? "Retry update" : "Update & restart"}
           </button>
           <button
-            onClick={() => setState({ phase: "dismissed" })}
-            aria-label="Dismiss"
-            style={{
-              background: "none",
-              border: "none",
-              color: "rgba(255,255,255,0.7)",
-              fontSize: 16,
-              cursor: "pointer",
-              lineHeight: 1,
-              padding: "0 2px",
-            }}
+            className="icon-button"
+            aria-label="Dismiss update"
+            onClick={() => setUpdate(null)}
           >
-            ×
+            <X size={16} />
           </button>
         </>
       )}
