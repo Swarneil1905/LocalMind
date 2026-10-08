@@ -1,28 +1,22 @@
-// Spec reference: Section 14 (Chat UI), Section 15 (All Application Screens)
-// Phase 1: functional chat, Ollama detection, model mode selector.
-// Phase 3.5: conversation persistence wired in.
-// Phase 4: Projects wired in, project selector in chat header.
-// Phase 5: webSearchEnabled wired through useChat + Composer.
-
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
+  BookOpen,
+  Brain,
+  CheckSquare,
+  ChevronRight,
+  FolderOpen,
   Home,
   MessageSquare,
-  Dog,
-  Brain,
+  PanelLeft,
   Plug,
-  FolderOpen,
+  Plus,
   Settings,
-  ChevronLeft,
+  ShieldCheck,
   X,
-  FolderOpen as FolderIcon,
-  Monitor,
-  Sun,
-  Moon,
-  PanelRight,
+  AudioLines,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { Brand } from "./components/Brand";
 import { Composer } from "./components/Composer";
 import { ConversationList } from "./components/ConversationList";
 import { FirstRunSetup } from "./components/FirstRunSetup";
@@ -33,144 +27,196 @@ import { ConnectionsPage } from "./components/ConnectionsPage";
 import { TodayPage } from "./components/TodayPage";
 import { BuddyPage } from "./components/BuddyPage";
 import { ProjectsPage } from "./components/ProjectsPage";
+import { KnowledgePage } from "./components/KnowledgePage";
+import { TasksPage } from "./components/TasksPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { useChat } from "./hooks/useChat";
-import { ConversationMessage, useConversations } from "./hooks/useConversations";
-import { Memory, useMemory } from "./hooks/useMemory";
+import { useConversations } from "./hooks/useConversations";
+import { useMemory } from "./hooks/useMemory";
 import { useOllama } from "./hooks/useOllama";
 import { useSidecarStatus } from "./hooks/useSidecarStatus";
 import { useProjects } from "./hooks/useProjects";
-import { Message, ModelMode, MODEL_MAP } from "./types";
+import { MODEL_MAP } from "./types";
+import type { ModelMode, WebSource } from "./types";
 import "./App.css";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 type PageId =
   | "today"
   | "chats"
-  | "buddy"
   | "mind"
+  | "knowledge"
   | "connections"
   | "projects"
+  | "tasks"
+  | "buddy"
   | "settings";
-
-interface NavItem {
-  id: PageId;
-  label: string;
-  Icon: LucideIcon;
-}
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const NAV_ITEMS: NavItem[] = [
-  { id: "today",       label: "Today",       Icon: Home          },
-  { id: "chats",       label: "Chat",        Icon: MessageSquare },
-  { id: "buddy",       label: "Buddy",       Icon: Dog           },
-  { id: "mind",        label: "Mind",        Icon: Brain         },
-  { id: "connections", label: "Connections", Icon: Plug          },
-  { id: "projects",    label: "Projects",    Icon: FolderOpen    },
-  { id: "settings",    label: "Settings",    Icon: Settings      },
-];
-
-
-const SIDEBAR_EXPANDED = 240;
-const SIDEBAR_COLLAPSED = 48;
-
-// Embedding model used for knowledge indexing and search
+type Theme = "light" | "dark" | "system";
+const NAV = [
+  { id: "today", label: "Overview", Icon: Home },
+  { id: "chats", label: "Chat", Icon: MessageSquare },
+  { id: "knowledge", label: "Knowledge", Icon: BookOpen },
+  { id: "mind", label: "Memory", Icon: Brain },
+  { id: "projects", label: "Projects", Icon: FolderOpen },
+  { id: "tasks", label: "Tasks", Icon: CheckSquare },
+] as const;
 const EMBED_MODEL = "nomic-embed-text";
-
-// Convert a DB ConversationMessage row to the UI Message shape.
-function dbMsgToMessage(m: ConversationMessage): Message {
-  return {
-    id: m.id,
-    role: m.role,
-    content: m.content,
-    thinking: m.thinking ?? undefined,
-    isThinking: false,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// App root
-// ---------------------------------------------------------------------------
 
 export default function App() {
   const [setupComplete, setSetupComplete] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
-  const [activePage, setActivePage] = useState<PageId>("today");
+  const finishSetup = useCallback(() => setSetupComplete(true), []);
+  const [modelSetupOpen, setModelSetupOpen] = useState(false);
+  const closeModelSetup = useCallback(() => setModelSetupOpen(false), []);
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 760);
+  const [narrow, setNarrow] = useState(() => window.innerWidth <= 760);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const sidebarToggleRef = useRef<HTMLButtonElement>(null);
+  const [activePage, setActivePage] = useState<PageId>("chats");
   const [modelMode, setModelMode] = useState<ModelMode>("balanced");
-  const [speedModel, setSpeedModel] = useState(MODEL_MAP.speed);
-  const [balancedModel, setBalancedModel] = useState(MODEL_MAP.balanced);
+  const [speedModel, setSpeedModel] = useState(
+    () => localStorage.getItem("lm-speed-model") || MODEL_MAP.speed,
+  );
+  const [balancedModel, setBalancedModel] = useState(
+    () => localStorage.getItem("lm-balanced-model") || MODEL_MAP.balanced,
+  );
   const [memoryEnabled, setMemoryEnabled] = useState(true);
   const [knowledgeEnabled, setKnowledgeEnabled] = useState(false);
   const [hydeEnabled, setHydeEnabled] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
-  const [theme, setTheme] = useState<"dark" | "light" | "system">(
-    () => (localStorage.getItem("lm-theme") as "dark" | "light" | "system") ?? "dark"
-  );
-
-  // Apply theme class to <html> element
-  useEffect(() => {
-    const root = document.documentElement;
-    if (theme === "system") {
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      root.classList.toggle("light", !prefersDark);
-    } else {
-      root.classList.toggle("light", theme === "light");
-    }
-    localStorage.setItem("lm-theme", theme);
-  }, [theme]);
-
-  const ollamaStatus = useOllama();
-  const { status: sidecarStatus, error: sidecarError } = useSidecarStatus();
-  const { memories, links: memoryLinks, deleteMemory, deleteLink: deleteMemoryLink } = useMemory();
-
+  const [theme, setTheme] = useState<Theme>(() => {
+    const saved = localStorage.getItem("lm-theme");
+    return saved === "dark" || saved === "light" ? saved : "system";
+  });
+  const [notice, setNotice] = useState<string | null>(null);
+  const [loadingConversation, setLoadingConversation] = useState(false);
+  const [chatLoadError, setChatLoadError] = useState(false);
+  const [pendingSend, setPendingSend] = useState(false);
+  const [followUps, setFollowUps] = useState<string[]>([]);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const navigationVersion = useRef(0);
+  const changingConversation = useRef(false);
+  const sending = useRef(false);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const ollama = useOllama();
+  const runtime = useSidecarStatus();
+  const {
+    memories,
+    links,
+    deleteMemory,
+    deleteLink,
+    loading: memoryLoading,
+    error: memoryError,
+    refresh: refreshMemory,
+  } = useMemory();
   const {
     conversations,
-    activeId: activeConvId,
+    activeId,
     createConversation,
     selectConversation,
     saveCurrentTurn,
     deleteConversation,
     renameConversation,
+    clearSelection,
   } = useConversations();
-
-  // Top-level useProjects instance drives the chat-header project selector.
-  // ProjectsPage has its own instance; both stay in sync via Tauri events.
   const { projects, assignConversation } = useProjects();
 
-  const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
-  const [composerDraft, setComposerDraft] = useState<string>("");
-  const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  useEffect(() => {
+    localStorage.setItem("lm-speed-model", speedModel);
+  }, [speedModel]);
+  useEffect(() => {
+    localStorage.setItem("lm-balanced-model", balancedModel);
+  }, [balancedModel]);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 760px)");
+    const resize = () => {
+      setNarrow(media.matches);
+      if (media.matches) setSidebarOpen(false);
+    };
+    media.addEventListener("change", resize);
+    return () => media.removeEventListener("change", resize);
+  }, []);
+  useEffect(() => {
+    if (!sidebarOpen || !narrow) return;
+    const previous = document.activeElement;
+    const buttons = () =>
+      Array.from(
+        sidebarRef.current?.querySelectorAll<HTMLElement>(
+          "button:not(:disabled), input, select, [href]",
+        ) || [],
+      );
+    buttons()[0]?.focus();
+    const trap = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const targets = buttons();
+      const first = targets[0],
+        last = targets[targets.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener("keydown", trap);
+    return () => {
+      document.removeEventListener("keydown", trap);
+      requestAnimationFrame(() => {
+        if (previous instanceof HTMLElement && previous.isConnected)
+          previous.focus();
+        else
+          document
+            .querySelector<HTMLButtonElement>('[aria-label="Open sidebar"]')
+            ?.focus();
+      });
+    };
+  }, [sidebarOpen, narrow]);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () =>
+      document.documentElement.classList.toggle(
+        "light",
+        theme === "light" || (theme === "system" && !media.matches),
+      );
+    apply();
+    media.addEventListener("change", apply);
+    localStorage.setItem("lm-theme", theme);
+    return () => media.removeEventListener("change", apply);
+  }, [theme]);
 
-  // Called by useChat after each successful reply.
-  const handleTurnComplete = useCallback(
-    async (userContent: string, assistantContent: string, assistantThinking: string | null) => {
-      saveCurrentTurn(userContent, assistantContent, assistantThinking);
-      // Fetch follow-up question suggestions from the Speed model
+  const handleComplete = useCallback(
+    async (
+      user: string,
+      answer: string,
+      thinking: string | null,
+      conversationId: string | null,
+      sources: WebSource[],
+    ) => {
+      const version = navigationVersion.current;
       try {
-        const qs = await invoke<string[]>("get_followup_questions", {
-          lastUser: userContent,
-          lastAssistant: assistantContent.slice(0, 1200), // trim to avoid huge prompts
-          model: undefined,
-        });
-        setFollowUpQuestions(qs ?? []);
+        await saveCurrentTurn(user, answer, thinking, conversationId, sources);
       } catch {
-        setFollowUpQuestions([]);
+        setNotice(
+          "This reply could not be saved. Copy it before leaving this chat.",
+        );
+      }
+      try {
+        const questions = await invoke<string[]>("get_followup_questions", {
+          lastUser: user,
+          lastAssistant: answer.slice(0, 1200),
+          model: speedModel,
+        });
+        if (version === navigationVersion.current)
+          setFollowUps(Array.isArray(questions) ? questions : []);
+      } catch {
+        /* Suggestions are optional; the saved answer remains usable. */
       }
     },
-    [saveCurrentTurn]
+    [saveCurrentTurn, speedModel],
   );
-
   const {
     messages,
     isStreaming,
     isSearching,
-    webSources,
     sendMessage,
     stopStreaming,
     loadMessages,
@@ -178,808 +224,522 @@ export default function App() {
   } = useChat({
     modelMode,
     speedModel,
+    balancedModel,
     memoryEnabled,
     knowledgeEnabled,
     hydeEnabled,
     webSearchEnabled,
     embedModel: EMBED_MODEL,
-    onTurnComplete: handleTurnComplete,
+    onTurnComplete: handleComplete,
   });
+  const draftKey = activeId || "new";
+  const draft = drafts[draftKey] || "";
+  const setDraft = useCallback(
+    (value: string) => setDrafts((prev) => ({ ...prev, [draftKey]: value })),
+    [draftKey],
+  );
+  const selectedModel = modelMode === "speed" ? speedModel : balancedModel;
+  const modelAvailable = !!ollama?.models.some(
+    (m) => m.name === selectedModel || m.name === `${selectedModel}:latest`,
+  );
+  const ready =
+    runtime.status === "ready" && !!ollama?.running && modelAvailable;
 
-  // Create a new conversation and clear the chat pane.
-  const handleNewConversation = useCallback(async () => {
+  const navigate = useCallback((page: PageId) => {
+    setActivePage(page);
+    if (window.innerWidth <= 760) setSidebarOpen(false);
+  }, []);
+  const newChat = useCallback(() => {
+    navigationVersion.current++;
+    changingConversation.current = false;
+    setLoadingConversation(false);
+    setChatLoadError(false);
     clearMessages();
-    await createConversation("New chat").catch(() => {});
-  }, [clearMessages, createConversation]);
-
-  // Switch to an existing conversation and hydrate the message list.
-  const handleSelectConversation = useCallback(
+    clearSelection();
+    setFollowUps([]);
+    setNotice(null);
+    navigate("chats");
+    requestAnimationFrame(() => composerRef.current?.focus());
+  }, [clearMessages, clearSelection, navigate]);
+  const selectChat = useCallback(
     async (id: string) => {
-      const dbMessages = await selectConversation(id);
-      loadMessages(dbMessages.map(dbMsgToMessage));
-    },
-    [selectConversation, loadMessages]
-  );
-
-  // Wrap sendMessage to auto-create a conversation if none is active.
-  const handleSend = useCallback(
-    async (text: string) => {
-      setFollowUpQuestions([]); // clear stale follow-ups on new send
-      if (!activeConvId) {
-        const title = text.trim().slice(0, 40) || "New chat";
-        await createConversation(title).catch(() => {});
+      const version = ++navigationVersion.current;
+      changingConversation.current = true;
+      setLoadingConversation(true);
+      setChatLoadError(false);
+      clearMessages();
+      setFollowUps([]);
+      setNotice(null);
+      navigate("chats");
+      try {
+        const rows = await selectConversation(id);
+        if (version === navigationVersion.current)
+          loadMessages(
+            rows.map((m) => ({
+              ...m,
+              thinking: m.thinking ?? undefined,
+              isThinking: false,
+            })),
+          );
+      } catch {
+        if (version === navigationVersion.current) setChatLoadError(true);
+      } finally {
+        if (version === navigationVersion.current) {
+          changingConversation.current = false;
+          setLoadingConversation(false);
+        }
       }
-      sendMessage(text);
     },
-    [activeConvId, createConversation, sendMessage]
+    [clearMessages, loadMessages, selectConversation, navigate],
+  );
+  const send = useCallback(
+    async (text: string): Promise<boolean> => {
+      if (
+        !text.trim() ||
+        changingConversation.current ||
+        chatLoadError ||
+        sending.current ||
+        isStreaming ||
+        !ready
+      )
+        return false;
+      sending.current = true;
+      setPendingSend(true);
+      const version = ++navigationVersion.current;
+      setNotice(null);
+      setFollowUps([]);
+      try {
+        const id =
+          activeId || (await createConversation(text.trim().slice(0, 60))).id;
+        if (version !== navigationVersion.current) return false;
+        setDrafts((prev) => {
+          const remaining =
+            prev[draftKey]?.trim() === text.trim() ? "" : prev[draftKey] || "";
+          return {
+            ...prev,
+            [draftKey]: activeId ? remaining : "",
+            [id]: remaining,
+          };
+        });
+        void sendMessage(text, id);
+        return true;
+      } catch {
+        setNotice(
+          "Couldn't start a saved chat. Your draft is still here; try again.",
+        );
+        return false;
+      } finally {
+        sending.current = false;
+        setPendingSend(false);
+      }
+    },
+    [
+      activeId,
+      chatLoadError,
+      createConversation,
+      draftKey,
+      isStreaming,
+      ready,
+      sendMessage,
+    ],
   );
 
-  const handleAssignProject = useCallback(
-    (projectId: string | null) => {
-      if (!activeConvId) return;
-      assignConversation(activeConvId, projectId).catch(() => {});
-    },
-    [activeConvId, assignConversation]
-  );
+  useEffect(() => {
+    const shortcuts = (event: KeyboardEvent) => {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === "o"
+      ) {
+        event.preventDefault();
+        newChat();
+      }
+      if (event.key === "Escape" && window.innerWidth <= 760)
+        setSidebarOpen(false);
+    };
+    window.addEventListener("keydown", shortcuts);
+    return () => window.removeEventListener("keydown", shortcuts);
+  }, [newChat]);
+
+  const title =
+    activePage === "chats"
+      ? conversations.find((c) => c.id === activeId)?.title || "New chat"
+      : NAV.find((n) => n.id === activePage)?.label ||
+        (
+          {
+            connections: "Connections",
+            settings: "Settings",
+            buddy: "Voice",
+          } as Partial<Record<PageId, string>>
+        )[activePage];
+  const openPrompt = (prompt?: string) => {
+    navigate("chats");
+    if (prompt) setDraft(prompt);
+    requestAnimationFrame(() => composerRef.current?.focus());
+  };
+  const last = messages[messages.length - 1];
+  const retry = () => {
+    const user = [...messages].reverse().find((m) => m.role === "user");
+    if (!user || !ready || isStreaming) return;
+    // Failed and stopped turns are not persisted. Replace them instead of duplicating the question.
+    loadMessages(messages.slice(0, -2));
+    void send(user.content);
+  };
 
   return (
     <>
-      {!setupComplete && (
-        <FirstRunSetup onComplete={() => setSetupComplete(true)} />
+      {!setupComplete && <FirstRunSetup onComplete={finishSetup} />}
+      {setupComplete && modelSetupOpen && (
+        <FirstRunSetup forceShow onComplete={closeModelSetup} />
       )}
-      {setupComplete && <UpdateBanner />}
       <div
-        style={{
-          display: "flex",
-          height: "100vh",
-          overflow: "hidden",
-          backgroundColor: "var(--bg)",
-          visibility: setupComplete ? "visible" : "hidden",
-        }}
+        className="app-shell"
+        inert={!setupComplete || modelSetupOpen}
+        style={{ visibility: setupComplete ? "visible" : "hidden" }}
       >
-      <Sidebar
-        collapsed={sidebarCollapsed}
-        activePage={activePage}
-        ollamaRunning={ollamaStatus?.running ?? null}
-        theme={theme}
-        onNavigate={setActivePage}
-        onToggle={() => setSidebarCollapsed((c) => !c)}
-        onThemeChange={setTheme}
-      />
-      <MainArea
-        activePage={activePage}
-        messages={messages}
-        isStreaming={isStreaming}
-        modelMode={modelMode}
-        ollamaStatus={ollamaStatus}
-        sidecarStatus={sidecarStatus}
-        sidecarError={sidecarError}
-        speedModel={speedModel}
-        balancedModel={balancedModel}
-        memoryEnabled={memoryEnabled}
-        knowledgeEnabled={knowledgeEnabled}
-        webSearchEnabled={webSearchEnabled}
-        memories={memories}
-        conversations={conversations}
-        activeConvId={activeConvId}
-        projects={projects}
-        onSend={handleSend}
-        onStop={stopStreaming}
-        onModelModeChange={setModelMode}
-        onSpeedModelChange={setSpeedModel}
-        onBalancedModelChange={setBalancedModel}
-        onMemoryToggle={() => setMemoryEnabled((v) => !v)}
-        onKnowledgeToggle={() => setKnowledgeEnabled((v) => !v)}
-        onWebSearchToggle={() => setWebSearchEnabled((v) => !v)}
-        hydeEnabled={hydeEnabled}
-        onHydeToggle={() => setHydeEnabled((v) => !v)}
-        onDeleteMemory={deleteMemory}
-        memoryLinks={memoryLinks}
-        onDeleteMemoryLink={deleteMemoryLink}
-        followUpQuestions={followUpQuestions}
-        onSendFollowUp={handleSend}
-        onNewConversation={handleNewConversation}
-        onSelectConversation={handleSelectConversation}
-        onDeleteConversation={deleteConversation}
-        onRenameConversation={renameConversation}
-        onAssignProject={handleAssignProject}
-        composerDraft={composerDraft}
-        onComposerDraftApplied={() => setComposerDraft("")}
-        onSetComposerDraft={setComposerDraft}
-        rightPanelOpen={rightPanelOpen}
-        onToggleRightPanel={() => setRightPanelOpen((v) => !v)}
-        hasRightPanelContent={(memories?.length ?? 0) > 0 || (webSources?.length ?? 0) > 0}
-        isSearching={isSearching}
-        onNavigate={setActivePage}
-      />
-      {rightPanelOpen && ((memories?.length ?? 0) > 0 || (webSources?.length ?? 0) > 0) && (
-        <RightPanel memories={memories ?? []} webSources={webSources ?? []} onDeleteMemory={deleteMemory} />
-      )}
-      </div>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Sidebar
-// ---------------------------------------------------------------------------
-
-interface SidebarProps {
-  collapsed: boolean;
-  activePage: PageId;
-  ollamaRunning: boolean | null;
-  theme: "dark" | "light" | "system";
-  onNavigate: (page: PageId) => void;
-  onToggle: () => void;
-  onThemeChange: (t: "dark" | "light" | "system") => void;
-}
-
-function Sidebar({ collapsed, activePage, ollamaRunning, theme, onNavigate, onToggle, onThemeChange }: SidebarProps) {
-  const width = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED;
-
-  return (
-    <aside
-      style={{
-        width,
-        minWidth: width,
-        display: "flex",
-        flexDirection: "column",
-        backgroundColor: "var(--surface)",
-        borderRight: "1px solid var(--border)",
-        flexShrink: 0,
-        transition: "width 200ms ease, min-width 200ms ease",
-        overflow: "hidden",
-      }}
-    >
-      {/* Logo / title row */}
-      <div
-        style={{
-          height: 52,
-          display: "flex",
-          alignItems: "center",
-          padding: "0 10px",
-          gap: 8,
-          borderBottom: "1px solid var(--border)",
-          flexShrink: 0,
-        }}
-      >
-        {/* Paw logo mark */}
-        <div
-          onClick={onToggle}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            background: "linear-gradient(135deg, var(--accent) 0%, #818cf8 100%)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 14,
-            flexShrink: 0,
-            cursor: "pointer",
-            userSelect: "none",
-          }}
-        >
-          🐾
-        </div>
-        {!collapsed && (
-          <>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", flex: 1, whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>
-              LocalMind
-            </span>
-            <button
-              onClick={onToggle}
-              title="Collapse sidebar"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 22,
-                height: 22,
-                borderRadius: 4,
-                color: "var(--text-3)",
-              }}
-            >
-              <ChevronLeft size={13} strokeWidth={1.5} />
-            </button>
-          </>
+        <a className="skip-link" href="#main-content">
+          Skip to main content
+        </a>
+        {sidebarOpen && (
+          <button
+            className="sidebar-scrim"
+            aria-label="Close navigation"
+            onClick={() => setSidebarOpen(false)}
+          />
         )}
-      </div>
-
-      {/* Nav items */}
-      <nav style={{ flex: 1, padding: "8px 0", overflowY: "auto" }}>
-        {NAV_ITEMS.map(({ id, label, Icon }) => {
-          const active = activePage === id;
-          return (
+        <aside
+          ref={sidebarRef}
+          className={`app-sidebar ${sidebarOpen ? "is-open" : "is-closed"}`}
+          aria-label="Workspace navigation"
+          inert={!sidebarOpen}
+        >
+          <div className="sidebar-brand">
+            <Brand />
+            <span>LocalMind</span>
             <button
-              key={id}
-              onClick={() => onNavigate(id)}
-              title={collapsed ? label : undefined}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                margin: "1px 6px",
-                height: 34,
-                width: "calc(100% - 12px)",
-                padding: collapsed ? "0 9px" : "0 10px",
-                gap: 9,
-                fontSize: 13,
-                fontWeight: active ? 500 : 400,
-                color: active ? "var(--text)" : "var(--text-2)",
-                backgroundColor: active ? "var(--surface-2)" : "transparent",
-                borderRadius: 6,
-                justifyContent: collapsed ? "center" : undefined,
-                whiteSpace: "nowrap",
-                transition: "background-color 120ms, color 120ms",
-              }}
+              className="icon-button"
+              onClick={() => setSidebarOpen(false)}
+              aria-label="Close sidebar"
             >
-              <Icon size={collapsed ? 17 : 15} strokeWidth={active ? 2 : 1.5} style={{ color: active ? "var(--accent)" : undefined }} />
-              {!collapsed && label}
+              <PanelLeft size={17} />
             </button>
-          );
-        })}
-      </nav>
-
-      {/* Footer: Ollama status + theme toggle */}
-      <div
-        style={{
-          padding: collapsed ? "10px 8px" : "10px 12px",
-          borderTop: "1px solid var(--border)",
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-          flexShrink: 0,
-        }}
-      >
-        {/* Ollama status */}
-        {!collapsed && (
-          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <span
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: "50%",
-                backgroundColor:
-                  ollamaRunning === null
-                    ? "var(--text-3)"
-                    : ollamaRunning
-                    ? "#22c55e"
-                    : "#ef4444",
-                display: "block",
-                flexShrink: 0,
-              }}
-            />
-            <span style={{ fontSize: 11, color: "var(--text-3)" }}>
-              {ollamaRunning === null ? "Checking..." : ollamaRunning ? "Ollama running" : "Ollama offline"}
-            </span>
           </div>
-        )}
-
-        {/* Theme toggle: Monitor / Sun / Moon */}
-        <div
-          style={{
-            display: "flex",
-            gap: 2,
-            backgroundColor: "var(--surface-2)",
-            borderRadius: 6,
-            padding: 2,
-            justifyContent: collapsed ? "center" : undefined,
-          }}
-        >
-          {(
-            [
-              { id: "system" as const, Icon: Monitor, label: "System theme" },
-              { id: "light"  as const, Icon: Sun,     label: "Light theme"  },
-              { id: "dark"   as const, Icon: Moon,    label: "Dark theme"   },
-            ] as const
-          ).map(({ id, Icon, label }) => {
-            const active = theme === id;
-            return (
+          <button className="new-chat-button" onClick={newChat}>
+            <Plus size={17} />
+            New chat<kbd title="Ctrl+Shift+O">Ctrl ⇧ O</kbd>
+          </button>
+          <nav className="workspace-nav" aria-label="Workspace">
+            {NAV.map(({ id, label, Icon }) => (
               <button
                 key={id}
-                onClick={() => onThemeChange(id)}
-                title={label}
-                style={{
-                  flex: collapsed ? undefined : 1,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: "4px 0",
-                  borderRadius: 4,
-                  backgroundColor: active ? "var(--surface)" : "transparent",
-                  color: active ? "var(--accent)" : "var(--text-3)",
-                  border: active ? "1px solid var(--border)" : "1px solid transparent",
-                  cursor: "pointer",
-                  transition: "background-color 150ms, color 150ms",
-                }}
+                aria-current={activePage === id ? "page" : undefined}
+                onClick={() => navigate(id)}
               >
-                <Icon size={13} strokeWidth={1.5} />
+                <Icon size={17} strokeWidth={1.6} />
+                {label}
               </button>
-            );
-          })}
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main area
-// ---------------------------------------------------------------------------
-
-interface MainAreaProps {
-  activePage: PageId;
-  messages: Message[];
-  isStreaming: boolean;
-  modelMode: ModelMode;
-  ollamaStatus: ReturnType<typeof useOllama>;
-  sidecarStatus: ReturnType<typeof useSidecarStatus>["status"];
-  sidecarError: ReturnType<typeof useSidecarStatus>["error"];
-  speedModel: string;
-  balancedModel: string;
-  memoryEnabled: boolean;
-  knowledgeEnabled: boolean;
-  webSearchEnabled: boolean;
-  memories: Memory[];
-  conversations: ReturnType<typeof useConversations>["conversations"];
-  activeConvId: string | null;
-  projects: ReturnType<typeof useProjects>["projects"];
-  onSend: (text: string) => void;
-  onStop: () => void;
-  onModelModeChange: (mode: ModelMode) => void;
-  onSpeedModelChange: (model: string) => void;
-  onBalancedModelChange: (model: string) => void;
-  onMemoryToggle: () => void;
-  onKnowledgeToggle: () => void;
-  onWebSearchToggle: () => void;
-  hydeEnabled: boolean;
-  onHydeToggle: () => void;
-  onDeleteMemory: (id: string) => void;
-  memoryLinks: import("./hooks/useMemory").MemoryLink[];
-  onDeleteMemoryLink: (linkId: string) => void;
-  followUpQuestions: string[];
-  onSendFollowUp: (question: string) => void;
-  onNewConversation: () => void;
-  onSelectConversation: (id: string) => void;
-  onDeleteConversation: (id: string) => void;
-  onRenameConversation: (id: string, title: string) => void;
-  onAssignProject: (projectId: string | null) => void;
-  composerDraft: string;
-  onComposerDraftApplied: () => void;
-  onSetComposerDraft: (text: string) => void;
-  rightPanelOpen: boolean;
-  onToggleRightPanel: () => void;
-  hasRightPanelContent: boolean;
-  isSearching: boolean;
-  onNavigate: (page: PageId) => void;
-}
-
-function MainArea({
-  activePage,
-  messages,
-  isStreaming,
-  modelMode,
-  ollamaStatus,
-  sidecarStatus,
-  sidecarError,
-  speedModel,
-  balancedModel,
-  memoryEnabled,
-  knowledgeEnabled,
-  webSearchEnabled,
-  memories,
-  conversations,
-  activeConvId,
-  projects,
-  onSend,
-  onStop,
-  onModelModeChange,
-  onSpeedModelChange,
-  onBalancedModelChange,
-  onMemoryToggle,
-  onKnowledgeToggle,
-  onWebSearchToggle,
-  hydeEnabled,
-  onHydeToggle,
-  onDeleteMemory,
-  memoryLinks,
-  onDeleteMemoryLink,
-  followUpQuestions,
-  onSendFollowUp,
-  onNewConversation,
-  onSelectConversation,
-  onDeleteConversation,
-  onRenameConversation,
-  onAssignProject,
-  composerDraft,
-  onComposerDraftApplied,
-  onSetComposerDraft,
-  rightPanelOpen,
-  onToggleRightPanel,
-  hasRightPanelContent,
-  isSearching,
-  onNavigate,
-}: MainAreaProps) {
-  const ollamaRunning = ollamaStatus?.running ?? null;
-  const sidecarReady = sidecarStatus === "ready";
-  // Ollama can show as "running" while the sidecar (the FastAPI service that
-  // actually talks to it) is still starting up - gate the composer on both,
-  // otherwise sending here is a guaranteed "Sidecar not ready yet" error.
-  const composerDisabled = ollamaRunning === false || !sidecarReady;
-  const sidecarHint =
-    sidecarStatus === "starting" ? (
-      <p style={{ fontSize: 11, color: "var(--text-3)", textAlign: "center", margin: "0 0 6px" }}>
-        Starting up local AI service…
-      </p>
-    ) : sidecarStatus === "failed" ? (
-      <p style={{ fontSize: 11, color: "#ef4444", textAlign: "center", margin: "0 0 6px" }}>
-        Local AI service failed to start{sidecarError ? `: ${sidecarError}` : ""} — try restarting LocalMind.
-      </p>
-    ) : null;
-  const activeLabel =
-    NAV_ITEMS.find((n) => n.id === activePage)?.label ?? activePage;
-
-  return (
-    <main
-      style={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-        backgroundColor: "var(--bg)",
-      }}
-    >
-      {/* Header - always visible */}
-      <div
-        style={{
-          height: 48,
-          display: "flex",
-          alignItems: "center",
-          padding: "0 16px",
-          borderBottom: "1px solid var(--border)",
-          flexShrink: 0,
-          gap: 12,
-        }}
-      >
-        <span
-          style={{
-            fontSize: 13,
-            color: "var(--text-2)",
-            flex: 1,
-          }}
-        >
-          {activeLabel}
-        </span>
-
-        {/* Controls shown only on Chats page */}
-        {activePage === "chats" && activeConvId && projects.length > 0 && (
-          <ProjectSelector
-            projects={projects}
-            onAssign={onAssignProject}
-          />
-        )}
-        {/* Right panel toggle — only visible when there's actual content */}
-        {hasRightPanelContent && (
-          <button
-            onClick={onToggleRightPanel}
-            title={rightPanelOpen ? "Hide side panel" : "Show side panel"}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 28,
-              height: 28,
-              borderRadius: 5,
-              backgroundColor: rightPanelOpen ? "var(--surface-2)" : "transparent",
-              color: rightPanelOpen ? "var(--accent)" : "var(--text-3)",
-              border: rightPanelOpen ? "1px solid var(--border)" : "1px solid transparent",
-              cursor: "pointer",
-              transition: "background-color 150ms, color 150ms",
-            }}
-          >
-            <PanelRight size={15} strokeWidth={1.5} />
-          </button>
-        )}
-      </div>
-
-      {/* Page content */}
-      {activePage === "settings" ? (
-        <SettingsPage
-          ollamaStatus={ollamaStatus}
-          speedModel={speedModel}
-          balancedModel={balancedModel}
-          onSpeedModelChange={onSpeedModelChange}
-          onBalancedModelChange={onBalancedModelChange}
-          hydeEnabled={hydeEnabled}
-          onHydeToggle={onHydeToggle}
-        />
-      ) : activePage === "chats" ? (
-        // Chat page: conversation list + companion chat area
-        <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+            ))}
+          </nav>
           <ConversationList
             conversations={conversations}
-            activeId={activeConvId}
-            onNew={onNewConversation}
-            onSelect={onSelectConversation}
-            onDelete={onDeleteConversation}
-            onRename={onRenameConversation}
-          />
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            {messages.length === 0 ? (
-              /* ── Empty / welcome state ── */
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 24px 60px", gap: 24, overflow: "hidden" }}>
-                {/* Buddy avatar + greeting */}
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-                  <div style={{ width: 64, height: 64, borderRadius: "50%", background: "linear-gradient(135deg, #6366f1 0%, #818cf8 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, boxShadow: "0 4px 20px rgba(99,102,241,0.3)" }}>🐾</div>
-                  <div style={{ textAlign: "center" }}>
-                    <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-0.02em", margin: "0 0 6px" }}>
-                      Hey! What's on your mind?
-                    </h1>
-                    <p style={{ fontSize: 13, color: "var(--text-3)", margin: 0 }}>
-                      Everything stays on this machine. Speak freely.
-                    </p>
-                  </div>
-                </div>
-                <div style={{ width: "100%", maxWidth: 660 }}>
-                  {sidecarHint}
-                  <Composer onSend={onSend} onStop={onStop} isStreaming={isStreaming} disabled={composerDisabled} memoryEnabled={memoryEnabled} onMemoryToggle={onMemoryToggle} knowledgeEnabled={knowledgeEnabled} onKnowledgeToggle={onKnowledgeToggle} webSearchEnabled={webSearchEnabled} onWebSearchToggle={onWebSearchToggle} modelMode={modelMode} onModelModeChange={onModelModeChange} ollamaRunning={ollamaRunning} draft={composerDraft} onDraftApplied={onComposerDraftApplied} />
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", maxWidth: 660 }}>
-                  {[
-                    { label: "📧 Check my emails", text: "Can you check my recent emails and summarize what's important?" },
-                    { label: "✍️ Draft a reply", text: "Help me draft a reply to:" },
-                    { label: "📅 What's on today?", text: "What do I have going on today based on my calendar and messages?" },
-                    { label: "💡 Brainstorm with me", text: "Help me brainstorm ideas for:" },
-                    { label: "🧠 What do you remember?", text: "What do you remember about me and my recent activities?" },
-                    { label: "💬 Catch me up", text: "Give me a quick catch-up on what happened while I was away." },
-                  ].map(({ label, text }) => (
-                    <button key={label} onClick={() => onSetComposerDraft(text)}
-                      style={{ padding: "7px 14px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 20, fontSize: 12, color: "var(--text-2)", cursor: "pointer", whiteSpace: "nowrap", transition: "border-color 0.12s, color 0.12s" }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text)"; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-2)"; }}
-                    >{label}</button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              /* ── Active chat ── */
-              <>
-                <MessageList messages={messages} isStreaming={isStreaming} followUpQuestions={followUpQuestions} onSendFollowUp={onSendFollowUp} isSearching={isSearching} />
-                {sidecarHint}
-                <Composer onSend={onSend} onStop={onStop} isStreaming={isStreaming} disabled={composerDisabled} memoryEnabled={memoryEnabled} onMemoryToggle={onMemoryToggle} knowledgeEnabled={knowledgeEnabled} onKnowledgeToggle={onKnowledgeToggle} webSearchEnabled={webSearchEnabled} onWebSearchToggle={onWebSearchToggle} modelMode={modelMode} onModelModeChange={onModelModeChange} ollamaRunning={ollamaRunning} draft={composerDraft} onDraftApplied={onComposerDraftApplied} />
-              </>
-            )}
-          </div>
-        </div>
-      ) : activePage === "today" ? (
-        <TodayPage onNavigateToChat={(prompt) => {
-          onNavigate("chats");
-          if (prompt) setTimeout(() => onSetComposerDraft(prompt), 100);
-        }} />
-      ) : activePage === "buddy" ? (
-        <BuddyPage />
-      ) : activePage === "mind" ? (
-        <MemoryPage
-          memories={memories ?? []}
-          links={memoryLinks ?? []}
-          onDelete={onDeleteMemory}
-          onDeleteLink={onDeleteMemoryLink}
-        />
-      ) : activePage === "connections" ? (
-        <ConnectionsPage />
-      ) : activePage === "projects" ? (
-        <ProjectsPage />
-      ) : null}
-    </main>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Project selector - shown in chat header when a conversation is active
-// ---------------------------------------------------------------------------
-
-interface ProjectSelectorProps {
-  projects: ReturnType<typeof useProjects>["projects"];
-  onAssign: (projectId: string | null) => void;
-}
-
-function ProjectSelector({ projects, onAssign }: ProjectSelectorProps) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div style={{ position: "relative" }}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        title="Assign conversation to a project"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 5,
-          fontSize: 11,
-          padding: "3px 10px",
-          borderRadius: 4,
-          backgroundColor: "var(--surface-2)",
-          color: "var(--text-2)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <FolderIcon size={13} strokeWidth={1.5} />
-        Project
-      </button>
-
-      {open && (
-        <>
-          {/* Backdrop */}
-          <div
-            onClick={() => setOpen(false)}
-            style={{ position: "fixed", inset: 0, zIndex: 10 }}
-          />
-          {/* Dropdown */}
-          <div
-            style={{
-              position: "absolute",
-              top: "calc(100% + 6px)",
-              right: 0,
-              zIndex: 11,
-              backgroundColor: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: 6,
-              boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
-              minWidth: 180,
-              maxHeight: 260,
-              overflowY: "auto",
-              padding: 4,
+            activeId={activePage === "chats" ? activeId : null}
+            onSelect={selectChat}
+            onDelete={async (id) => {
+              const version = navigationVersion.current;
+              await deleteConversation(id);
+              if (id === activeId && version === navigationVersion.current)
+                newChat();
             }}
-          >
-            <button
-              onClick={() => { onAssign(null); setOpen(false); }}
-              style={{
-                display: "block",
-                width: "100%",
-                textAlign: "left",
-                fontSize: 12,
-                padding: "7px 10px",
-                borderRadius: 4,
-                color: "var(--text-3)",
-              }}
-            >
-              No project
-            </button>
-            <div style={{ height: 1, backgroundColor: "var(--border-subtle)", margin: "2px 0" }} />
-            {projects.map((p) => (
+            onRename={renameConversation}
+          />
+          <div className="sidebar-footer">
+            <nav aria-label="Application">
               <button
-                key={p.id}
-                onClick={() => { onAssign(p.id); setOpen(false); }}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  textAlign: "left",
-                  fontSize: 12,
-                  padding: "7px 10px",
-                  borderRadius: 4,
-                  color: "var(--text-2)",
-                }}
+                aria-current={activePage === "connections" ? "page" : undefined}
+                onClick={() => navigate("connections")}
               >
-                {p.name}
+                <Plug size={16} />
+                Connections
               </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-// Right panel
-// ---------------------------------------------------------------------------
-
-import type { WebSource } from "./hooks/useChat";
-
-interface RightPanelProps {
-  memories: Memory[];
-  webSources: WebSource[];
-  onDeleteMemory: (id: string) => void;
-}
-
-function RightPanel({ memories, webSources, onDeleteMemory }: RightPanelProps) {
-  return (
-    <aside
-      style={{
-        width: 280,
-        minWidth: 280,
-        display: "flex",
-        flexDirection: "column",
-        backgroundColor: "var(--surface)",
-        borderLeft: "1px solid var(--border)",
-        flexShrink: 0,
-        overflowY: "auto",
-      }}
-    >
-      {/* Used Memory — only rendered when there are memories */}
-      {memories.length > 0 && (
-        <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Used Memory
-          </span>
-          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-            {memories.map((m) => (
-              <div
-                key={m.id}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 6,
-                  backgroundColor: "var(--surface-2)",
-                  borderRadius: 4,
-                  padding: "6px 8px",
-                }}
+              <button
+                aria-current={activePage === "buddy" ? "page" : undefined}
+                onClick={() => navigate("buddy")}
               >
-                <span style={{ fontSize: 12, color: "var(--text-2)", flex: 1, lineHeight: 1.4 }}>
-                  {m.content}
-                </span>
-                <button
-                  onClick={() => onDeleteMemory(m.id)}
-                  title="Delete memory"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 16,
-                    height: 16,
-                    borderRadius: 3,
-                    color: "var(--text-3)",
-                    flexShrink: 0,
-                    marginTop: 1,
+                <AudioLines size={16} />
+                Voice<span className="muted-tag">Preview</span>
+              </button>
+              <button
+                aria-current={activePage === "settings" ? "page" : undefined}
+                onClick={() => navigate("settings")}
+              >
+                <Settings size={16} />
+                Settings
+              </button>
+            </nav>
+            <div className="sidebar-bottom">
+              <button
+                className="runtime-indicator"
+                onClick={() => navigate("settings")}
+              >
+                <span className={`status-dot ${ready ? "ready" : ""}`} />
+                {ready
+                  ? "Running locally"
+                  : runtime.status === "failed"
+                    ? "Needs attention"
+                    : "Checking setup"}
+              </button>
+              <select
+                aria-label="Color theme"
+                value={theme}
+                onChange={(e) => setTheme(e.target.value as Theme)}
+              >
+                <option value="system">System</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </div>
+          </div>
+        </aside>
+        <main
+          id="main-content"
+          className="app-main"
+          tabIndex={-1}
+          inert={narrow && sidebarOpen}
+        >
+          <header className="app-header">
+            {!sidebarOpen && (
+              <button
+                ref={sidebarToggleRef}
+                className="icon-button"
+                aria-label="Open sidebar"
+                onClick={() => setSidebarOpen(true)}
+              >
+                <PanelLeft size={19} />
+              </button>
+            )}
+            <div className="page-identity">
+              <span>{activePage === "chats" ? "Chat" : "Workspace"}</span>
+              <ChevronRight size={13} />
+              <h1 title={title}>{title}</h1>
+            </div>
+            <div className="header-actions">
+              {activePage === "chats" && activeId && projects.length > 0 && (
+                <select
+                  aria-label="Move chat to project"
+                  value=""
+                  onChange={async (e) => {
+                    const id = e.target.value;
+                    try {
+                      await assignConversation(activeId, id);
+                      setNotice(
+                        `Chat added to ${projects.find((p) => p.id === id)?.name || "project"}.`,
+                      );
+                    } catch {
+                      setNotice(
+                        "Couldn't add this chat to the project. Try again.",
+                      );
+                    }
                   }}
                 >
-                  <X size={10} strokeWidth={1.5} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Sources — only rendered when web search returned results */}
-      {webSources.length > 0 && (
-        <div style={{ padding: "12px 16px" }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Sources
-          </span>
-          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
-            {webSources.map((s, i) => (
-              <a
-                key={i}
-                href={s.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: "block",
-                  backgroundColor: "var(--surface-2)",
-                  borderRadius: 4,
-                  padding: "7px 9px",
-                  textDecoration: "none",
-                  border: "1px solid var(--border)",
-                }}
+                  <option value="" disabled>
+                    Move to project…
+                  </option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <span className="local-label">
+                <ShieldCheck size={14} />
+                On this device
+              </span>
+            </div>
+          </header>
+          {setupComplete && <UpdateBanner />}
+          {notice && (
+            <div className="app-notice" role="status">
+              <span>{notice}</span>
+              <button
+                className="icon-button"
+                onClick={() => setNotice(null)}
+                aria-label="Dismiss notification"
               >
-                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", lineHeight: 1.3, marginBottom: 3 }}>
-                  {s.title || s.url}
+                <X size={16} />
+              </button>
+            </div>
+          )}
+          {activePage === "chats" ? (
+            <div
+              className={`chat-main ${messages.length === 0 ? "empty-chat" : ""}`}
+            >
+              {loadingConversation ? (
+                <div className="chat-loading" role="status">
+                  Opening conversation…
                 </div>
-                <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 4, wordBreak: "break-all" }}>
-                  {s.url}
-                </div>
-                {s.snippet && (
-                  <div style={{ fontSize: 11, color: "var(--text-2)", lineHeight: 1.4 }}>
-                    {s.snippet.slice(0, 120)}{s.snippet.length > 120 ? "..." : ""}
+              ) : chatLoadError ? (
+                <div className="chat-loading" role="alert">
+                  <div>
+                    <p>Could not load this conversation.</p>
+                    <button
+                      className="secondary-button"
+                      onClick={() => activeId && void selectChat(activeId)}
+                    >
+                      Try loading again
+                    </button>
                   </div>
-                )}
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
-
-    </aside>
+                </div>
+              ) : messages.length > 0 ? (
+                <MessageList
+                  key={activeId || "new"}
+                  messages={messages}
+                  isStreaming={isStreaming}
+                  isSearching={isSearching}
+                  followUpQuestions={followUps}
+                  onSendFollowUp={(q) => void send(q)}
+                  onRegenerate={
+                    last?.error || last?.cancelled ? retry : undefined
+                  }
+                />
+              ) : (
+                <div className="chat-welcome">
+                  <Brand size={46} />
+                  <h2>What would you like to work on?</h2>
+                  <p>A question, a rough idea, a first draft. Start here.</p>
+                  <div className="starter-prompts">
+                    {[
+                      {
+                        label: "Work through an idea",
+                        text: "Help me think through an idea: ",
+                      },
+                      {
+                        label: "Find the right words",
+                        text: "Help me write a clear reply to: ",
+                      },
+                      {
+                        label: "Make a practical plan",
+                        text: "Help me break this goal into steps: ",
+                      },
+                    ].map((p) => (
+                      <button key={p.label} onClick={() => openPrompt(p.text)}>
+                        {p.label}
+                        <Plus size={14} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!ready && (
+                <div className="runtime-banner" role="status">
+                  <div>
+                    <strong>
+                      {runtime.status === "failed"
+                        ? "LocalMind couldn't start"
+                        : runtime.status !== "ready"
+                          ? "Starting your local workspace…"
+                          : !ollama?.running
+                            ? "Waiting for the model service"
+                            : !modelAvailable
+                              ? "Your selected model isn't installed"
+                              : "Checking your models…"}
+                    </strong>
+                    <p>
+                      {runtime.status === "failed"
+                        ? "Restart the local service to reconnect. Your saved data stays on this device."
+                        : runtime.status !== "ready"
+                          ? "You can write a message while the local service gets ready."
+                          : !ollama?.running
+                            ? "Check that Ollama is running, then return to this chat."
+                            : `Choose an installed model in Settings or download ${selectedModel}.`}
+                    </p>
+                    {runtime.error && (
+                      <details>
+                        <summary>Technical details</summary>
+                        <pre>{runtime.error}</pre>
+                      </details>
+                    )}
+                  </div>
+                  {runtime.status === "failed" ? (
+                    <button
+                      className="secondary-button"
+                      onClick={() => void runtime.restart()}
+                    >
+                      Restart service
+                    </button>
+                  ) : (
+                    runtime.status === "ready" && (
+                      <button
+                        className="secondary-button"
+                        onClick={() => navigate("settings")}
+                      >
+                        Open settings
+                      </button>
+                    )
+                  )}
+                </div>
+              )}
+              <Composer
+                textareaRef={composerRef}
+                value={draft}
+                onChange={setDraft}
+                onSend={send}
+                onStop={stopStreaming}
+                isStreaming={isStreaming}
+                disabled={
+                  !ready || loadingConversation || chatLoadError || pendingSend
+                }
+                memoryEnabled={memoryEnabled}
+                onMemoryToggle={() => setMemoryEnabled((v) => !v)}
+                knowledgeEnabled={knowledgeEnabled}
+                onKnowledgeToggle={() => setKnowledgeEnabled((v) => !v)}
+                webSearchEnabled={webSearchEnabled}
+                onWebSearchToggle={() => setWebSearchEnabled((v) => !v)}
+                modelMode={modelMode}
+                onModelModeChange={setModelMode}
+                modelName={selectedModel}
+                onOpenKnowledge={() => navigate("knowledge")}
+              />
+            </div>
+          ) : activePage === "today" ? (
+            <TodayPage
+              onNavigateToChat={openPrompt}
+              onNavigateToConnections={() => navigate("connections")}
+            />
+          ) : activePage === "mind" ? (
+            <MemoryPage
+              memories={memories ?? []}
+              links={links ?? []}
+              onDelete={deleteMemory}
+              onDeleteLink={deleteLink}
+              loading={memoryLoading}
+              loadError={memoryError}
+              onRefresh={() => void refreshMemory()}
+            />
+          ) : activePage === "knowledge" ? (
+            <KnowledgePage embedModel={EMBED_MODEL} />
+          ) : activePage === "projects" ? (
+            <ProjectsPage speedModel={speedModel} />
+          ) : activePage === "tasks" ? (
+            <TasksPage projects={projects} />
+          ) : activePage === "connections" ? (
+            <ConnectionsPage />
+          ) : activePage === "buddy" ? (
+            <BuddyPage onNavigateToChat={() => navigate("chats")} />
+          ) : (
+            <SettingsPage
+              onManageModels={() => setModelSetupOpen(true)}
+              ollamaStatus={ollama}
+              speedModel={speedModel}
+              balancedModel={balancedModel}
+              onSpeedModelChange={setSpeedModel}
+              onBalancedModelChange={setBalancedModel}
+              hydeEnabled={hydeEnabled}
+              onHydeToggle={() => setHydeEnabled((v) => !v)}
+            />
+          )}
+        </main>
+      </div>
+    </>
   );
 }

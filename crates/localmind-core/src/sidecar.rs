@@ -57,6 +57,22 @@ pub fn generate_bearer_token() -> String {
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
+/// Persistence belongs to the OS user. Never fall back to the app's working
+/// directory, which may be shared, read-only, or another user's checkout.
+pub fn data_dir() -> Result<PathBuf, SidecarError> {
+    let path = match std::env::var_os("LOCALMIND_DATA_DIR") {
+        Some(value) if !value.is_empty() => PathBuf::from(value),
+        _ => dirs::data_dir()
+            .map(|path| path.join("LocalMind"))
+            .ok_or(SidecarError::DataDirectory)?,
+    };
+    if !path.is_absolute() {
+        return Err(SidecarError::DataDirectory);
+    }
+    std::fs::create_dir_all(&path).map_err(SidecarError::DataDirectoryIo)?;
+    Ok(path)
+}
+
 // ---------------------------------------------------------------------------
 // Script location
 // ---------------------------------------------------------------------------
@@ -160,9 +176,7 @@ impl SidecarHandle {
         // Windows:  %APPDATA%\LocalMind
         // macOS:    ~/Library/Application Support/LocalMind
         // Linux:    ~/.local/share/LocalMind
-        let data_dir = dirs::data_dir()
-            .map(|d| d.join("LocalMind"))
-            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        let data_dir = data_dir()?;
 
         let mut command = Command::new(python_exe());
         command
@@ -186,9 +200,7 @@ impl SidecarHandle {
         let port = find_available_port().map_err(SidecarError::PortBinding)?;
         let token = generate_bearer_token();
 
-        let data_dir = dirs::data_dir()
-            .map(|d| d.join("LocalMind"))
-            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        let data_dir = data_dir()?;
 
         eprintln!(
             "[localmind] launching bundled sidecar: {:?} (port {port})",
@@ -215,28 +227,38 @@ impl SidecarHandle {
     /// this can take much longer than a typical process start. The bearer
     /// token is included in every poll request because all routes on the
     /// sidecar require it.
-    pub async fn wait_until_ready(&self) -> Result<(), SidecarError> {
-        let client = reqwest::Client::new();
+    pub async fn wait_until_ready(&mut self) -> Result<(), SidecarError> {
+        let client = crate::http::local_client();
         let url = format!("http://127.0.0.1:{}/health", self.port);
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(90);
 
-        for _ in 0..180 {
-            tokio::time::sleep(Duration::from_millis(500)).await;
+        while tokio::time::Instant::now() < deadline {
+            self.check_running()?;
 
-            let result = client
+            let result = tokio::time::timeout_at(deadline, client
                 .get(&url)
                 .header("Authorization", format!("Bearer {}", self.token))
                 .timeout(Duration::from_secs(2))
-                .send()
-                .await;
+                .send()).await;
 
-            if let Ok(resp) = result {
+            if let Ok(Ok(resp)) = result {
                 if resp.status().is_success() {
                     return Ok(());
                 }
             }
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
 
         Err(SidecarError::HealthTimeout)
+    }
+
+    /// Check the owned process, rather than mistaking a stale handle for a live
+    /// runtime. The caller surfaces an explicit failed state and offers retry.
+    pub fn check_running(&mut self) -> Result<(), SidecarError> {
+        match self.child.try_wait().map_err(SidecarError::ProcessStatus)? {
+            Some(status) => Err(SidecarError::Exited(status.to_string())),
+            None => Ok(()),
+        }
     }
 }
 
@@ -245,6 +267,7 @@ impl Drop for SidecarHandle {
     /// This fires when the Tauri app exits and drops its managed state.
     fn drop(&mut self) {
         let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
 
@@ -258,6 +281,10 @@ pub enum SidecarError {
     ScriptNotFound,
     Spawn(std::io::Error),
     HealthTimeout,
+    DataDirectory,
+    DataDirectoryIo(std::io::Error),
+    ProcessStatus(std::io::Error),
+    Exited(String),
 }
 
 impl std::fmt::Display for SidecarError {
@@ -273,8 +300,31 @@ impl std::fmt::Display for SidecarError {
             SidecarError::HealthTimeout => {
                 write!(f, "sidecar health check timed out after 90 seconds")
             }
+            SidecarError::DataDirectory => write!(f, "could not resolve an absolute application data folder for your OS account"),
+            SidecarError::DataDirectoryIo(e) => write!(f, "could not open your application data folder: {e}"),
+            SidecarError::ProcessStatus(e) => write!(f, "could not check the local AI process: {e}"),
+            SidecarError::Exited(status) => write!(f, "local AI process stopped ({status}). Close any other LocalMind instance and retry."),
         }
     }
 }
 
 impl std::error::Error for SidecarError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn stopped_child_is_reported_before_health_timeout() {
+        // The test runner's --help mode is a portable, immediately exiting child.
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .arg("--help")
+            .stdout(Stdio::null())
+            .spawn().unwrap();
+        child.wait().unwrap();
+        let mut handle = SidecarHandle { child, port: 1, token: "test-only".into() };
+        let result = tokio::time::timeout(Duration::from_secs(1), handle.wait_until_ready())
+            .await.expect("an exited process must not wait for the readiness timeout");
+        assert!(matches!(result, Err(SidecarError::Exited(_))));
+    }
+}
