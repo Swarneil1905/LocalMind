@@ -1,13 +1,13 @@
 # LocalMind
 
-**Privacy-first AI assistant - everything runs on your machine.**
+**A private desktop workspace with local AI models.**
 
 [![CI Frontend](https://github.com/Swarneil1905/LocalMind/actions/workflows/ci-frontend.yml/badge.svg)](https://github.com/Swarneil1905/LocalMind/actions/workflows/ci-frontend.yml)
 [![CI Python](https://github.com/Swarneil1905/LocalMind/actions/workflows/ci-python.yml/badge.svg)](https://github.com/Swarneil1905/LocalMind/actions/workflows/ci-python.yml)
 [![CI Rust](https://github.com/Swarneil1905/LocalMind/actions/workflows/ci-rust.yml/badge.svg)](https://github.com/Swarneil1905/LocalMind/actions/workflows/ci-rust.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-No account. No cloud. No data leaves your computer.
+No account required. Model inference stays on your computer. Optional web search sends queries to the selected provider.
 
 ---
 
@@ -29,7 +29,7 @@ Download the latest release for your platform:
 1. Install [Ollama](https://ollama.com) and pull at least one model:
    ```
    ollama pull qwen2.5:1.5b       # fast/cheap - used for memory extraction
-   ollama pull qwen2.5:7b         # balanced - good default for chat
+   ollama pull qwen3:8b           # default Balanced chat model
    ollama pull nomic-embed-text   # required for knowledge base search
    ```
 2. Launch LocalMind. It detects Ollama automatically at startup.
@@ -52,6 +52,8 @@ LocalMind is a desktop AI assistant built on [Tauri](https://tauri.app), [React]
 ---
 
 ## Architecture
+
+See [Product redesign](docs/PRODUCT_REDESIGN.md), [Independent desktop installations](docs/DESKTOP_RUNTIME.md), and [Chat reliability and interface decisions](docs/CHAT_RELIABILITY.md) for the request lifecycle, retrieval policy, root-cause analysis, references, and validation of the current chat implementation.
 
 ```
 +---------------------------------------------------------+
