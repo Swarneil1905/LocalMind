@@ -54,18 +54,32 @@ tags also trigger the workflow when the tag matches the configured version.
   `TAURI_SIGNING_PRIVATE_KEY` repository secret must match that key. Never rotate
   the key merely to fix a build: installed versions trust the existing key.
 - Tauri's Debian package uses gzip and can exceed the GitHub asset limit with
-  the complete Ollama runtime. The Linux wrapper repacks it with `dpkg-deb`
-  using xz level 9, retaining control scripts, files, modes, and symlinks. It
+  the complete Ollama runtime. Its tar writer also expands resource symlinks,
+  storing large CUDA library aliases as separate full copies. xz compression
+  alone does not remove those copies. Before recompression, the Linux wrapper
+  groups regular files within the packaged Ollama runtime by size, mode, owner,
+  and SHA-256, then replaces identical copies with hard links. Every installed
+  pathname and its contents remain available; existing symlinks, control files,
+  and files with different permissions are left intact. It logs the duplicate
+  bytes removed, then repacks with `dpkg-deb` using xz level 9. It
   checks the compressed size and signs the final bytes before replacing the
   original package. Installer smoke tests then extract and run that final DEB.
   The AppImage updater and its signature are left intact. The 2 GiB limit is
   still enforced; reducing the package does not remove CPU or GPU libraries.
+  The final compressed size is logged before validation so an oversized future
+  runtime is diagnosable. A native Linux regression checks the extracted hard
+  links, payload bytes, permissions, symlinks, and control scripts.
 - The macOS wrapper retries bundling at most twice, only after `hdiutil` reports
   a busy eject/unmount. It reads `hdiutil info -plist`, detaches only writable
   temporary images in the current target's bundle directory with the exact
   product/version/architecture name, and removes those detached intermediates.
   Retries use `tauri bundle`, avoiding another Rust compile. Other failures stop
   immediately; unrelated mounted images are never detached.
+- Each Mac runner tests disk-image recovery before building. The native fixture
+  uses a 64 MiB HFS+ writable image with an explicit SPUD partition layout,
+  avoiding the space overhead of the default GPT layout on a tiny image. Its
+  create/attach commands have timeouts and expose native diagnostics in the job
+  log. A fixture failure remains a failing check rather than being skipped.
 - Assembly requires all four platforms, checks hashes and filenames, and rejects
   assets of 2 GiB or larger. `SHA256SUMS.txt` covers all other published assets.
 

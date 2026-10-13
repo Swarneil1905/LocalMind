@@ -11,11 +11,58 @@ from pathlib import Path
 from unittest.mock import patch
 
 from artifacts import ArtifactError
-from repack_deb import repack_deb
+from repack_deb import deduplicate_payload, repack_deb
 from test_artifacts import SIGNATURE
 
 
 class RepackDebTests(unittest.TestCase):
+    def test_runtime_aliases_share_storage_without_changing_contents(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary)
+            runtime = payload / "usr/lib/LocalMind/ollama-runtime/lib/ollama"
+            runtime.mkdir(parents=True)
+            data = os.urandom(128 * 1024)
+            originals = {}
+            for directory in ("cuda_v12", "cuda_v13"):
+                folder = runtime / directory
+                folder.mkdir()
+                for name in ("libcublas.so", "libcublas.so.12", "libcublas.so.12.8"):
+                    path = folder / name
+                    path.write_bytes(data)
+                    originals[path] = data
+            different = runtime / "different.so"
+            different.write_bytes(b"x" * len(data))
+            originals[different] = different.read_bytes()
+            # Identical contents outside the runtime must remain independent.
+            other = payload / "usr/lib/another-app.conf"
+            other.write_bytes(data)
+            control = payload / "DEBIAN/control"
+            control.parent.mkdir()
+            control.write_bytes(data)
+            with patch("repack_deb.print"):
+                deduplicate_payload(payload)
+                deduplicate_payload(payload)  # Already linked files remain valid.
+            first = next(iter(originals))
+            for path, content in originals.items():
+                self.assertEqual(path.read_bytes(), content)
+                self.assertEqual(first.samefile(path), path != different)
+            self.assertFalse(first.samefile(other))
+            self.assertFalse(first.samefile(control))
+
+    def test_failed_link_leaves_payload_copy_intact(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary)
+            runtime = payload / "usr/lib/LocalMind/ollama-runtime"
+            runtime.mkdir(parents=True)
+            for name in ("a", "b"):
+                (runtime / name).write_bytes(b"same data")
+            with patch("repack_deb.os.link", side_effect=OSError("cannot create link")):
+                with self.assertRaisesRegex(OSError, "cannot create link"):
+                    deduplicate_payload(payload)
+            for name in ("a", "b"):
+                self.assertEqual((runtime / name).read_bytes(), b"same data")
+            self.assertEqual(sorted(path.name for path in runtime.iterdir()), ["a", "b"])
+
     def test_recompressed_bytes_are_signed_before_replacing_original(self):
         with tempfile.TemporaryDirectory() as temporary:
             installer = Path(temporary) / "LocalMind_0.7.0_amd64.deb"
@@ -85,6 +132,31 @@ class NativeDebTests(unittest.TestCase):
             binary.chmod(0o755)
             alias = binary.with_name("fixture-alias")
             alias.symlink_to(binary.name)
+            runtime = payload / "usr/lib/LocalMind/ollama-runtime/lib/ollama/cuda_v12"
+            runtime.mkdir(parents=True)
+            library = runtime / "libfixture.so.12.8"
+            library.write_bytes(os.urandom(128 * 1024))
+            library.chmod(0o755)
+            # Reproduce Tauri's expanded symlink aliases in a real Debian package.
+            copied_alias = runtime / "libfixture.so.12"
+            shutil.copy2(library, copied_alias)
+            different_mode = runtime / "different-mode.so"
+            shutil.copy2(library, different_mode)
+            different_mode.chmod(0o644)
+            retained_link = runtime / "libfixture.so"
+            retained_link.symlink_to(copied_alias.name)
+            outside = root / "outside"
+            outside.mkdir()
+            (outside / "a").write_bytes(b"outside data")
+            (outside / "b").write_bytes(b"outside data")
+            (runtime / "outside-link").symlink_to(outside, target_is_directory=True)
+            with patch("repack_deb.print"):
+                deduplicate_payload(payload)
+            self.assertFalse((outside / "a").samefile(outside / "b"))
+            (runtime / "outside-link").unlink()
+            # Reset the alias to a full copy so repack_deb must deduplicate it.
+            copied_alias.unlink()
+            shutil.copy2(library, copied_alias)
             expected_hash = hashlib.sha256(binary.read_bytes()).hexdigest()
             installer = root / "fixture.deb"
             subprocess.run(["dpkg-deb", "--root-owner-group", "-Zgzip", "--build", str(payload), str(installer)], check=True, capture_output=True)
@@ -109,6 +181,12 @@ class NativeDebTests(unittest.TestCase):
             self.assertEqual((extracted / "DEBIAN/control").read_bytes(), (control / "control").read_bytes())
             self.assertEqual((extracted / "DEBIAN/postinst").read_bytes(), (control / "postinst").read_bytes())
             self.assertTrue(os.access(extracted / "DEBIAN/postinst", os.X_OK))
+            restored_library = extracted / library.relative_to(payload)
+            restored_alias = extracted / copied_alias.relative_to(payload)
+            self.assertEqual(restored_library.read_bytes(), library.read_bytes())
+            self.assertTrue(restored_library.samefile(restored_alias))
+            self.assertFalse(restored_library.samefile(extracted / different_mode.relative_to(payload)))
+            self.assertEqual(os.readlink(extracted / retained_link.relative_to(payload)), copied_alias.name)
 
 
 if __name__ == "__main__":

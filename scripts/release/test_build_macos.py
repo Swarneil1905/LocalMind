@@ -1,6 +1,7 @@
 """Regression cases from the Intel runner's busy DMG detach failure."""
 
 import json
+import platform
 import plistlib
 import shutil
 import subprocess
@@ -108,23 +109,28 @@ class NativeMacImageTests(unittest.TestCase):
             root = Path(temporary)
             bundle = root / "bundle"
             (bundle / "macos").mkdir(parents=True)
-            installer = "LocalMind_0.7.0_x64.dmg"
+            arch = "aarch64" if platform.machine() == "arm64" else "x64"
+            installer = f"LocalMind_0.7.0_{arch}.dmg"
             image = bundle / "macos" / f"rw.123.{installer}"
             mount = root / "mount"
             mount.mkdir()
-            subprocess.run(["hdiutil", "create", "-size", "16m", "-fs", "HFS+", "-format", "UDRW",
-                            "-volname", "LocalMindFixture", str(image)], check=True, capture_output=True)
+            # A tiny image with the default GPT layout can leave insufficient
+            # space for its partitions. Use an explicit Apple partition map and
+            # ample filesystem space. Keep stderr visible on CI if hdiutil fails.
+            subprocess.run(["hdiutil", "create", "-size", "64m", "-layout", "SPUD",
+                            "-fs", "HFS+", "-format", "UDRW", "-volname", "LocalMindFixture",
+                            str(image)], check=True, timeout=90)
             attached = False
             try:
                 subprocess.run(["hdiutil", "attach", "-nobrowse", "-noautoopen", "-mountpoint", str(mount),
-                                str(image)], check=True, capture_output=True)
+                                str(image)], check=True, timeout=90)
                 attached = True
                 detach_build_images(bundle, installer)
                 attached = False
                 self.assertFalse(image.exists())
             finally:
                 if attached:
-                    subprocess.run(["hdiutil", "detach", str(mount), "-force"], capture_output=True, check=False)
+                    subprocess.run(["hdiutil", "detach", str(mount), "-force"], check=False, timeout=60)
 
 
 if __name__ == "__main__":
