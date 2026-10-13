@@ -117,7 +117,8 @@ jobs:
           architecture: ${{ matrix.python-arch }}
 
       - name: Install sidecar build dependencies
-        run: python -m pip install -r services/ai/requirements.txt pyinstaller==6.16.0
+        # 6.17 fixes collection of setuptools' vendored backports namespace.
+        run: python -m pip install -r services/ai/requirements.txt pyinstaller==6.17.0
 
       - name: Build the native sidecar
         run: python scripts/release/build_sidecar.py --target ${{ matrix.target }}
