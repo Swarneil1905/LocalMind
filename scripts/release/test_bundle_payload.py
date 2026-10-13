@@ -30,6 +30,15 @@ def elf_fixture() -> bytes:
 
 
 class BundlePayloadTests(unittest.TestCase):
+    def test_linux_payload_rejects_packaged_nvidia_driver(self):
+        with tempfile.TemporaryDirectory() as directory:
+            payload = Path(directory)
+            fixture(payload, "usr/lib/libcuda.so.617.42")
+            with patch("smoke_bundle.smoke_ollama") as smoke:
+                with self.assertRaisesRegex(BundleError, "must use the host NVIDIA driver"):
+                    check_payload(payload, "x86_64-unknown-linux-gnu", "LocalMind", 5)
+                smoke.assert_not_called()
+
     def test_installer_selection_rejects_stale_or_ambiguous_versions(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

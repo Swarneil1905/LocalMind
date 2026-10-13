@@ -38,6 +38,18 @@ tags also trigger the workflow when the tag matches the configured version.
   The wrapper checks shared-library dependencies with `ldd` before compilation.
   It keeps CUDA variants separate and leaves the subsequent installer smoke
   tests free of staging paths, so missing packaged files cannot be hidden.
+- `libcuda.so.1` is supplied by the user's NVIDIA driver, not by Ollama's CUDA
+  runtime archive. The CPU-only CI runner does not need that driver to package
+  the app. Only the CUDA v12/v13 backend checks allow this missing host library;
+  missing GGML, cuBLAS, CUDA runtime, and other dependencies still fail the build.
+  The wrapper uses SHA-256-pinned linuxdeploy `07333c6` from Tauri's official
+  binary releases in a temporary tool cache. Tauri CLI 2.11.2's default older
+  tool cannot exclude an absent dependency. `LINUXDEPLOY_EXCLUDED_LIBRARIES`
+  is scoped to packaging and excludes only `libcuda.so*`, keeping the driver
+  out of the AppImage while retaining both CUDA backends. Review the tool cache
+  filename when upgrading Tauri CLI. Python CI runs a real linuxdeploy fixture
+  that first reproduces the missing-driver error and then verifies packaging
+  with the exclusion, without installing an NVIDIA driver or using a GPU.
 - Updater signatures are checked with the existing public key. The
   `TAURI_SIGNING_PRIVATE_KEY` repository secret must match that key. Never rotate
   the key merely to fix a build: installed versions trust the existing key.

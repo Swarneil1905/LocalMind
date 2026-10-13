@@ -7,11 +7,14 @@ exported to the parent or to the later installed-payload smoke tests.
 """
 
 import argparse
+import hashlib
 import os
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
+from urllib.request import urlopen
 
 from build_sidecar import ROOT, validate_target
 
@@ -19,6 +22,14 @@ from build_sidecar import ROOT, validate_target
 TARGET = "x86_64-unknown-linux-gnu"
 RUNTIME = ROOT / "apps/desktop/src-tauri/resources/ollama-runtime"
 BASE_LIBRARY = "libggml-base.so.0"
+# libcuda belongs to the installed NVIDIA driver, not to the CUDA toolkit or
+# Ollama archive. Do not bundle a builder's driver into a portable application.
+HOST_DRIVER = "libcuda.so.1"
+LINUXDEPLOY_URL = (
+    "https://github.com/tauri-apps/binary-releases/releases/download/"
+    "linuxdeploy-07333c6/linuxdeploy-x86_64.AppImage"
+)
+LINUXDEPLOY_SHA256 = "36a2d7e274d12e1050d0e9ecfe11d339ed54720b2bec464c286d53f8b07f5c62"
 TAURI_COMMAND = [
     "pnpm", "--filter", "desktop", "tauri", "build", "--verbose",
     "--target", TARGET, "--bundles", "deb,appimage",
@@ -42,7 +53,36 @@ def build_environment(runtime: Path, inherited: dict[str, str] | None = None) ->
     environment["LD_LIBRARY_PATH"] = ":".join(dict.fromkeys(paths))
     environment["NO_STRIP"] = "true"
     environment["LC_ALL"] = "C"
+    # Match this driver family only, not libcudart, libcublas or other runtime
+    # libraries. New linuxdeploy supports absent excluded dependencies too.
+    environment["LINUXDEPLOY_EXCLUDED_LIBRARIES"] = "libcuda.so*"
     return environment
+
+
+def prepare_linuxdeploy(cache: Path) -> Path:
+    """Provide a verified tool in the cache location used by Tauri CLI 2.11.2.
+
+    That CLI normally downloads linuxdeploy 659c9db, which cannot exclude a
+    missing driver. 07333c6 supports LINUXDEPLOY_EXCLUDED_LIBRARIES during ldd
+    parsing as well as copying. Review this cache filename when updating Tauri.
+    """
+    destination = cache / "tauri/linuxdeploy-x86_64.AppImage"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    download = destination.with_suffix(".download")
+    digest = hashlib.sha256()
+    try:
+        with urlopen(LINUXDEPLOY_URL, timeout=120) as response, download.open("wb") as output:
+            while chunk := response.read(1024 * 1024):
+                digest.update(chunk)
+                output.write(chunk)
+        if digest.hexdigest() != LINUXDEPLOY_SHA256:
+            raise DependencyError("Downloaded linuxdeploy does not match the pinned SHA-256")
+        download.chmod(0o755)
+        download.replace(destination)
+    finally:
+        download.unlink(missing_ok=True)
+    print("Using SHA-256 verified linuxdeploy 07333c6 (host-driver exclusions supported).", flush=True)
+    return destination
 
 
 def is_shared_elf(path: Path) -> bool:
@@ -85,6 +125,7 @@ def preflight(runtime: Path, environment: dict[str, str]) -> None:
         raise DependencyError("ldd is required for the native Linux packaging dependency check")
     failures = []
     base_references = 0
+    host_driver_references = 0
     for library in libraries:
         try:
             result = subprocess.run(
@@ -99,6 +140,14 @@ def preflight(runtime: Path, environment: dict[str, str]) -> None:
         if result.returncode:
             reasons.append(f"ldd exited with status {result.returncode}")
         missing = sorted(set(MISSING_DEPENDENCY.findall(output)))
+        relative = library.relative_to((runtime / "lib/ollama").resolve())
+        cuda_backend = (
+            len(relative.parts) == 2 and relative.parts[0] in ("cuda_v12", "cuda_v13")
+            and relative.name == "libggml-cuda.so"
+        )
+        if cuda_backend and HOST_DRIVER in missing:
+            missing.remove(HOST_DRIVER)
+            host_driver_references += 1
         if missing:
             reasons.append("missing dependencies: " + ", ".join(missing))
         if re.search(r"^\s*libggml-base\.so\.0\s*=>", output, re.MULTILINE) and BASE_LIBRARY not in missing:
@@ -117,12 +166,24 @@ def preflight(runtime: Path, environment: dict[str, str]) -> None:
         f"Ollama dependency preflight passed: {len(libraries)} shared ELF files; "
         f"{base_references} references resolve to the staged {BASE_LIBRARY}.", flush=True,
     )
+    if host_driver_references:
+        print(
+            f"{HOST_DRIVER} is supplied by the user's NVIDIA driver; "
+            f"{host_driver_references} CUDA backends will use it on GPU-equipped hosts. "
+            "It is intentionally absent from this build and will not be bundled.", flush=True,
+        )
 
 
 def build_linux(runtime: Path = RUNTIME) -> None:
     environment = build_environment(runtime)
     preflight(runtime, environment)
-    subprocess.run(TAURI_COMMAND, cwd=ROOT, env=environment, check=True)
+    # Keep the pinned tool and all packaging environment changes isolated from
+    # user caches and the subsequent installed-payload smoke checks.
+    with tempfile.TemporaryDirectory(prefix="localmind-linux-tools-") as temporary:
+        cache = Path(temporary)
+        prepare_linuxdeploy(cache)
+        environment["XDG_CACHE_HOME"] = str(cache)
+        subprocess.run(TAURI_COMMAND, cwd=ROOT, env=environment, check=True)
 
 
 def main(argv: list[str] | None = None) -> None:

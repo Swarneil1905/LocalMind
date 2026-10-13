@@ -41,6 +41,8 @@ jobs:
         run: python -c "import app.main; import app.api.routes.health"
 
       - name: Release tooling tests
+        env:
+          LOCALMIND_TEST_LINUXDEPLOY: "1"
         run: |
           sudo apt-get update
           sudo apt-get install -y minisign gcc

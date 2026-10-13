@@ -187,6 +187,10 @@ def verify_runtime(runtime: Path, staged: Path, target: str, *, appimage: bool =
 def check_payload(
     payload: Path, target: str, product_name: str, timeout: float, *, appimage: bool = False,
 ) -> None:
+    if target == "x86_64-unknown-linux-gnu":
+        drivers = sorted(payload.rglob("libcuda.so*"))
+        if drivers:
+            raise BundleError(f"Linux installers must use the host NVIDIA driver, not bundle it: {drivers}")
     sidecar, runtime = find_services(payload, target, product_name)
     ollama = verify_runtime(runtime, DESTINATION, target, appimage=appimage)
     print(f"Testing packaged sidecar: {sidecar}", flush=True)
