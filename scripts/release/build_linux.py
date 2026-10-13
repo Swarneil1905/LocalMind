@@ -8,6 +8,7 @@ exported to the parent or to the later installed-payload smoke tests.
 
 import argparse
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -17,6 +18,8 @@ from pathlib import Path
 from urllib.request import urlopen
 
 from build_sidecar import ROOT, validate_target
+from repack_deb import repack_deb
+from smoke_bundle import versioned_installer
 
 
 TARGET = "x86_64-unknown-linux-gnu"
@@ -184,6 +187,9 @@ def build_linux(runtime: Path = RUNTIME) -> None:
         prepare_linuxdeploy(cache)
         environment["XDG_CACHE_HOME"] = str(cache)
         subprocess.run(TAURI_COMMAND, cwd=ROOT, env=environment, check=True)
+    config = json.loads((ROOT / "apps/desktop/src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
+    deb_directory = ROOT / "target" / TARGET / "release/bundle/deb"
+    repack_deb(versioned_installer(deb_directory, ".deb", config["version"]))
 
 
 def main(argv: list[str] | None = None) -> None:

@@ -140,13 +140,20 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
-      - name: Build Windows and macOS installers and signed updater bundles
-        if: runner.os != 'Linux'
-        run: pnpm --filter desktop tauri build --verbose --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+      - name: Build macOS installers and signed updater bundles
+        if: runner.os == 'macOS'
+        run: python scripts/release/build_macos.py --target ${{ matrix.target }}
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
           APPLE_SIGNING_IDENTITY: "-"
+
+      - name: Build Windows installers and signed updater bundles
+        if: runner.os == 'Windows'
+        run: pnpm --filter desktop tauri build --verbose --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
       - name: Test installer payloads
         run: python scripts/release/smoke_bundle.py --target ${{ matrix.target }}
