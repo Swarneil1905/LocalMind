@@ -30,6 +30,14 @@ tags also trigger the workflow when the tag matches the configured version.
   [upstream Tauri issue](https://github.com/tauri-apps/tauri/issues/14796).
 - Tauri runs with `--verbose` so a packaging failure includes linuxdeploy's
   actual error instead of only `failed to run linuxdeploy`.
+- Linux builds use `scripts/release/build_linux.py` to expose Ollama's common
+  `lib/ollama` directory through `LD_LIBRARY_PATH` only in packaging subprocesses.
+  Ollama normally adds this directory when launching its runners; linuxdeploy
+  inspects each CUDA library separately and otherwise cannot find the sibling
+  `libggml-base.so.0`. See [Ollama's runner environment](https://github.com/ollama/ollama/blob/v0.40.3/llm/llama_server.go).
+  The wrapper checks shared-library dependencies with `ldd` before compilation.
+  It keeps CUDA variants separate and leaves the subsequent installer smoke
+  tests free of staging paths, so missing packaged files cannot be hidden.
 - Updater signatures are checked with the existing public key. The
   `TAURI_SIGNING_PRIVATE_KEY` repository secret must match that key. Never rotate
   the key merely to fix a build: installed versions trust the existing key.

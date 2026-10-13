@@ -131,13 +131,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Build installers and signed updater bundles
-        # Without verbose output Tauri discards linuxdeploy's error details.
+      - name: Build Linux installers and signed updater bundles
+        if: runner.os == 'Linux'
+        # Resolve Ollama's common libraries only in the packaging subprocess.
+        # Later payload tests must not inherit paths into the staging directory.
+        run: python scripts/release/build_linux.py
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+
+      - name: Build Windows and macOS installers and signed updater bundles
+        if: runner.os != 'Linux'
         run: pnpm --filter desktop tauri build --verbose --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
         env:
-          # linuxdeploy's old strip cannot handle newer WebKit ELF relocations.
-          # It can also damage the archive appended to the frozen Python service.
-          NO_STRIP: ${{ runner.os == 'Linux' && 'true' || '' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
           APPLE_SIGNING_IDENTITY: "-"
