@@ -1,7 +1,8 @@
 """Extract a built desktop bundle and smoke-test its actual service payload.
 
-The desktop GUI is never launched and no installer is executed. Windows requires
-7-Zip with NSIS support; Linux requires dpkg-deb. macOS checks the built .app tree.
+The desktop GUI is never launched. Windows requires 7-Zip with NSIS support;
+Linux uses dpkg-deb and the AppImage runtime's extraction-only option. macOS checks
+the built .app tree.
 This checks packaged services and runtime placement, not GUI or model inference.
 """
 
@@ -84,6 +85,28 @@ def extract_installer(installer: Path, destination: Path, target: str) -> None:
         )
 
 
+def extract_appimage(appimage: Path, destination: Path) -> Path:
+    """Run only the built AppImage's extraction mode, without FUSE or AppRun."""
+    destination.mkdir(parents=True)
+    environment = os.environ.copy()
+    # The build workflow enables extract-and-run for linuxdeploy itself. Do not
+    # inherit that option here: this command must only extract the final image.
+    environment.pop("APPIMAGE_EXTRACT_AND_RUN", None)
+    result = subprocess.run(
+        [str(appimage.resolve()), "--appimage-extract"],
+        cwd=destination, env=environment, capture_output=True, text=True, timeout=300,
+    )
+    if result.returncode:
+        raise BundleError(
+            f"Could not extract {appimage.name}; AppImage payload verification cannot continue.\n"
+            + (result.stdout + result.stderr)[-8000:]
+        )
+    payload = destination / "squashfs-root"
+    if payload.is_symlink() or not payload.is_dir():
+        raise BundleError("AppImage extraction did not create a regular squashfs-root directory")
+    return payload
+
+
 def find_services(payload: Path, target: str, product_name: str) -> tuple[Path, Path]:
     """Require Tauri's installed layout, not merely a binary somewhere in the tree."""
     if target == "x86_64-pc-windows-msvc":
@@ -112,7 +135,19 @@ def find_services(payload: Path, target: str, product_name: str) -> tuple[Path, 
     return sidecar, runtime
 
 
-def verify_runtime(runtime: Path, staged: Path, target: str) -> Path:
+def is_linux_elf(path: Path) -> bool:
+    """Identify a complete native ELF64 header before allowing loader rewrites."""
+    with path.open("rb") as stream:
+        header = stream.read(64)
+    return (
+        len(header) == 64 and header[:7] == b"\x7fELF\x02\x01\x01"
+        and int.from_bytes(header[16:18], "little") in (2, 3)  # executable/shared object
+        and int.from_bytes(header[18:20], "little") == 62  # x86_64
+        and int.from_bytes(header[20:24], "little") == 1
+    )
+
+
+def verify_runtime(runtime: Path, staged: Path, target: str, *, appimage: bool = False) -> Path:
     """Require every staged runtime file, including all CPU/GPU shared libraries."""
     _, executable_name, helper_name = OLLAMA_TARGETS[target]
     require_file(staged / executable_name, staged)
@@ -126,7 +161,16 @@ def verify_runtime(runtime: Path, staged: Path, target: str) -> Path:
         # paths/nonempty files here; the executable is actually launched below.
         require_file(bundled, runtime)
         if "apple-darwin" not in target and source.stat().st_size != bundled.stat().st_size:
-            raise BundleError(f"Packaged Ollama runtime file changed size: {relative}")
+            # linuxdeploy can rewrite an ELF's RPATH, changing its file size.
+            # Only AppImage ELF payloads get this exception. DEB/Windows files
+            # and non-ELF data still require the original size; startup is tested
+            # separately so a damaged service cannot pass on its header alone.
+            rewritten_elf = (
+                appimage and target == "x86_64-unknown-linux-gnu"
+                and is_linux_elf(source) and is_linux_elf(bundled)
+            )
+            if not rewritten_elf:
+                raise BundleError(f"Packaged Ollama runtime file changed size: {relative}")
     provenance_path = runtime / "localmind-runtime.json"
     require_file(provenance_path, runtime)
     provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
@@ -140,9 +184,11 @@ def verify_runtime(runtime: Path, staged: Path, target: str) -> Path:
     return executable
 
 
-def check_payload(payload: Path, target: str, product_name: str, timeout: float) -> None:
+def check_payload(
+    payload: Path, target: str, product_name: str, timeout: float, *, appimage: bool = False,
+) -> None:
     sidecar, runtime = find_services(payload, target, product_name)
-    ollama = verify_runtime(runtime, DESTINATION, target)
+    ollama = verify_runtime(runtime, DESTINATION, target, appimage=appimage)
     print(f"Testing packaged sidecar: {sidecar}", flush=True)
     smoke_sidecar(sidecar, timeout)
     print(f"Testing packaged Ollama: {ollama}", flush=True)
@@ -168,13 +214,21 @@ def smoke_bundle(target: str, timeout: float) -> None:
     else:
         windows = target == "x86_64-pc-windows-msvc"
         directory, suffix = ("nsis", ".exe") if windows else ("deb", ".deb")
-        installer = versioned_installer(bundle / directory, suffix, version)
-        require_file(installer, bundle)
-        with tempfile.TemporaryDirectory(prefix="localmind-bundle-smoke-") as temporary:
-            payload = Path(temporary) / "payload"
-            print(f"Extracting installer for service smoke: {installer.name}", flush=True)
-            extract_installer(installer, payload, target)
-            check_payload(payload, target, product_name, timeout)
+        installers = [(versioned_installer(bundle / directory, suffix, version), False)]
+        if not windows:
+            installers.append((versioned_installer(bundle / "appimage", ".AppImage", version), True))
+        # Require both Linux formats before running either payload check.
+        for installer, _ in installers:
+            require_file(installer, bundle)
+        for installer, appimage in installers:
+            with tempfile.TemporaryDirectory(prefix="localmind-bundle-smoke-") as temporary:
+                payload = Path(temporary) / "payload"
+                print(f"Extracting installer for service smoke: {installer.name}", flush=True)
+                if appimage:
+                    payload = extract_appimage(installer, payload)
+                else:
+                    extract_installer(installer, payload, target)
+                check_payload(payload, target, product_name, timeout, appimage=appimage)
     print("Built desktop bundle passed service placement, runtime completeness and startup checks.")
 
 

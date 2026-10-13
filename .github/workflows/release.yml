@@ -132,8 +132,12 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
       - name: Build installers and signed updater bundles
-        run: pnpm --filter desktop tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+        # Without verbose output Tauri discards linuxdeploy's error details.
+        run: pnpm --filter desktop tauri build --verbose --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
         env:
+          # linuxdeploy's old strip cannot handle newer WebKit ELF relocations.
+          # It can also damage the archive appended to the frozen Python service.
+          NO_STRIP: ${{ runner.os == 'Linux' && 'true' || '' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
           APPLE_SIGNING_IDENTITY: "-"

@@ -16,11 +16,20 @@ tags also trigger the workflow when the tag matches the configured version.
 - The frozen Python service is tested against a disposable profile before and
   after installer packaging. Tests check authentication, chats, project/task
   persistence, restart, and cleanup without accessing a user's accounts.
+  Linux checks both the extracted DEB and AppImage service payloads. AppImage
+  extraction does not launch the desktop GUI or require FUSE.
 - Ollama 0.40.3 is downloaded from its official release with digest verification.
   Its complete standard archive layout, including runtime libraries and notices,
   is included as a resource. Its loopback API is tested with an empty model store.
 - macOS Intel and Apple Silicon use different native runners and unique updater
   archive names. macOS 14 is the minimum supported version for the bundled runtime.
+- Linux packaging sets `NO_STRIP=true` for linuxdeploy. Its bundled strip tool
+  cannot handle the `.relr.dyn` sections in newer WebKit libraries, and stripping
+  a PyInstaller executable can damage its appended Python archive. Keep this
+  setting when updating the packaging tools. See the
+  [upstream Tauri issue](https://github.com/tauri-apps/tauri/issues/14796).
+- Tauri runs with `--verbose` so a packaging failure includes linuxdeploy's
+  actual error instead of only `failed to run linuxdeploy`.
 - Updater signatures are checked with the existing public key. The
   `TAURI_SIGNING_PRIVATE_KEY` repository secret must match that key. Never rotate
   the key merely to fix a build: installed versions trust the existing key.
@@ -38,6 +47,13 @@ Read the failed job's logs before retrying. A transient download/upload failure
 can be retried on the same commit. Code or packaging fixes require a new commit
 and a fresh workflow run. An incomplete draft can be resumed only by the same
 tested commit; inspect its assets before making any manual change.
+
+A rerun of a failed tagged workflow still uses the original tagged commit. After
+committing a packaging fix, push the commit and update the failed, unpublished
+version tag to that commit before pushing the tag again. Check that no release
+has been published for that version, and cancel any remaining jobs from the old
+run first. Use an explicit tag lease when pushing the replacement so another
+person's tag change cannot be overwritten. Never move a published release tag.
 
 GitHub's updater signing is separate from OS signing. These builds are not
 Windows Authenticode-signed or Apple-notarized. The service smoke checks do not
