@@ -2,407 +2,184 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the verified build as the latest release
+        required: true
+        type: boolean
+        default: false
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  # ─────────────────────────────────────────────
-  # Build matrix: one job per platform / arch
-  # ─────────────────────────────────────────────
+  version:
+    name: Check release version
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - id: version
+        run: python scripts/release/check_version.py
+
+  frontend:
+    name: Frontend checks
+    uses: ./.github/workflows/ci-frontend.yml
+  python:
+    name: Python checks
+    uses: ./.github/workflows/ci-python.yml
+  rust:
+    name: Rust checks
+    uses: ./.github/workflows/ci-rust.yml
+
   build:
+    name: Build (${{ matrix.label }})
+    needs: [version, frontend, python, rust]
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
-          # ── Windows x64 ──
-          - platform: windows-latest
-            args: --target x86_64-pc-windows-msvc
-            rust-target: x86_64-pc-windows-msvc
+          - platform: windows-2022
+            target: x86_64-pc-windows-msvc
+            python-arch: x64
+            bundles: nsis
             label: windows-x64
-
-          # ── macOS Intel ──
-          - platform: macos-latest
-            args: --target x86_64-apple-darwin
-            rust-target: x86_64-apple-darwin
+          - platform: macos-15-intel
+            target: x86_64-apple-darwin
+            python-arch: x64
+            bundles: app,dmg
             label: macos-x64
-
-          # ── macOS Apple Silicon ──
-          - platform: macos-latest
-            args: --target aarch64-apple-darwin
-            rust-target: aarch64-apple-darwin
+          - platform: macos-15
+            target: aarch64-apple-darwin
+            python-arch: arm64
+            bundles: app,dmg
             label: macos-arm64
-
-          # ── Linux x64 ──
           - platform: ubuntu-22.04
-            args: --target x86_64-unknown-linux-gnu
-            rust-target: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-gnu
+            python-arch: x64
+            bundles: deb,appimage
             label: linux-x64
-
-    name: Build (${{ matrix.label }})
     runs-on: ${{ matrix.platform }}
-
+    env:
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # ── System deps (Linux only) ──
-      - name: Install Linux system dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+      - name: Free space on the disposable Linux runner
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          df -h .
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf zstd
 
-      # ── Rust toolchain ──
-      - name: Install Rust stable + target
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.rust-target }}
+          targets: ${{ matrix.target }}
 
-      - name: Cache Cargo
+      - name: Cache Cargo downloads
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target/
-          key: ${{ runner.os }}-${{ matrix.rust-target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.rust-target }}-cargo-
+          key: release-cargo-${{ matrix.label }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: release-cargo-${{ matrix.label }}-
 
-      # ── Node / pnpm ──
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v4
         with:
-          node-version: "20"
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
+          version: "11.0.9"
+      - uses: actions/setup-node@v4
         with:
-          version: 9
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
 
-      - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
-
-      # ── Python sidecar ──
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          architecture: ${{ matrix.python-arch }}
 
-      - name: Install sidecar dependencies
-        working-directory: services/ai
-        run: pip install -r requirements.txt --break-system-packages || pip install -r requirements.txt
+      - name: Install sidecar build dependencies
+        run: python -m pip install -r services/ai/requirements.txt pyinstaller==6.16.0
 
-      # ── Build Python sidecar into a standalone binary with PyInstaller ──
-      # This produces a self-contained executable that runs without Python
-      # being installed on the user's machine.
-      - name: Build sidecar binary (Unix)
-        if: matrix.platform != 'windows-latest'
-        working-directory: services/ai
-        run: |
-          pip install pyinstaller --break-system-packages || pip install pyinstaller
-          pyinstaller --onefile --name localmind-sidecar \
-            --collect-all app \
-            --hidden-import=uvicorn.logging \
-            --hidden-import=uvicorn.loops \
-            --hidden-import=uvicorn.loops.auto \
-            --hidden-import=uvicorn.protocols \
-            --hidden-import=uvicorn.protocols.http \
-            --hidden-import=uvicorn.protocols.http.auto \
-            --hidden-import=uvicorn.lifespan \
-            --hidden-import=uvicorn.lifespan.on \
-            main.py
-          mkdir -p ../../apps/desktop/src-tauri/binaries
-          cp dist/localmind-sidecar \
-            ../../apps/desktop/src-tauri/binaries/localmind-sidecar-${{ matrix.rust-target }}
-          chmod +x \
-            ../../apps/desktop/src-tauri/binaries/localmind-sidecar-${{ matrix.rust-target }}
+      - name: Build the native sidecar
+        run: python scripts/release/build_sidecar.py --target ${{ matrix.target }}
 
-      - name: Build sidecar binary (Windows)
-        if: matrix.platform == 'windows-latest'
-        shell: pwsh
-        working-directory: services/ai
-        run: |
-          pip install pyinstaller
-          pyinstaller --onefile --name localmind-sidecar `
-            --collect-all app `
-            --hidden-import=uvicorn.logging `
-            --hidden-import=uvicorn.loops `
-            --hidden-import=uvicorn.loops.auto `
-            --hidden-import=uvicorn.protocols `
-            --hidden-import=uvicorn.protocols.http `
-            --hidden-import=uvicorn.protocols.http.auto `
-            --hidden-import=uvicorn.lifespan `
-            --hidden-import=uvicorn.lifespan.on `
-            main.py
-          New-Item -ItemType Directory -Force -Path "..\..\apps\desktop\src-tauri\binaries" | Out-Null
-          Copy-Item "dist\localmind-sidecar.exe" `
-            "..\..\apps\desktop\src-tauri\binaries\localmind-sidecar-x86_64-pc-windows-msvc.exe"
+      - name: Test the packaged sidecar in a fresh profile
+        run: python scripts/release/smoke_sidecar.py --target ${{ matrix.target }}
 
-      # ── Download Ollama binary for this platform ──
-      # Ollama changed its distribution format: binaries are now archives.
-      # macOS: ollama-darwin.tgz (universal binary ~130 MB, works for both x64 + arm64)
-      # Linux: ollama-linux-amd64.tar.zst  (extracts to bin/ollama)
-      # Windows: ollama-windows-amd64.zip  (extracts to ollama.exe)
-      # We fetch the latest release version dynamically so we never hit a 404.
-
-      - name: Download Ollama binary (Windows)
-        if: matrix.platform == 'windows-latest'
-        shell: pwsh
-        run: |
-          $headers = @{ Authorization = "Bearer ${{ github.token }}" }
-          $version = (Invoke-RestMethod -Uri "https://api.github.com/repos/ollama/ollama/releases/latest" -Headers $headers).tag_name.TrimStart('v')
-          Write-Host "Downloading Ollama v${version} for Windows"
-          $url = "https://github.com/ollama/ollama/releases/download/v${version}/ollama-windows-amd64.zip"
-          Invoke-WebRequest -Uri $url -OutFile ollama.zip
-          Expand-Archive -Path ollama.zip -DestinationPath ollama-extracted
-          New-Item -ItemType Directory -Force -Path "apps\desktop\src-tauri\binaries" | Out-Null
-          Copy-Item "ollama-extracted\ollama.exe" "apps\desktop\src-tauri\binaries\ollama-x86_64-pc-windows-msvc.exe"
-
-      # macOS: ollama-darwin.tgz is a universal binary — one download covers both x64 and arm64.
-      - name: Download Ollama binary (macOS)
-        if: matrix.platform == 'macos-latest'
-        run: |
-          VERSION=$(curl -fsSL -H "Authorization: Bearer ${{ github.token }}" \
-            https://api.github.com/repos/ollama/ollama/releases/latest \
-            | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))")
-          echo "Downloading Ollama v${VERSION} for macOS (universal)"
-          mkdir -p apps/desktop/src-tauri/binaries
-          curl -fsSL "https://github.com/ollama/ollama/releases/download/v${VERSION}/ollama-darwin.tgz" \
-            | tar -xz
-          # The tgz extracts to ./ollama in the current directory
-          cp ollama apps/desktop/src-tauri/binaries/ollama-${{ matrix.rust-target }}
-          chmod +x apps/desktop/src-tauri/binaries/ollama-${{ matrix.rust-target }}
-
-      - name: Download Ollama binary (Linux x64)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          VERSION=$(curl -fsSL -H "Authorization: Bearer ${{ github.token }}" \
-            https://api.github.com/repos/ollama/ollama/releases/latest \
-            | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))")
-          echo "Downloading Ollama v${VERSION} for Linux"
-          sudo apt-get install -y zstd
-          mkdir -p /tmp/ollama-extract
-          curl -fsSL "https://github.com/ollama/ollama/releases/download/v${VERSION}/ollama-linux-amd64.tar.zst" \
-            | tar -I zstd -xf - -C /tmp/ollama-extract
-          mkdir -p apps/desktop/src-tauri/binaries
-          # The tar.zst extracts to bin/ollama inside the archive
-          cp /tmp/ollama-extract/bin/ollama apps/desktop/src-tauri/binaries/ollama-x86_64-unknown-linux-gnu
-          chmod +x apps/desktop/src-tauri/binaries/ollama-x86_64-unknown-linux-gnu
-
-      # ── Write signing key to a temp file so newlines are preserved ──
-      # GitHub Secrets strips trailing newlines from multiline values when
-      # passed as env vars; writing to a file avoids the stripping issue.
-      - name: Setup signing key
-        shell: bash
-        run: |
-          printf '%s' "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" | tr -d '\r\n' > "$RUNNER_TEMP/tauri-signing.key"
-          echo "TAURI_SIGNING_PRIVATE_KEY=$RUNNER_TEMP/tauri-signing.key" >> "$GITHUB_ENV"
-
-      # ── Build with signing key so Tauri generates .sig files ──
-      - name: Build Tauri application
-        run: pnpm --filter desktop tauri build ${{ matrix.args }}
+      - name: Bundle and test the complete Ollama runtime
+        run: python scripts/release/bundle_ollama.py --target ${{ matrix.target }}
         env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Build installers and signed updater bundles
+        run: pnpm --filter desktop tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          APPLE_SIGNING_IDENTITY: "-"
 
-      # ── Debug: find all generated bundle files ──
-      - name: Debug bundle output
-        shell: bash
-        run: |
-          echo "=== All .sig files ==="
-          find . -name "*.sig" 2>/dev/null | head -50 || echo "(none)"
-          echo "=== All bundle directories ==="
-          find . -name "bundle" -type d 2>/dev/null | head -20 || echo "(none)"
-          echo "=== Contents of target/ bundle dirs ==="
-          find . -path "*/release/bundle" -type d 2>/dev/null \
-            | while read d; do echo "--- $d ---"; ls "$d" 2>/dev/null; done
+      - name: Test installer payloads
+        run: python scripts/release/smoke_bundle.py --target ${{ matrix.target }}
 
-      # ── Collect updater bundles + .sig files into a flat directory ──
-      # These are the archives the auto-updater downloads (not the user-facing
-      # installers). Tauri generates them automatically when a signing key is set.
-      - name: Collect updater artifacts
-        shell: bash
-        run: |
-          mkdir -p updater-artifacts
-          BUNDLE_DIR="target/${{ matrix.rust-target }}/release/bundle"
-          for dir in macos nsis msi appimage; do
-            if [ -d "$BUNDLE_DIR/$dir" ]; then
-              find "$BUNDLE_DIR/$dir" \( \
-                -name "*.app.tar.gz"       -o -name "*.app.tar.gz.sig"       \
-                -o -name "*.nsis.zip"      -o -name "*.nsis.zip.sig"         \
-                -o -name "*.msi.zip"       -o -name "*.msi.zip.sig"          \
-                -o -name "*.AppImage.tar.gz" -o -name "*.AppImage.tar.gz.sig" \
-              \) -exec cp {} updater-artifacts/ \;
-            fi
-          done
-          echo "=== updater-artifacts ==="
-          ls -lh updater-artifacts/ 2>/dev/null || echo "(none found)"
+      - name: Collect release assets
+        run: python scripts/release/artifacts.py collect --target ${{ matrix.target }} --version ${{ needs.version.outputs.version }} --out release-platform
 
-      - name: Upload updater artifacts
+      - name: Upload verified platform files
         uses: actions/upload-artifact@v4
         with:
-          name: updater-${{ matrix.label }}
-          path: updater-artifacts/
-          if-no-files-found: warn
+          name: release-${{ matrix.label }}
+          path: release-platform/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 3
 
-      # ── Upload installers + updater bundles to GitHub Release ──
-      - name: Upload release artifacts
-        uses: softprops/action-gh-release@v2
-        with:
-          name: "LocalMind ${{ github.ref_name }}"
-          draft: false
-          fail_on_unmatched_files: false
-          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
-          body: |
-            ## LocalMind ${{ github.ref_name }}
-
-            **Privacy-first AI assistant that runs entirely on your machine.**
-            No account required. No data leaves your computer.
-
-            ### Install
-
-            | Platform | Download |
-            |----------|---------|
-            | Windows  | `.msi` or `.exe` below |
-            | macOS Intel | `.dmg` (x64) below |
-            | macOS Apple Silicon | `.dmg` (arm64) below |
-            | Linux | `.AppImage` or `.deb` below |
-
-            See [README](https://github.com/${{ github.repository }}#readme) for setup instructions.
-          files: |
-            target/${{ matrix.rust-target }}/release/bundle/msi/*.msi
-            target/${{ matrix.rust-target }}/release/bundle/nsis/*.exe
-            target/${{ matrix.rust-target }}/release/bundle/dmg/*.dmg
-            target/${{ matrix.rust-target }}/release/bundle/appimage/*.AppImage
-            target/${{ matrix.rust-target }}/release/bundle/deb/*.deb
-            updater-artifacts/*.app.tar.gz
-            updater-artifacts/*.nsis.zip
-            updater-artifacts/*.msi.zip
-            updater-artifacts/*.AppImage.tar.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # ─────────────────────────────────────────────
-  # Post-release: generate SHA256SUMS.txt
-  # ─────────────────────────────────────────────
-  checksums:
-    name: Generate SHA256SUMS
-    needs: build
+  publish:
+    name: Verify and publish release
+    needs: [version, build]
     runs-on: ubuntu-22.04
-
+    timeout-minutes: 60
+    permissions:
+      contents: write
     steps:
-      - name: Download all release assets
-        uses: robinraju/release-downloader@v1
-        with:
-          tag: ${{ github.ref_name }}
-          fileName: "*"
-          out-file-path: release-assets
-
-      - name: Generate SHA256SUMS.txt
+      - uses: actions/checkout@v4
+      - name: Free space on the disposable publisher
         run: |
-          cd release-assets
-          sha256sum * | sort > SHA256SUMS.txt
-          cat SHA256SUMS.txt
-
-      - name: Upload SHA256SUMS.txt to release
-        uses: softprops/action-gh-release@v2
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          df -h .
+      - uses: actions/setup-python@v5
         with:
-          tag_name: ${{ github.ref_name }}
-          files: release-assets/SHA256SUMS.txt
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # ─────────────────────────────────────────────
-  # Post-release: generate latest.json for the
-  # Tauri auto-updater endpoint
-  # ─────────────────────────────────────────────
-  publish-updater:
-    name: Publish updater manifest
-    needs: build
-    runs-on: ubuntu-22.04
-
-    steps:
-      - name: Download all updater sig artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: updater-*
-          merge-multiple: true
-          path: sigs
-
-      - name: List collected sig files
-        run: ls -lh sigs/ 2>/dev/null || echo "(no sig files found)"
-
-      - name: Generate latest.json
+          python-version: "3.11"
+      - name: Install signature verification
         run: |
-          python3 << 'PYEOF'
-          import json, os, glob, datetime
-
-          tag = os.environ['GITHUB_REF_NAME']          # e.g. "v0.5.1"
-          version = tag.lstrip('v')                    # e.g. "0.5.1"
-          repo = os.environ['GITHUB_REPOSITORY']
-          base_url = f"https://github.com/{repo}/releases/download/{tag}"
-
-          def read_sig(pattern):
-              """Find a .sig file matching pattern, return (sig_content, bundle_filename)."""
-              files = glob.glob(os.path.join('sigs', pattern))
-              if not files:
-                  return None, None
-              sig_file = sorted(files)[0]
-              bundle_name = os.path.basename(sig_file)[:-4]  # strip trailing .sig
-              return open(sig_file).read().strip(), bundle_name
-
-          platforms = {}
-
-          # macOS Apple Silicon
-          sig, bundle = read_sig('*aarch64*.app.tar.gz.sig')
-          if sig:
-              platforms['darwin-aarch64'] = {'signature': sig, 'url': f'{base_url}/{bundle}'}
-
-          # macOS Intel
-          sig, bundle = read_sig('*x64*.app.tar.gz.sig')
-          if sig:
-              platforms['darwin-x86_64'] = {'signature': sig, 'url': f'{base_url}/{bundle}'}
-
-          # Windows x64 — prefer NSIS, fall back to MSI
-          sig, bundle = read_sig('*.nsis.zip.sig')
-          if not sig:
-              sig, bundle = read_sig('*.msi.zip.sig')
-          if sig:
-              platforms['windows-x86_64'] = {'signature': sig, 'url': f'{base_url}/{bundle}'}
-
-          # Linux x64 (AppImage)
-          sig, bundle = read_sig('*.AppImage.tar.gz.sig')
-          if sig:
-              platforms['linux-x86_64'] = {'signature': sig, 'url': f'{base_url}/{bundle}'}
-
-          manifest = {
-              'version': version,
-              'notes': f'LocalMind {tag}',
-              'pub_date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
-              'platforms': platforms,
-          }
-
-          with open('latest.json', 'w') as f:
-              json.dump(manifest, f, indent=2)
-
-          print(json.dumps(manifest, indent=2))
-          print(f"\nPlatforms covered: {list(platforms.keys())}")
-          PYEOF
-        env:
-          GITHUB_REF_NAME: ${{ github.ref_name }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-
-      - name: Upload latest.json to release
-        uses: softprops/action-gh-release@v2
+          sudo apt-get update
+          sudo apt-get install -y minisign
+      - uses: actions/download-artifact@v4
         with:
-          tag_name: ${{ github.ref_name }}
-          files: latest.json
+          pattern: release-*
+          path: platform-artifacts
+      - name: Verify signatures and assemble the updater
+        run: python scripts/release/artifacts.py assemble --input platform-artifacts --out release-assets --version ${{ needs.version.outputs.version }} --repository ${{ github.repository }}
+      - name: Publish the complete release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish == true
+        run: python scripts/release/publish.py --version ${{ needs.version.outputs.version }} --assets release-assets
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}

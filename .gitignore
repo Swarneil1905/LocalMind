@@ -43,6 +43,8 @@ LOCALMIND_MASTER_SPEC.md
 # Bundled binaries (downloaded/built by CI, not committed)
 apps/desktop/src-tauri/binaries/ollama*
 apps/desktop/src-tauri/binaries/localmind-sidecar*
+apps/desktop/src-tauri/resources/ollama-runtime/*
+!apps/desktop/src-tauri/resources/ollama-runtime/.gitkeep
 
 # Logs
 *.log

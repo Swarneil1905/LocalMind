@@ -49,16 +49,14 @@ fn hide_console(_cmd: &mut std::process::Command) {}
 // Bundled Ollama helpers
 // ---------------------------------------------------------------------------
 
-/// Returns the filename of the bundled Ollama binary for the current platform.
+/// Keep the upstream runtime layout so Ollama can find its inference libraries.
 fn ollama_binary_name() -> Option<&'static str> {
     if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-        Some("ollama-x86_64-pc-windows-msvc.exe")
-    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
-        Some("ollama-x86_64-apple-darwin")
-    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        Some("ollama-aarch64-apple-darwin")
+        Some("ollama.exe")
+    } else if cfg!(all(target_os = "macos", any(target_arch = "x86_64", target_arch = "aarch64"))) {
+        Some("ollama")
     } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        Some("ollama-x86_64-unknown-linux-gnu")
+        Some("bin/ollama")
     } else {
         None
     }
@@ -95,7 +93,7 @@ async fn ensure_ollama(app_handle: tauri::AppHandle) {
         return;
     };
 
-    let ollama_path = resource_dir.join("binaries").join(bin_name);
+    let ollama_path = resource_dir.join("ollama-runtime").join(bin_name);
     if !ollama_path.exists() {
         // Dev mode — binary not bundled, expect system Ollama.
         println!("[localmind] Bundled Ollama not found (dev mode?), expecting system Ollama");

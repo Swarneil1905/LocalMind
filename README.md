@@ -158,20 +158,22 @@ cd ../../apps/desktop && pnpm tauri dev
 
 Three GitHub Actions workflows run on every push and pull request:
 
-- **ci-frontend.yml** - TypeScript type check + ESLint
-- **ci-python.yml** - ruff lint + import smoke test
+- **ci-frontend.yml** - TypeScript, ESLint, tests, and production build
+- **ci-python.yml** - ruff, API regressions, release tooling tests, and import checks
 - **ci-rust.yml** - cargo check + clippy + test
 
 ### Release
 
-Push a version tag to trigger the release workflow:
+The Release workflow builds native installers, checks the packaged services,
+verifies updater signatures, and publishes only after all platforms pass.
+See [Releasing](docs/RELEASING.md) for versioning and recovery details.
 
 ```bash
-git tag v0.5.0
-git push origin v0.5.0
+gh workflow run release.yml --ref main -f publish=true
 ```
 
-The workflow builds installers for all four platforms, creates a GitHub Release, and attaches `SHA256SUMS.txt`.
+The published assets include installers, signed updater bundles, `latest.json`,
+and `SHA256SUMS.txt` for Windows x64, macOS Intel/Apple Silicon, and Linux x64.
 
 ---
 

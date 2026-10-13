@@ -1,6 +1,7 @@
 name: CI – Python
 
 on:
+  workflow_call:
   push:
     branches: [main]
   pull_request:
@@ -38,3 +39,10 @@ jobs:
       - name: Verify sidecar entry point imports cleanly
         working-directory: services/ai
         run: python -c "import app.main; import app.api.routes.health"
+
+      - name: Release tooling tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y minisign
+          ruff check --config services/ai/pyproject.toml scripts/release
+          python -m unittest discover -s scripts/release -p "test_*.py" -v
