@@ -1,196 +1,156 @@
+<p align="center">
+  <img src="apps/desktop/public/brand/localmind-mark-256.png" alt="LocalMind" width="80" height="80">
+</p>
+
 # LocalMind
 
-**A private desktop workspace with local AI models.**
+**A desktop workspace for local AI, your files, and the things you want to remember.**
+
+Chat with models running on your computer, search your documents, and keep conversations organized with projects and tasks. No LocalMind account or cloud AI subscription is required.
+
+[Download](https://github.com/Swarneil1905/LocalMind/releases/latest) · [Demo](#see-it-in-action) · [Getting started](#getting-started) · [Development](#development) · [Report an issue](https://github.com/Swarneil1905/LocalMind/issues)
 
 [![CI Frontend](https://github.com/Swarneil1905/LocalMind/actions/workflows/ci-frontend.yml/badge.svg)](https://github.com/Swarneil1905/LocalMind/actions/workflows/ci-frontend.yml)
 [![CI Python](https://github.com/Swarneil1905/LocalMind/actions/workflows/ci-python.yml/badge.svg)](https://github.com/Swarneil1905/LocalMind/actions/workflows/ci-python.yml)
 [![CI Rust](https://github.com/Swarneil1905/LocalMind/actions/workflows/ci-rust.yml/badge.svg)](https://github.com/Swarneil1905/LocalMind/actions/workflows/ci-rust.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-No account required. Model inference stays on your computer. Optional web search sends queries to the selected provider.
-
 ## See it in action
 
-[![LocalMind walkthrough: asking a question and inspecting its sources](docs/media/localmind-preview.gif)](docs/media/localmind-walkthrough.mp4)
+[![LocalMind walkthrough showing chat and its source panel](docs/media/localmind-preview.gif)](https://github.com/Swarneil1905/LocalMind/raw/refs/heads/main/docs/media/localmind-walkthrough.mp4)
 
-**[Download the full walkthrough (MP4, 80 seconds, 4.1 MB)](https://github.com/Swarneil1905/LocalMind/raw/refs/heads/main/docs/media/localmind-walkthrough.mp4)**
+**[Watch or download the full walkthrough (MP4, 80 seconds, 4.1 MB)](https://github.com/Swarneil1905/LocalMind/raw/refs/heads/main/docs/media/localmind-walkthrough.mp4)**
 
-A captioned tour of chat, sources, knowledge, memory, projects, tasks, and themes using a sample workspace. The preview above is an excerpt; the MP4 contains the complete walkthrough.
+A captioned tour of chat, sources, Knowledge, Memory, Projects, Tasks, and themes. The recording uses a sample workspace and example responses; it is a product tour, not a live model benchmark.
 
----
+## What you can do
+
+| Workspace | What it does |
+| --- | --- |
+| **Chat** | Stream responses from local models, switch model presets, stop a response, and retry a failed request. |
+| **Sources** | Inspect links and available publication dates for web-assisted answers. Source details are saved with the conversation. |
+| **Knowledge** | Index local documents and folders, then retrieve relevant passages during chat. Optional expanded search uses a generated draft answer to find related passages. |
+| **Memory** | Review and remove facts extracted from conversations, including relationships between saved facts. |
+| **Projects and Tasks** | Group conversations by project and track work alongside them. |
+| **Connections** | Connect supported apps to bring their data into your workspace. Availability and setup depend on the service and operating system. |
+| **Settings** | Choose installed models, download more models, configure web search, and switch between light and dark themes. |
+
+LocalMind is built for independent desktop installations. Each person has their own local workspace, models, and connections. There is no shared server or automatic conversation sync between devices.
 
 ## Install
 
-Download the latest release for your platform:
+**[Open the latest published release](https://github.com/Swarneil1905/LocalMind/releases/latest)** and choose an installer from its assets.
 
-| Platform | Download |
-|----------|----------|
-| **Windows** (x64) | [LocalMind_0.5.0_x64_en-US.msi](https://github.com/Swarneil1905/LocalMind/releases/tag/v0.5.0) - [.exe installer](https://github.com/Swarneil1905/LocalMind/releases/tag/v0.5.0) |
-| **macOS** (Apple Silicon) | [LocalMind_0.5.0_aarch64.dmg](https://github.com/Swarneil1905/LocalMind/releases/tag/v0.5.0) |
-| **macOS** (Intel) | [LocalMind_0.5.0_x64.dmg](https://github.com/Swarneil1905/LocalMind/releases/tag/v0.5.0) |
-| **Linux** (x64) | [LocalMind_0.5.0_amd64.AppImage](https://github.com/Swarneil1905/LocalMind/releases/tag/v0.5.0) - [.deb](https://github.com/Swarneil1905/LocalMind/releases/tag/v0.5.0) |
+This branch contains **0.7.0**. The latest published release may be older; the release page is the source of truth for available downloads. See the [0.7.0 release notes](docs/releases/v0.7.0.md) for the changes in this branch.
 
-> **SHA256 checksums** are attached to every release as `SHA256SUMS.txt`.
+The 0.7.0 release workflow builds these installers:
 
-### Prerequisites
+| Computer | Installer |
+| --- | --- |
+| Windows x64 | `.exe` setup installer |
+| macOS Apple Silicon, macOS 14 or later | `_aarch64.dmg` |
+| macOS Intel, macOS 14 or later | `_x64.dmg` |
+| Linux x64 | `.deb` or `.AppImage` |
 
-1. Install [Ollama](https://ollama.com) and pull at least one model:
-   ```
-   ollama pull qwen2.5:1.5b       # fast/cheap - used for memory extraction
-   ollama pull qwen3:8b           # default Balanced chat model
-   ollama pull nomic-embed-text   # required for knowledge base search
-   ```
-2. Launch LocalMind. It detects Ollama automatically at startup.
+The 0.7.0 installers include the Python AI service and Ollama runtime. You do not need to install Python, Node.js, Rust, or Docker to use them. If Ollama is already running locally, LocalMind uses it.
 
----
+Model weights are downloaded separately. Allow disk space for both the installer and your chosen models; memory requirements and response speed depend on the model and your hardware.
 
-## What is LocalMind?
+Release assets include `SHA256SUMS.txt`. Update bundles are signed for LocalMind's updater; Windows installers are not Authenticode-signed and macOS apps are not Apple-notarized. Your operating system may display a security prompt.
 
-LocalMind is a desktop AI assistant built on [Tauri](https://tauri.app), [React](https://react.dev), and [Ollama](https://ollama.com). It gives you:
+## Getting started
 
-- **Private chat** with local LLMs - no API key, no cloud subscription
-- **Persistent memory** - facts about you are extracted from conversations and injected into future chats
-- **Knowledge base** - index local files and folders; semantically search them during chat (RAG)
-- **HyDE retrieval** - generates a hypothetical answer before searching, improving retrieval quality
-- **Hierarchical memory** - linked facts with typed relationships shown in the Memory screen
-- **Web search** - optional, opt-in web search via DuckDuckGo or SearXNG
-- **Projects and tasks** - organize conversations under projects; track tasks across them
-- **Reasoning UI** - collapsible thinking trace for models that emit `<think>` blocks
+1. **Launch LocalMind and finish model setup.** The first-run screen shows download progress and lets you retry failed downloads. An internet connection is required to download models.
+2. **Choose a model and start a chat.** Settings lets you change which installed model each preset uses. Start with a smaller model if responses are slow.
+3. **Add your files in Knowledge.** Install the embedding model before indexing documents. Ask a question about the files after indexing finishes.
+4. **Review Memory.** Check the facts saved from conversations and remove anything you do not want reused.
+5. **Enable web search when you need online information.** Choose DuckDuckGo or configure a SearXNG instance. Check the sources and their dates, especially for current events.
 
----
+The setup screen currently offers these default models:
 
-## Architecture
+| Model | Purpose |
+| --- | --- |
+| `qwen2.5:1.5b` | Speed preset and background work such as memory extraction |
+| `qwen3:8b` | Balanced and Boost presets by default; these can be changed in Settings |
+| `nomic-embed-text` | Embeddings for Knowledge search |
 
-See [Product redesign](docs/PRODUCT_REDESIGN.md), [Independent desktop installations](docs/DESKTOP_RUNTIME.md), and [Chat reliability and interface decisions](docs/CHAT_RELIABILITY.md) for the request lifecycle, retrieval policy, root-cause analysis, references, and validation of the current chat implementation.
+Once models are installed, local chat and document retrieval can work offline. Web search, remote connections, model downloads, and update checks need their respective network services. Voice is not available in 0.7.0.
 
-```
-+---------------------------------------------------------+
-|                   LocalMind Desktop                     |
-|                                                         |
-|  +------------------+        +---------------------+   |
-|  |  React Frontend  |<------>|  Tauri (Rust)       |   |
-|  |  (TypeScript)    | events |  IPC / Commands     |   |
-|  +------------------+        +----------+----------+   |
-|                                         | HTTP          |
-|                               +---------v----------+   |
-|                               |  Python Sidecar    |   |
-|                               |  (FastAPI)         |   |
-|                               |                    |   |
-|                               |  +-------------+   |   |
-|                               |  |   SQLite    |   |   |
-|                               |  |  memories   |   |   |
-|                               |  |  projects   |   |   |
-|                               |  |   convs     |   |   |
-|                               |  +-------------+   |   |
-|                               |                    |   |
-|                               |  +-------------+   |   |
-|                               |  |   LanceDB   |   |   |
-|                               |  |  (vectors)  |   |   |
-|                               |  +-------------+   |   |
-|                               +---------+----------+   |
-+------------------------------------------+-------------+
-                                           | HTTP (local)
-                                 +---------v----------+
-                                 |  Ollama            |
-                                 |  (LLM inference)   |
-                                 +--------------------+
-```
+## Data and privacy
 
-**Data flow:** The frontend invokes Tauri commands over IPC. Rust forwards requests to the Python sidecar over a localhost-only HTTP connection authenticated with a per-session bearer token. The sidecar calls Ollama for inference and reads/writes to SQLite and LanceDB. Nothing leaves the machine unless web search is explicitly enabled.
+Model inference runs through Ollama on this computer. The AI service listens on loopback and requires a fresh token supplied by the desktop app for each launch.
 
----
+| Data or activity | Where it goes |
+| --- | --- |
+| Conversations, memories, projects, and tasks | Local SQLite databases in your profile |
+| Indexed documents | Local text/index data in SQLite and LanceDB |
+| Web-assisted questions | Search queries, which can include context from follow-up questions, go to the selected search provider; LocalMind also fetches result pages |
+| Saved web sources | Source links and available metadata stay with the local conversation |
+| Connected apps | Authentication and sync communicate with the connected service; downloaded data and session credentials are stored locally |
+| Model downloads | Ollama contacts the model registry |
+| Update checks and downloads | The updater contacts GitHub Releases |
 
-## Privacy Model
+LocalMind has no built-in analytics or usage tracking. Local storage is protected by your OS account permissions, not by application-level encryption. Connector credentials are not stored in a native keychain. People using the same OS account share its default profile.
 
-| What | Where it lives | Leaves your machine? |
-|------|---------------|----------------------|
-| Chat history | SQLite on disk | Never |
-| Memory (extracted facts) | SQLite on disk | Never |
-| Knowledge base (indexed files) | LanceDB + SQLite on disk | Never |
-| LLM inference | Ollama (local process) | Never |
-| Web search queries | Optional - DuckDuckGo / SearXNG | Only if enabled |
-| Fetched web content | In-memory only, never stored | Outbound only |
-| API keys (search providers) | SQLite on disk | Never logged or transmitted |
-| Telemetry | None collected | Never |
+| Platform | Default profile directory |
+| --- | --- |
+| Windows | `%APPDATA%\LocalMind` |
+| macOS | `~/Library/Application Support/LocalMind` |
+| Linux | `$XDG_DATA_HOME/LocalMind`, or `~/.local/share/LocalMind` |
 
-LocalMind contains no analytics, crash reporting, or usage tracking of any kind.
+Ollama manages its model storage separately. See [desktop runtime and storage](docs/DESKTOP_RUNTIME.md) for process isolation, profile migration, and developer overrides.
 
----
+## Troubleshooting
 
-## Comparison
+| Symptom | What to check |
+| --- | --- |
+| The local AI service does not start | Use the app's retry control after the failure. Close another LocalMind instance using the same profile; only one service can own it. |
+| A chat model is unavailable | Finish its download or choose an installed model in Settings. Source development also requires a running local Ollama service. |
+| Knowledge indexing or search fails | Check that `nomic-embed-text` is installed and the selected files are readable. |
+| A current-news question has no answer | Verify web search is enabled. LocalMind reports when it cannot retrieve suitable dated sources; try a more specific query. |
+| Responses are slow | Try a smaller installed model and disable expanded Knowledge search to reduce extra model calls. |
 
-| Feature | LocalMind | ChatGPT | Claude.ai | Open WebUI |
-|---------|-----------|---------|-----------|------------|
-| Runs 100% locally | Yes | No | No | Yes |
-| No account required | Yes | No | No | Yes |
-| Persistent memory | Yes | Yes (cloud) | Yes (cloud) | No |
-| Local knowledge base (RAG) | Yes | No | No | Yes |
-| HyDE retrieval | Yes | No | No | No |
-| Hierarchical memory links | Yes | No | No | No |
-| Conversation history | Yes | Yes | Yes | Yes |
-| Projects and tasks | Yes | No | No | No |
-| Reasoning UI (think blocks) | Yes | No | No | Yes |
-| Web search (opt-in) | Yes | Yes | Yes | Yes |
-| Native desktop app | Yes | No | No | No |
-| Open source | Yes | No | No | Yes |
-
----
+For a bug report, include the app version, operating system, model name, steps to reproduce, and relevant errors. Remove private conversation content and credentials before posting to [Issues](https://github.com/Swarneil1905/LocalMind/issues). Report security vulnerabilities using [SECURITY.md](SECURITY.md).
 
 ## Development
 
-### Requirements
+The repository uses **Node.js 22**, **pnpm 11.0.9**, **Python 3.11**, and **Rust stable**, matching CI. Native development also needs the [Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/) and a running local Ollama service.
 
-- Rust stable (>= 1.77)
-- Node.js 20 + pnpm 9
-- Python 3.11
-- Ollama
+See the [desktop development guide](apps/desktop/README.md) for virtual-environment setup, first-build preparation, and validation commands. Docker is not required for development or the release workflow.
 
-### Setup
+| Directory | Responsibility |
+| --- | --- |
+| `apps/desktop/src` | React and TypeScript interface |
+| `apps/desktop/src-tauri` | Rust desktop commands, lifecycle, and native packaging |
+| `crates/` | Shared Rust runtime, database, and permission crates |
+| `services/ai` | Python/FastAPI service, retrieval, memory, and connections |
+| `scripts/release` | Runtime staging, packaging, smoke checks, and release validation |
+| `.github/workflows` | Frontend, Python, Rust, and native release workflows |
 
-```bash
-# Clone
-git clone https://github.com/Swarneil1905/LocalMind
-cd LocalMind
-
-# Frontend deps
-cd apps/desktop && pnpm install
-
-# Python deps
-cd ../../services/ai && pip install -r requirements.txt
-
-# Run in dev mode (starts Tauri dev server + sidecar)
-cd ../../apps/desktop && pnpm tauri dev
+```mermaid
+flowchart LR
+    UI[React desktop UI] <-->|Tauri commands and events| Rust[Rust desktop process]
+    Rust <-->|Authenticated loopback HTTP| AI[Python AI service]
+    AI <--> DB[(SQLite and LanceDB)]
+    AI <-->|Local inference| Ollama[Ollama]
+    AI <-->|Optional search and connections| Web[External services]
 ```
 
-### CI
+Rust owns service startup, readiness, cancellation, and recovery. Python owns retrieval and persistence. Request-scoped streaming keeps replies attached to the conversation that started them.
 
-Three GitHub Actions workflows run on every push and pull request:
+### Checks and releases
 
-- **ci-frontend.yml** - TypeScript, ESLint, tests, and production build
-- **ci-python.yml** - ruff, API regressions, release tooling tests, and import checks
-- **ci-rust.yml** - cargo check + clippy + test
+The frontend, Python, and Rust workflows run on pushes to `main` and pull requests targeting `main`. They check types, lint, tests, builds, and release tooling. The Release workflow runs these checks again, builds on native runners, tests packaged service payloads, and verifies assets before publication.
 
-### Release
+Release preparation, signing, build-only runs, and failure recovery are documented in [Releasing LocalMind](docs/RELEASING.md). A failed release build does not make a new version available for download.
 
-The Release workflow builds native installers, checks the packaged services,
-verifies updater signatures, and publishes only after all platforms pass.
-See [Releasing](docs/RELEASING.md) for versioning and recovery details.
+## Further reading
 
-```bash
-gh workflow run release.yml --ref main -f publish=true
-```
-
-The published assets include installers, signed updater bundles, `latest.json`,
-and `SHA256SUMS.txt` for Windows x64, macOS Intel/Apple Silicon, and Linux x64.
-
----
-
-## Security
-
-See [SECURITY.md](SECURITY.md) for the vulnerability disclosure policy.
-
----
+- [Chat reliability](docs/CHAT_RELIABILITY.md): request handling, search freshness, and source persistence.
+- [Desktop runtime](docs/DESKTOP_RUNTIME.md): per-user storage and service lifecycle.
+- [Product design](docs/PRODUCT_REDESIGN.md): interface decisions and workspace behavior.
+- [Releasing](docs/RELEASING.md): native packaging and publication.
 
 ## License
 
-MIT - see [LICENSE](LICENSE).
+LocalMind is released under the [MIT License](LICENSE). Bundled dependencies and downloaded models retain their own licenses.
