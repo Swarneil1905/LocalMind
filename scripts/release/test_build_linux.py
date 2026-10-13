@@ -70,12 +70,16 @@ class LinuxBuildTests(unittest.TestCase):
 
             with patch("build_linux.shutil.which", return_value="ldd"), \
                     patch("build_linux.subprocess.run", side_effect=run), patch("build_linux.print"), \
-                    patch("build_linux.prepare_linuxdeploy") as prepare:
+                    patch("build_linux.prepare_linuxdeploy") as prepare, \
+                    patch("build_linux.versioned_installer", return_value=runtime / "fixture.deb") as installer, \
+                    patch("build_linux.repack_deb") as repack:
                 build_linux(runtime)
             self.assertEqual([call[0][0] for call in observed], ["ldd", "ldd", "pnpm"])
             self.assertEqual(observed[-1][0], TAURI_COMMAND)
             self.assertTrue(observed[-1][1]["check"])
             prepare.assert_called_once()
+            installer.assert_called_once()
+            repack.assert_called_once_with(runtime / "fixture.deb")
             self.assertEqual(observed[-1][1]["env"]["XDG_CACHE_HOME"], str(prepare.call_args.args[0]))
             self.assertEqual(observed[-1][1]["env"]["LINUXDEPLOY_EXCLUDED_LIBRARIES"], "libcuda.so*")
 

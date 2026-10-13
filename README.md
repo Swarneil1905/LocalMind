@@ -9,6 +9,14 @@
 
 No account required. Model inference stays on your computer. Optional web search sends queries to the selected provider.
 
+## See it in action
+
+[![LocalMind walkthrough: asking a question and inspecting its sources](docs/media/localmind-preview.gif)](docs/media/localmind-walkthrough.mp4)
+
+**[Download the full walkthrough (MP4, 80 seconds, 4.1 MB)](https://github.com/Swarneil1905/LocalMind/raw/refs/heads/main/docs/media/localmind-walkthrough.mp4)**
+
+A captioned tour of chat, sources, knowledge, memory, projects, tasks, and themes using a sample workspace. The preview above is an excerpt; the MP4 contains the complete walkthrough.
+
 ---
 
 ## Install

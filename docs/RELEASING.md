@@ -53,6 +53,19 @@ tags also trigger the workflow when the tag matches the configured version.
 - Updater signatures are checked with the existing public key. The
   `TAURI_SIGNING_PRIVATE_KEY` repository secret must match that key. Never rotate
   the key merely to fix a build: installed versions trust the existing key.
+- Tauri's Debian package uses gzip and can exceed the GitHub asset limit with
+  the complete Ollama runtime. The Linux wrapper repacks it with `dpkg-deb`
+  using xz level 9, retaining control scripts, files, modes, and symlinks. It
+  checks the compressed size and signs the final bytes before replacing the
+  original package. Installer smoke tests then extract and run that final DEB.
+  The AppImage updater and its signature are left intact. The 2 GiB limit is
+  still enforced; reducing the package does not remove CPU or GPU libraries.
+- The macOS wrapper retries bundling at most twice, only after `hdiutil` reports
+  a busy eject/unmount. It reads `hdiutil info -plist`, detaches only writable
+  temporary images in the current target's bundle directory with the exact
+  product/version/architecture name, and removes those detached intermediates.
+  Retries use `tauri bundle`, avoiding another Rust compile. Other failures stop
+  immediately; unrelated mounted images are never detached.
 - Assembly requires all four platforms, checks hashes and filenames, and rejects
   assets of 2 GiB or larger. `SHA256SUMS.txt` covers all other published assets.
 

@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from artifacts import check_file
+from artifacts import check_file, read_signature
 from build_sidecar import ROOT
 
 
@@ -33,6 +33,6 @@ def repack_deb(installer: Path) -> None:
             "pnpm", "--filter", "desktop", "tauri", "signer", "sign", str(packed),
         ], cwd=ROOT, check=True)
         signature = packed.with_name(packed.name + ".sig")
-        check_file(signature)
+        read_signature(signature)
         packed.replace(installer)
         signature.replace(installer.with_name(installer.name + ".sig"))

@@ -201,7 +201,7 @@ def main(argv: list[str] | None = None) -> None:
     except subprocess.CalledProcessError as error:
         parser.exit(error.returncode if error.returncode > 0 else 1,
                     f"Linux desktop build failed with status {error.returncode}.\n")
-    except (OSError, RuntimeError) as error:
+    except (OSError, RuntimeError, ValueError) as error:
         parser.exit(1, f"Linux desktop build failed: {error}\n")
 
 

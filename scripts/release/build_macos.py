@@ -51,6 +51,12 @@ def detach_build_images(bundle: Path, installer_name: str) -> None:
     for device in sorted(devices):
         print(f"Detaching this build's busy temporary DMG: {device}", flush=True)
         subprocess.run(["hdiutil", "detach", device, "-force"], check=True, timeout=60)
+    # An aborted create-dmg leaves the multi-GB writable image behind. Once
+    # detached, remove only this target/version's intermediates so the asset
+    # collector cannot mistake them for a second installer after a retry.
+    for path in expected_parent.glob("rw.*.dmg"):
+        if pattern.fullmatch(path.name) and path.is_file() and not path.is_symlink():
+            path.unlink()
 
 
 def build_macos(target: str) -> None:
