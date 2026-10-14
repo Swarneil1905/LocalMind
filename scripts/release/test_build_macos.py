@@ -17,6 +17,16 @@ from build_macos import build_macos, detach_build_images
 BUSY = 'hdiutil: couldn\'t eject "disk4" - Resource busy\nfailed to bundle project'
 
 
+def create_fixture_image(image: Path) -> None:
+    # Blank images use -type UDIF, which produces a writable UDRW image.
+    # -format belongs to -srcfolder/-srcdevice creation and fails without them.
+    # See hdiutil(1), create: https://keith.github.io/xcode-man-pages/hdiutil.1.html
+    subprocess.run([
+        "hdiutil", "create", "-size", "64m", "-layout", "SPUD",
+        "-fs", "HFS+", "-type", "UDIF", "-volname", "LocalMindFixture", str(image),
+    ], check=True, timeout=90)
+
+
 class MacBuildTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -29,6 +39,22 @@ class MacBuildTests(unittest.TestCase):
             patcher = patch(f"build_macos.{name}", value)
             patcher.start()
             self.addCleanup(patcher.stop)
+
+    def test_blank_fixture_uses_blank_image_options(self):
+        # Run on every OS: the native test is skipped on Linux Python CI, so an
+        # invalid source-image option otherwise reaches both Mac release jobs.
+        image = self.root / "fixture with spaces.dmg"
+        with patch("test_build_macos.subprocess.run") as run:
+            create_fixture_image(image)
+        command = run.call_args.args[0]
+        self.assertEqual(command[:2], ["hdiutil", "create"])
+        self.assertIn("-size", command)
+        self.assertEqual(command[command.index("-type") + 1], "UDIF")
+        for source_option in ("-format", "-srcfolder", "-srcdevice"):
+            self.assertNotIn(source_option, command)
+        self.assertEqual(command[-1], str(image))
+        self.assertTrue(run.call_args.kwargs["check"])
+        self.assertNotIn("capture_output", run.call_args.kwargs)
 
     def test_busy_image_cleanup_retries_bundling_without_recompiling(self):
         for target, arch in (("x86_64-apple-darwin", "x64"), ("aarch64-apple-darwin", "aarch64")):
@@ -114,12 +140,7 @@ class NativeMacImageTests(unittest.TestCase):
             image = bundle / "macos" / f"rw.123.{installer}"
             mount = root / "mount"
             mount.mkdir()
-            # A tiny image with the default GPT layout can leave insufficient
-            # space for its partitions. Use an explicit Apple partition map and
-            # ample filesystem space. Keep stderr visible on CI if hdiutil fails.
-            subprocess.run(["hdiutil", "create", "-size", "64m", "-layout", "SPUD",
-                            "-fs", "HFS+", "-format", "UDRW", "-volname", "LocalMindFixture",
-                            str(image)], check=True, timeout=90)
+            create_fixture_image(image)
             attached = False
             try:
                 subprocess.run(["hdiutil", "attach", "-nobrowse", "-noautoopen", "-mountpoint", str(mount),

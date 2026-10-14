@@ -76,8 +76,9 @@ tags also trigger the workflow when the tag matches the configured version.
   Retries use `tauri bundle`, avoiding another Rust compile. Other failures stop
   immediately; unrelated mounted images are never detached.
 - Each Mac runner tests disk-image recovery before building. The native fixture
-  uses a 64 MiB HFS+ writable image with an explicit SPUD partition layout,
-  avoiding the space overhead of the default GPT layout on a tiny image. Its
+  creates a blank 64 MiB HFS+ writable image with `-type UDIF` and an explicit
+  SPUD partition layout. Do not use `-format UDRW` for blank-image creation:
+  `hdiutil` requires `-srcfolder` or `-srcdevice` with `-format`. The fixture's
   create/attach commands have timeouts and expose native diagnostics in the job
   log. A fixture failure remains a failing check rather than being skipped.
 - Assembly requires all four platforms, checks hashes and filenames, and rejects
