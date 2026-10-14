@@ -89,6 +89,14 @@ digests, then publishes it as the latest release. It creates the version tag at
 the tested commit if necessary. It never moves an existing tag or replaces a
 public release. A failed build leaves the previous release available.
 
+Draft creation uses GitHub's REST response directly, retaining the release ID and
+its upload URL. Uploads, asset listing, verification, and publication use that ID;
+they do not need to rediscover a newly created draft by its tag. Files stream from
+disk. GitHub's returned filename, size, upload state, and SHA-256 must match before
+publication. See the [release assets API](https://docs.github.com/en/rest/releases/assets).
+Manual and tag-triggered Release runs share one concurrency group so they cannot
+write to the same draft simultaneously.
+
 The verification/publishing job runs on Ubuntu 24.04, whose official repositories
 provide `minisign`. Ubuntu 22.04 does not package that tool. Linux installers
 still build on 22.04; changing the publisher does not change their runtime
@@ -98,8 +106,26 @@ compatibility. Signature verification remains required before publication.
 
 Read the failed job's logs before retrying. A transient download/upload failure
 can be retried on the same commit. Code or packaging fixes require a new commit
-and a fresh workflow run. An incomplete draft can be resumed only by the same
-tested commit; inspect its assets before making any manual change.
+and a fresh workflow run. An incomplete draft with assets can be resumed only by
+the same tested commit. Matching uploaded files are reused; incomplete or mismatched
+files with expected names are replaced. Unexpected assets and duplicate drafts
+stop publication for inspection instead of being deleted automatically.
+
+The earlier publisher could create a draft and then fail before uploading anything.
+An empty draft can be reused for a newly tested commit only when it was created by
+`github-actions[bot]`, has the exact generated title and release notes, and targets
+an explicit commit SHA. The existing tag must already match the new tested commit
+(or be absent). A draft containing any assets, a manually authored draft, and a
+public release are never retargeted automatically. The log identifies the draft
+ID and tested SHA. Inspect other obsolete drafts in GitHub Releases before removing
+them; do not delete a public release.
+
+Transient read failures have bounded retries. Mutating requests are not blindly
+repeated after a lost response: draft creation or an upload may already have
+succeeded. Inspect the existing draft and rerun the same tested commit. If the
+final publication response is lost, check GitHub Releases first; an already public
+release will deliberately be refused on a rerun. Rerunning an old failed workflow
+does not load a publisher fix from a newer commit.
 
 A rerun of a failed tagged workflow still uses the original tagged commit. After
 committing a packaging fix, push the commit and update the failed, unpublished

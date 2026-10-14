@@ -15,7 +15,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  # Manual and tag runs must not upload to the same draft concurrently.
+  group: release-publication
   cancel-in-progress: false
 
 jobs:
