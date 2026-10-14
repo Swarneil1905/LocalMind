@@ -89,6 +89,11 @@ digests, then publishes it as the latest release. It creates the version tag at
 the tested commit if necessary. It never moves an existing tag or replaces a
 public release. A failed build leaves the previous release available.
 
+The verification/publishing job runs on Ubuntu 24.04, whose official repositories
+provide `minisign`. Ubuntu 22.04 does not package that tool. Linux installers
+still build on 22.04; changing the publisher does not change their runtime
+compatibility. Signature verification remains required before publication.
+
 ## Failure recovery
 
 Read the failed job's logs before retrying. A transient download/upload failure

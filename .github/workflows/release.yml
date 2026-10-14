@@ -177,7 +177,9 @@ jobs:
   publish:
     name: Verify and publish release
     needs: [version, build]
-    runs-on: ubuntu-22.04
+    # minisign is available in Noble's universe repository, not Jammy's.
+    # This job verifies existing artifacts; keep Linux builds on 22.04 above.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: write
