@@ -5,6 +5,7 @@ use futures_util::future::{AbortHandle, Abortable};
 use futures_util::StreamExt;
 use localmind_core::{
     ollama::{check as ollama_check, OllamaStatus},
+    process::background_command,
     sidecar::SidecarHandle,
 };
 use serde::{Deserialize, Serialize};
@@ -27,23 +28,6 @@ struct RuntimeStatus {
 struct OllamaState(Mutex<Option<OllamaStatus>>);
 /// Holds the child process for a bundled Ollama we started ourselves.
 struct OllamaProcess(Mutex<Option<std::process::Child>>);
-
-// ---------------------------------------------------------------------------
-// Windows: hide the console window
-// ---------------------------------------------------------------------------
-
-/// `CREATE_NO_WINDOW`. Raw `std::process::Command` (unlike Tauri's own
-/// `Command.sidecar()` shell-plugin API) does not set this automatically, so
-/// without it launching the bundled Ollama binary pops a visible
-/// console/terminal window on Windows.
-#[cfg(target_os = "windows")]
-fn hide_console(cmd: &mut std::process::Command) {
-    use std::os::windows::process::CommandExt;
-    cmd.creation_flags(0x0800_0000);
-}
-
-#[cfg(not(target_os = "windows"))]
-fn hide_console(_cmd: &mut std::process::Command) {}
 
 // ---------------------------------------------------------------------------
 // Bundled Ollama helpers
@@ -101,13 +85,12 @@ async fn ensure_ollama(app_handle: tauri::AppHandle) {
     }
 
     println!("[localmind] Starting bundled Ollama: {:?}", ollama_path);
-    let mut ollama_command = std::process::Command::new(&ollama_path);
+    let mut ollama_command = background_command(&ollama_path);
     ollama_command
         .arg("serve")
         .env("OLLAMA_HOST", "127.0.0.1:11434")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-    hide_console(&mut ollama_command);
     match ollama_command.spawn() {
         Ok(child) => {
             *app_handle.state::<OllamaProcess>().0.lock().unwrap() = Some(child);

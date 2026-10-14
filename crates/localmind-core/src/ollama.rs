@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use crate::process::background_command;
 
 const OLLAMA_BASE: &str = "http://127.0.0.1:11434";
 const TIMEOUT_SECS: u64 = 3;
@@ -143,20 +144,33 @@ async fn detect_gpu() -> Option<GpuInfo> {
 
 async fn detect_nvidia() -> Option<GpuInfo> {
     // Single nvidia-smi call: name, total VRAM (MiB), free VRAM (MiB)
-    let output = tokio::process::Command::new("nvidia-smi")
-        .args([
-            "--query-gpu=name,memory.total,memory.free",
-            "--format=csv,noheader,nounits",
-        ])
-        .output()
-        .await
-        .ok()?;
+    let mut command = background_command("nvidia-smi");
+    command.args([
+        "--query-gpu=name,memory.total,memory.free",
+        "--format=csv,noheader,nounits",
+    ]);
+    let output = run_gpu_probe(command, Duration::from_secs(TIMEOUT_SECS)).await?;
+    parse_nvidia_output(&String::from_utf8_lossy(&output.stdout))
+}
 
+async fn run_gpu_probe(
+    command: std::process::Command,
+    timeout: Duration,
+) -> Option<std::process::Output> {
+    let mut command = tokio::process::Command::from(command);
+    // A stalled driver must not leave probes accumulating on every status poll.
+    command.kill_on_drop(true);
+    let output = tokio::time::timeout(timeout, command.output())
+        .await
+        .ok()?
+        .ok()?;
     if !output.status.success() {
         return None;
     }
+    Some(output)
+}
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+fn parse_nvidia_output(stdout: &str) -> Option<GpuInfo> {
     // Each GPU is one line; take the first one
     let line = stdout.lines().next()?;
     let parts: Vec<&str> = line.split(',').map(str::trim).collect();
@@ -170,4 +184,47 @@ async fn detect_nvidia() -> Option<GpuInfo> {
         vram_total_mib: parts[1].parse().ok()?,
         vram_free_mib: parts[2].parse().ok()?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nvidia_output_uses_first_gpu_and_parses_memory() {
+        let gpu = parse_nvidia_output("NVIDIA GeForce RTX 4070, 12282, 10000\nOther GPU, 8192, 7000\n").unwrap();
+        assert_eq!(gpu.name, "NVIDIA GeForce RTX 4070");
+        assert_eq!(gpu.vram_total_mib, 12282);
+        assert_eq!(gpu.vram_free_mib, 10000);
+    }
+
+    #[test]
+    fn unavailable_or_invalid_gpu_data_is_optional() {
+        for output in ["", "No devices were found", "GPU, N/A, N/A", "GPU, 4096"] {
+            assert!(parse_nvidia_output(output).is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn missing_gpu_tool_does_not_fail_status_check() {
+        let command = background_command("localmind-missing-gpu-tool-for-test");
+        assert!(run_gpu_probe(command, Duration::from_secs(1)).await.is_none());
+    }
+
+    #[test]
+    #[ignore = "fixture executed in a separate process by the timeout test"]
+    fn slow_gpu_probe() {
+        std::thread::sleep(Duration::from_secs(30));
+    }
+
+    #[tokio::test]
+    async fn stalled_gpu_probe_is_bounded() {
+        let mut command = background_command(std::env::current_exe().unwrap());
+        command.args(["--exact", "ollama::tests::slow_gpu_probe", "--ignored"]);
+        let result = tokio::time::timeout(
+            Duration::from_secs(2),
+            run_gpu_probe(command, Duration::from_millis(50)),
+        ).await.expect("a stalled GPU probe must not hold up status polling");
+        assert!(result.is_none());
+    }
 }

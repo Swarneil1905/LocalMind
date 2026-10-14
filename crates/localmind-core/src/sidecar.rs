@@ -9,29 +9,11 @@
 
 use std::net::TcpListener;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::time::Duration;
 
 use rand::Rng;
-
-// ---------------------------------------------------------------------------
-// Windows: hide the console window
-// ---------------------------------------------------------------------------
-
-/// `CREATE_NO_WINDOW`. Raw `std::process::Command` (unlike Tauri's own
-/// `Command.sidecar()` shell-plugin API) does not set this automatically, so
-/// without it every launch pops a visible console/terminal window on Windows.
-#[cfg(target_os = "windows")]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-#[cfg(target_os = "windows")]
-fn hide_console(cmd: &mut Command) {
-    use std::os::windows::process::CommandExt;
-    cmd.creation_flags(CREATE_NO_WINDOW);
-}
-
-#[cfg(not(target_os = "windows"))]
-fn hide_console(_cmd: &mut Command) {}
+use crate::process::background_command;
 
 // ---------------------------------------------------------------------------
 // Port selection
@@ -178,14 +160,13 @@ impl SidecarHandle {
         // Linux:    ~/.local/share/LocalMind
         let data_dir = data_dir()?;
 
-        let mut command = Command::new(python_exe());
+        let mut command = background_command(python_exe());
         command
             .arg(&script)
             .env("LOCALMIND_PORT", port.to_string())
             .env("LOCALMIND_TOKEN", &token)
             .env("LOCALMIND_DATA_DIR", data_dir.to_string_lossy().as_ref())
             .stderr(Stdio::inherit());
-        hide_console(&mut command);
         let child = command.spawn().map_err(SidecarError::Spawn)?;
 
         Ok(SidecarHandle { child, port, token })
@@ -207,13 +188,12 @@ impl SidecarHandle {
             binary_path
         );
 
-        let mut command = Command::new(&binary_path);
+        let mut command = background_command(&binary_path);
         command
             .env("LOCALMIND_PORT", port.to_string())
             .env("LOCALMIND_TOKEN", &token)
             .env("LOCALMIND_DATA_DIR", data_dir.to_string_lossy().as_ref())
             .stderr(Stdio::inherit());
-        hide_console(&mut command);
         let child = command.spawn().map_err(SidecarError::Spawn)?;
 
         Ok(SidecarHandle { child, port, token })
@@ -317,7 +297,7 @@ mod tests {
     #[tokio::test]
     async fn stopped_child_is_reported_before_health_timeout() {
         // The test runner's --help mode is a portable, immediately exiting child.
-        let mut child = Command::new(std::env::current_exe().unwrap())
+        let mut child = background_command(std::env::current_exe().unwrap())
             .arg("--help")
             .stdout(Stdio::null())
             .spawn().unwrap();
