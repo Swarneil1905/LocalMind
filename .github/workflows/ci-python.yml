@@ -36,6 +36,12 @@ jobs:
         working-directory: services/ai
         run: python -m unittest discover -s tests -v
 
+      - name: Conversation baseline and inventory checks
+        run: |
+          ruff check --config services/ai/pyproject.toml scripts/evaluation
+          python scripts/evaluation/check_suite.py
+          python -m unittest discover -s scripts/evaluation -p "test_*.py" -v
+
       - name: Verify sidecar entry point imports cleanly
         working-directory: services/ai
         run: python -c "import app.main; import app.api.routes.health"

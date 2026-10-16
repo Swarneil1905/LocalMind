@@ -146,6 +146,7 @@ Release preparation, signing, build-only runs, and failure recovery are document
 
 ## Further reading
 
+- [Product evaluation](evaluation/README.md): the fixed conversation baseline, scoring rubric, and demo journeys.
 - [Chat reliability](docs/CHAT_RELIABILITY.md): request handling, search freshness, and source persistence.
 - [Desktop runtime](docs/DESKTOP_RUNTIME.md): per-user storage and service lifecycle.
 - [Product design](docs/PRODUCT_REDESIGN.md): interface decisions and workspace behavior.

@@ -60,3 +60,4 @@ htmlcov/
 .local-test-deps/
 .local-test-data/
 artifacts/
+outputs/
