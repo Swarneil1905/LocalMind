@@ -184,6 +184,15 @@ def details_metadata(value) -> dict:
     return result
 
 
+def is_remote_model(value: dict) -> bool:
+    # Ollama exposes these strings at the top level of ListModelResponse and
+    # ShowResponse, not in model_info. Keep only a flag: hosts can contain secrets.
+    indicators = [value.get(key, "") for key in ("remote_host", "remote_model")]
+    if not all(isinstance(item, str) for item in indicators):
+        raise InvalidResponseShape()
+    return any(bool(item) for item in indicators)
+
+
 def models_metadata(value: dict, *, active: bool = False) -> dict:
     if not isinstance(value.get("models"), list):
         raise InvalidResponseShape()
@@ -192,6 +201,7 @@ def models_metadata(value: dict, *, active: bool = False) -> dict:
         if not isinstance(entry, dict) or not any(model_name(entry.get(key)) for key in ("name", "model")):
             raise InvalidResponseShape()
         record = {key: entry[key] for key in ("name", "model") if model_name(entry.get(key))}
+        record["is_remote"] = is_remote_model(entry)
         if "digest" in entry:
             if not isinstance(entry["digest"], str) or not re.fullmatch(r"(?:sha256:)?[0-9a-fA-F]{64}", entry["digest"]):
                 raise InvalidResponseShape()
@@ -235,7 +245,8 @@ def show_metadata(value: dict) -> dict:
             continue
         if numeric(item):
             parameters[parts[0]] = item
-    return {"status": "ok", "details": details, "model_info": allowed, "numeric_parameters": parameters}
+    return {"status": "ok", "is_remote": is_remote_model(value), "details": details,
+            "model_info": allowed, "numeric_parameters": parameters}
 
 
 def ollama_metadata(model: str) -> dict:
