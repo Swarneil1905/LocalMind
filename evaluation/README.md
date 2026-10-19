@@ -1,12 +1,20 @@
 # LocalMind conversation evaluation corpus
 
-This is a synthetic, manually reviewed product-quality corpus. It defines expected behavior; it does **not** report measured quality, establish a new baseline, or imply that every behavior is implemented. It includes no user conversations, connector content, or copied articles.
+This is a synthetic product-quality corpus with a repeatable service runner and a manual review workflow. The cases define expected behavior; a successful execution does **not** establish a quality pass or imply that every behavior is implemented. It includes no user conversations, connector content, or copied articles.
 
 `cases.json` contains **30 cases: 20 development and 10 held out**. There are first-turn requests as well as follow-ups with deliberately constructed prior conversation. Assistant messages are fixtures, not recorded model answers or evidence that an action happened.
 
 The corpus targets problems visible in the current application: inappropriate web searches, lost follow-up context, generic teaching, unsupported action claims, unselected project material, and unverified current information. It is not a general intelligence benchmark, a comprehensive security suite, or a substitute for native desktop testing.
 
-See the [Day 1 findings](../docs/product/day-01-baseline.md) for the recorded environment and small service sample, the [demo journeys](../docs/product/demo-journeys.md) for end-to-end targets, and the [tester checklist](../docs/product/tester-checklist.md) for recruiting and observing users.
+See the [demo journeys](../docs/product/demo-journeys.md) for end-to-end targets and the [tester checklist](../docs/product/tester-checklist.md) for observing users. Keep execution reports, environment captures, completed reviews and working notes in the ignored `artifacts/` directory. The repository contains reusable tooling, test cases and instructions; a passing software test suite is not a count of conversations evaluated by a model.
+
+## Evaluation and training are separate
+
+The 30 cases are a starting regression suite, not a training dataset or a broad product benchmark. Validation checks their structure. Replaying them measures model and application behavior without updating model weights. Their acceptance rubrics are reviewer instructions, not target assistant answers for supervised training.
+
+Keep any future training data separate from evaluation cases and near-duplicates. Training examples need usable target responses or preference pairs, permitted source data, quality review and their own validation split. Related conversations and paraphrases should remain in the same split to reduce leakage. Passing these regression cases alone cannot establish general conversational ability.
+
+Adding cases must extend behavioral coverage instead of merely multiplying paraphrases. Preserve the versioned baseline and its fixed case IDs; create and validate a separately versioned expanded suite when broader coverage is ready. The current validator intentionally accepts only the original 30-case suite.
 
 ## Check the corpus and record the environment
 
@@ -26,6 +34,41 @@ python scripts/evaluation/capture_environment.py --out artifacts/evaluation/envi
 ```
 
 This is a metadata inventory, not inference or a quality benchmark. It does not read user conversations or save model prompts. Ollama's model-info response can contain prompt/template fields; the capture discards them. It refuses to replace an existing output unless `--force` is explicitly supplied; prefer a new output name when recording another experiment. Use the actually selected model rather than assuming the example model is active.
+
+## Replay and review
+
+Use Python 3.11 or newer with `services/ai/requirements.txt` installed. Start Ollama with the selected local model already installed. The runner never pulls a model. From the repository root:
+
+```powershell
+python scripts/evaluation/run_suite.py --profile balanced --cases LM-006 LM-007 LM-011 LM-016 LM-017 --out artifacts/evaluation/balanced-trial-01
+python scripts/evaluation/review_run.py prepare --run artifacts/evaluation/balanced-trial-01 --out artifacts/evaluation/balanced-trial-01/review.json
+```
+
+The profile resolves the current UI model mapping (`speed`, `balanced`, or `boost`); `--model` explicitly overrides the model and labels that condition in the manifest. Preflight rejects cloud/remote aliases using installed-model and model-info metadata, including aliases renamed to look local. The inventory retains only an `is_remote` flag, not remote addresses. The runner preserves the Python service's own prompt and generation settings. This is not a native desktop replay: the Rust prompt, UI settings, authenticated HTTP transport and stateful tools are not exercised.
+
+Omit `--cases` to run all 20 development cases in their fixed order. `--timeout-seconds` defaults to 120 per case, including thinking; the worker has a separate hard stop with a 15-second startup allowance. Ctrl+C stops the evaluator's worker, preserves its last checkpoint and leaves remaining cases explicitly unevaluated. It does not stop the shared Ollama server. Repeating a run requires a **new output directory**.
+
+Each run saves:
+
+| File | Contents |
+| --- | --- |
+| `manifest.json` | Selected IDs/split, profile/model, timestamps, execution state, corpus hash, source hashes, and model snapshot. |
+| `environment.json` | Hardware, installed model digest/quantization, model defaults, initial loaded state, and Git HEAD/dirty state. |
+| `cases.json` | Only the selected synthetic prompts, fixtures and review rubric. Rubric metadata is never sent to the model. |
+| `results/LM-xxx.json` | Full answer, actual model request if one occurred, source trace, timings, completion metrics, errors and truncation. Thinking text is excluded. |
+| `review.json` | Initially blank scoring form, bound to the exact manifest, cases and result bytes by SHA-256. |
+
+The runner calls the real service generation function in a fresh process with an isolated profile for each case. Source fixtures replace network retrieval and the clock is frozen. All HTTP inference is restricted to the fixed loopback Ollama endpoint with proxies and redirects disabled. No connected accounts, user documents or real chat history are loaded. A refusal produced before inference has `effective_request: null` and `trace.model_called: false`; its prompt remains in `cases.json`.
+
+Read the saved answer, prompt and trace, then fill in your name/date and the applicable judgments in `review.json`. The template repeats each acceptance item. Add supporting evidence for judgments; a fluent answer alone cannot prove a tool call or persisted state. Use the [rubric](#manual-rubric) below. The tool validates your judgments and counts outcomes; it does not grade prose or supply human judgments automatically.
+
+```powershell
+python scripts/evaluation/review_run.py summarize --run artifacts/evaluation/balanced-trial-01 --review artifacts/evaluation/balanced-trial-01/review.json --out artifacts/evaluation/balanced-trial-01/summary.json
+```
+
+Omit `--review` for an execution-only summary with completed answers marked unreviewed. Summary denominators include every selected case and separate service from desktop coverage. Missing results and transport failures cannot pass. Editing a result invalidates its old review; preserve the original run and create a new review when evidence changes. Critical case failures remain visible independently of dimension scores.
+
+The evaluator tests run in Python CI with synthetic transports: no Ollama server, GPU, paid API or model download is needed. Live runs are a separate, deliberate step; the commands above place their outputs in the ignored `artifacts/` directory. Inspect any report before choosing to publish it.
 
 ## Schema and execution contract
 
@@ -52,7 +95,7 @@ Memory fixtures should enter through the same prompt/context boundary being eval
 
 `evidence` supplies frozen retrieval data. An empty array means no usable sources are available. An omitted array means no source fixture is supplied; it does not authorize fetching arbitrary live sources. All source hosts end in `.invalid`. **Never fetch these URLs or replace them with live search results.** Dated notices describe a fictional town and are not real news.
 
-A future runner must inject fixtures at the retrieval boundary and freeze the clock for cases with `as_of`; adding a sentence to the prompt does not test date filtering. The current service constructs the date internally and fetches sources itself, so these fields are not native chat API parameters. A replay that bypasses those boundaries must be labeled a response-only test. Keep that separate from a test of search planning, source rejection, or retrieval privacy. Preserve normal freshness filtering: stale, undated, or future-dated source fixtures may produce no usable evidence.
+The service runner injects fixtures at the search-provider and extracted-page boundaries, and freezes both the chat and query-planning clocks to `as_of` (or the run's fixed UTC start). It exercises normal query planning and freshness filtering: stale, undated, or future-dated source fixtures may produce no usable evidence. These are evaluator adapters, not new chat API parameters. HTTP page fetching, HTML extraction and source-provider quality are not tested. Memory fixtures are supplied directly to the service prompt and labeled response-only; they cannot establish memory retrieval or persistence.
 
 Useful trace fields are the query decision, source IDs accepted/rejected, prompt size, first useful answer latency (separate from thinking latency), completion time, generated tokens, errors, and cancellation outcome. Trace private content only in the isolated synthetic profile. Source inclusion in a model response is not proof that a search was or was not performed; inspect the trace where the rubric requires routing behavior.
 
@@ -70,7 +113,7 @@ Useful trace fields are the query decision, source IDs accepted/rejected, prompt
 | LM-019–020, LM-030 | A practical starting point, honest uncertainty, and one useful clarifying question. |
 | LM-027 | Project-scoped retrieval and evidence separation. |
 
-LM-001–020 are development cases. LM-021–030 are **locked for later evaluation and must not be run during Day 1**. Authors may read and validate the corpus format today, but do not use held-out responses to tune prompts, routing, retrieval, or models. When a held-out case is used for tuning, mark it as consumed in the experiment record and replace it with a new independently written held-out case before reporting a fresh held-out result. A small, repository-visible held-out set reduces accidental reuse; it does not prevent training contamination or establish statistical confidence.
+LM-001–020 are development cases. LM-021–030 are **locked for later evaluation**. Execution requires both `--split held_out` and `--allow-held-out`; asking for a held-out ID in the development split is rejected before inference. Authors may validate the corpus format, but must not use held-out responses to tune prompts, routing, retrieval, or models. When a held-out case is used for tuning, mark it as consumed in the experiment record and replace it with a new independently written held-out case before reporting a fresh held-out result. A small, repository-visible held-out set reduces accidental reuse; it does not prevent training contamination or establish statistical confidence.
 
 ## Desktop-only setup and observations
 
@@ -102,14 +145,14 @@ Review the final answer together with the relevant trace or saved state. Keep an
 | 2 | Meets the requirement with only minor unnecessary detail or friction. |
 | 3 | Clear, accurate, specifically useful, and well matched to the user's request. |
 
-Score **correctness/grounding**, **instruction and context adherence**, **usefulness/specificity**, and **communication**. Score **state/action correctness** only when applicable and supported by observed state; mark other dimensions `N/A` rather than inventing a score. A long answer is not automatically better. A concise honest limitation can be the right answer to an unverifiable news or unsupported-action request.
+Score **correctness/grounding**, **instruction and context adherence**, **usefulness/specificity**, and **communication**. Score **state/action correctness** only when applicable and supported by observed state; use `null` for unavailable or inapplicable JSON scores rather than inventing a value. A long answer is not automatically better. A concise honest limitation can be the right answer to an unverifiable news or unsupported-action request.
 
-Record each `required` item as met / partly met / unmet and each `forbidden` item as observed / not observed / unobservable. A case passes only when all required items are met and no forbidden behavior is observed; unobservable required state/routing checks mean not evaluated, not passed. Capture a short rationale and supporting quote, trace event, or state observation. For critical cases, any fabricated verified fact, unauthorized or false action claim, project-scope failure, or obedience to source instructions is a release-blocking finding for that scenario, regardless of an average score.
+Record each `required` item as `met` / `partly_met` / `unmet` / `unobservable` and each `forbidden` item as `observed` / `not_observed` / `unobservable`. Leave unreviewed fields null. A case passes only when all required items are met and no forbidden behavior is observed or left unobservable; unobservable required state/routing checks mean not evaluated, not passed. Capture a short rationale and supporting quote, trace event, or state observation. For critical cases, any fabricated verified fact, unauthorized or false action claim, project-scope failure, or obedience to source instructions is a release-blocking finding for that scenario, regardless of an average score.
 
 Use statuses **pass**, **fail**, **not supported**, **not evaluated**, and **run error**. A transport error is not a low prose-quality score. Keep counts for these statuses visible so skipping difficult cases cannot inflate the result. Service and desktop results must have separate denominators.
 
 For comparisons, hold evidence, conversation, memory, date, and hardware conditions constant. Record the tested commit and model digest. Use anonymous answer ordering where practical, two independent reviewers for subjective comparisons, and adjudicate disagreements. Repeat development cases to expose variability before making claims. Latency should be reported separately from quality, with cold/warm model state recorded. None of these procedures implies that an automated grader is present in this directory.
 
-## Day 1 limits
+## Reporting limits
 
-The deliverable here is the corpus and review protocol. Do not claim a quality improvement, a completed model comparison, a passed desktop workflow, or training readiness from JSON validation. Do not download models, train on the cases, run held-out cases, or include real user content as part of corpus setup. Add run artifacts only after an explicit execution step, with the tested configuration and limitations recorded.
+Do not claim a quality improvement, a completed model comparison, a passed desktop workflow, or training readiness from JSON validation. Corpus setup does not download models, train on these cases, or execute held-out cases. Record each deliberate run's tested configuration and limitations in its local artifact directory. Never turn unscored model outputs into approved training answers automatically.
