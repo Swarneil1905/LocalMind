@@ -100,6 +100,41 @@ class MetadataTests(unittest.TestCase):
             self.assertEqual(report[key], {"status": "unavailable", "reason": "TimeoutError"})
         self.assertNotIn("private", json.dumps(report, allow_nan=False))
 
+    def test_remote_alias_indicators_are_preserved_only_as_a_boolean(self):
+        for indicators in (
+            {"remote_host": "https://PRIVATE_USER:PRIVATE_TOKEN@cloud.invalid/api"},
+            {"remote_model": "PRIVATE_REMOTE_MODEL"},
+            {"remote_host": "", "remote_model": "PRIVATE_REMOTE_MODEL"},
+        ):
+            with self.subTest(indicators=list(indicators)):
+                alias = {**MODEL, "name": "renamed-model:latest", "model": "renamed-model:latest", **indicators}
+                reports = [
+                    inventory.models_metadata({"models": [alias]})["models"][0],
+                    inventory.models_metadata({"models": [alias]}, active=True)["models"][0],
+                    inventory.show_metadata({"details": {}, "model_info": {}, **indicators}),
+                ]
+                for report in reports:
+                    self.assertIs(report["is_remote"], True)
+                    self.assertNotIn("remote_host", report)
+                    self.assertNotIn("remote_model", report)
+                    self.assertNotIn("PRIVATE", json.dumps(report))
+                self.assertEqual(reports[0]["name"], "renamed-model:latest")
+
+    def test_missing_or_empty_remote_indicators_are_local(self):
+        for indicators in ({}, {"remote_host": "", "remote_model": ""}):
+            with self.subTest(indicators=indicators):
+                self.assertIs(inventory.models_metadata({"models": [{**MODEL, **indicators}]})["models"][0]["is_remote"], False)
+                self.assertIs(inventory.show_metadata({"details": {}, "model_info": {}, **indicators})["is_remote"], False)
+
+    def test_malformed_remote_indicators_fail_closed_without_recording_values(self):
+        for indicator in ("remote_host", "remote_model"):
+            for value in (None, False, 123, {"PRIVATE_TOKEN": "secret"}):
+                with self.subTest(indicator=indicator, value_type=type(value).__name__):
+                    with self.assertRaises(inventory.InvalidResponseShape):
+                        inventory.models_metadata({"models": [{**MODEL, indicator: value}]})
+                    with self.assertRaises(inventory.InvalidResponseShape):
+                        inventory.show_metadata({"details": {}, "model_info": {}, indicator: value})
+
     def test_missing_model_is_recorded_without_loading_or_pulling_it(self):
         def request(endpoint, model):
             if endpoint == "show":
