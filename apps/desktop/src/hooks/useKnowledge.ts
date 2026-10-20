@@ -14,6 +14,7 @@ export interface KnowledgeSource {
   chunk_count: number;
   status: "indexing" | "ready" | "error";
   created_at: string;
+  project_id?: string | null;
 }
 
 export interface KnowledgeChunk {
@@ -38,12 +39,14 @@ interface UseKnowledgeReturn {
   error: string | null;
   refreshing: boolean;
   refresh: () => Promise<void>;
-  addFolder: (embedModel: string) => Promise<void>;
+  addFolder: (embedModel: string, projectId?: string | null) => Promise<void>;
+  assignProject: (sourceId: string, projectId: string | null) => Promise<void>;
   deleteSource: (sourceId: string) => Promise<void>;
   search: (
     query: string,
     embedModel: string,
     limit?: number,
+    projectId?: string | null,
   ) => Promise<KnowledgeChunk[]>;
 }
 
@@ -107,7 +110,7 @@ export function useKnowledge(): UseKnowledgeReturn {
     };
   }, [refresh]);
 
-  const addFolder = async (embedModel: string) => {
+  const addFolder = async (embedModel: string, projectId: string | null = null) => {
     if (adding.current) return;
     adding.current = true;
     const epoch = generation.current;
@@ -117,7 +120,7 @@ export function useKnowledge(): UseKnowledgeReturn {
       const picked = await invoke<string | null>("pick_folder");
       if (!picked || epoch !== generation.current) return;
       // Wait for the service to accept indexing, then use its real source IDs/statuses.
-      await invoke("index_knowledge", { path: picked, embedModel });
+      await invoke("index_knowledge", { path: picked, embedModel, projectId });
       if (epoch === generation.current) await refresh();
     } catch (cause) {
       if (epoch === generation.current)
@@ -131,12 +134,30 @@ export function useKnowledge(): UseKnowledgeReturn {
     }
   };
 
+  const assignProject = async (sourceId: string, projectId: string | null) => {
+    const epoch = generation.current;
+    setError(null);
+    try {
+      const result = await invoke<KnowledgeSource[]>("assign_knowledge_project", { sourceId, projectId });
+      if (epoch === generation.current) {
+        searchRevision.current++;
+        revision.current++;
+        setSources(Array.isArray(result) ? result : []);
+      }
+    } catch (cause) {
+      if (epoch === generation.current)
+        setError("Couldn't move this folder to the project. Try again.");
+      throw cause;
+    }
+  };
+
   const deleteSource = async (sourceId: string) => {
     const epoch = generation.current;
     setError(null);
     try {
       await invoke("delete_knowledge_source", { sourceId });
       if (epoch === generation.current) {
+        searchRevision.current++;
         revision.current++;
         setSources((prev) => prev.filter((s) => s.id !== sourceId));
         setRefreshing(false);
@@ -154,6 +175,7 @@ export function useKnowledge(): UseKnowledgeReturn {
     query: string,
     embedModel: string,
     limit = 5,
+    projectId: string | null = null,
   ): Promise<KnowledgeChunk[]> => {
     const epoch = generation.current;
     const version = ++searchRevision.current;
@@ -163,6 +185,7 @@ export function useKnowledge(): UseKnowledgeReturn {
         query,
         embedModel,
         limit,
+        projectId,
       });
       return Array.isArray(result) ? result : [];
     } catch (cause) {
@@ -182,6 +205,7 @@ export function useKnowledge(): UseKnowledgeReturn {
     refresh,
     addFolder,
     deleteSource,
+    assignProject,
     search,
   };
 }
