@@ -251,15 +251,6 @@ def get_project_conversations(project_id: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def get_project_memories(project_id: str) -> list[dict]:
-    """Return memories that were tagged with this project_id as source_id."""
-    mem_db = _data_dir() / "memory.db"
-    if not mem_db.exists():
-        return []
-    conn = sqlite3.connect(str(mem_db))
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        "SELECT id, content, created_at FROM memories WHERE source_id = ? ORDER BY created_at DESC",
-        (project_id,),
-    ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    """Return only explicitly project-scoped facts from the memory store."""
+    from app.db import memories
+    return [row for row in memories.list_all() if row.get("project_id") == project_id]

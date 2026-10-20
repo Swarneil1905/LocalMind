@@ -61,6 +61,10 @@ def _init_schema(conn: sqlite3.Connection) -> None:
         """
     )
     conn.execute("PRAGMA foreign_keys = ON")
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(memories)")}
+    for field in ("project_id", "conversation_id"):
+        if field not in columns:
+            conn.execute(f"ALTER TABLE memories ADD COLUMN {field} TEXT")
     conn.commit()
 
 
@@ -75,7 +79,8 @@ def _ensure_schema() -> sqlite3.Connection:
 # Memories API
 # ---------------------------------------------------------------------------
 
-def insert_memories(contents: list[str]) -> list[dict]:
+def insert_memories(contents: list[str], *, project_id: str | None = None,
+                    conversation_id: str | None = None) -> list[dict]:
     """Insert a batch of memory strings, skipping near-duplicates and junk.
 
     A memory is skipped if:
@@ -88,7 +93,10 @@ def insert_memories(contents: list[str]) -> list[dict]:
 
     existing_lower = {
         row["content"].lower()
-        for row in conn.execute("SELECT content FROM memories").fetchall()
+        for row in conn.execute(
+            "SELECT content FROM memories WHERE project_id IS ? AND conversation_id IS ?",
+            (project_id, conversation_id),
+        ).fetchall()
     }
 
     now = datetime.now(timezone.utc).isoformat()
@@ -101,11 +109,12 @@ def insert_memories(contents: list[str]) -> list[dict]:
             continue
         mid = str(uuid.uuid4())
         conn.execute(
-            "INSERT INTO memories (id, content, created_at) VALUES (?, ?, ?)",
-            (mid, content, now),
+            "INSERT INTO memories (id, content, created_at, project_id, conversation_id) VALUES (?, ?, ?, ?, ?)",
+            (mid, content, now, project_id, conversation_id),
         )
         existing_lower.add(content.lower())
-        rows.append({"id": mid, "content": content, "created_at": now})
+        rows.append({"id": mid, "content": content, "created_at": now,
+                     "project_id": project_id, "conversation_id": conversation_id})
     conn.commit()
     conn.close()
     return rows
@@ -115,7 +124,7 @@ def list_all() -> list[dict]:
     """Return all memories, newest first."""
     conn = _ensure_schema()
     cursor = conn.execute(
-        "SELECT id, content, created_at FROM memories ORDER BY created_at DESC"
+        "SELECT id, content, created_at, project_id, conversation_id FROM memories ORDER BY created_at DESC"
     )
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()

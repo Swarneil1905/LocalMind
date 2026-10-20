@@ -26,6 +26,7 @@ import asyncio
 import logging
 
 import httpx
+from app.inference_queue import inference_slot
 
 from app.db.knowledge import embed_text
 
@@ -65,7 +66,7 @@ async def _generate_hypothetical_answer(
         },
     }
     timeout = httpx.Timeout(connect=2.0, read=timeout_sec, write=2.0, pool=2.0)
-    async with httpx.AsyncClient(trust_env=False, timeout=timeout) as client:
+    async with inference_slot("foreground"), httpx.AsyncClient(trust_env=False, timeout=timeout) as client:
         resp = await client.post(f"{OLLAMA_BASE}/api/generate", json=payload)
         resp.raise_for_status()
         return resp.json().get("response", "").strip()
@@ -119,4 +120,4 @@ async def hyde_embed(
     else:
         text_to_embed = query
 
-    return await embed_text(text_to_embed, model=embed_model)
+    return await embed_text(text_to_embed, model=embed_model, priority="foreground")

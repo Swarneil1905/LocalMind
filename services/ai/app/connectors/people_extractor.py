@@ -11,6 +11,7 @@ This is what lets Buddy say:
 import json
 
 import httpx
+from app.inference_queue import inference_slot
 
 from ..db.messages import get_conn as get_messages_conn
 from ..db.people import upsert_person, add_interaction
@@ -87,7 +88,7 @@ Based ONLY on these messages, extract a JSON profile with these fields:
 Return ONLY valid JSON, no explanation."""
 
     try:
-        async with httpx.AsyncClient(trust_env=False, timeout=30) as client:
+        async with inference_slot("background"), httpx.AsyncClient(trust_env=False, timeout=30) as client:
             resp = await client.post(OLLAMA_URL, json={
                 "model": EXTRACTION_MODEL,
                 "prompt": prompt,

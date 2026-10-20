@@ -71,6 +71,9 @@ def _get_sqlite() -> sqlite3.Connection:
         )
         """
     )
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(sources)")}
+    if "project_id" not in columns:
+        conn.execute("ALTER TABLE sources ADD COLUMN project_id TEXT")
     conn.commit()
     return conn
 
@@ -91,9 +94,11 @@ def _get_lance_table():
     return db.open_table("chunks")
 
 
-async def embed_text(text: str, model: str = DEFAULT_EMBED_MODEL) -> list[float]:
+async def embed_text(text: str, model: str = DEFAULT_EMBED_MODEL,
+                     priority: str = "background") -> list[float]:
     """Call Ollama /api/embeddings and return the embedding vector."""
-    async with httpx.AsyncClient(trust_env=False, timeout=EMBED_TIMEOUT) as client:
+    from app.inference_queue import inference_slot
+    async with inference_slot(priority=priority), httpx.AsyncClient(trust_env=False, timeout=EMBED_TIMEOUT) as client:
         resp = await client.post(
             f"{OLLAMA_BASE}/api/embeddings",
             json={"model": model, "prompt": text},
@@ -144,7 +149,8 @@ def _collect_files(path: str) -> list[Path]:
     return files
 
 
-async def index_path(path: str, embed_model: str = DEFAULT_EMBED_MODEL) -> dict:
+async def index_path(path: str, embed_model: str = DEFAULT_EMBED_MODEL,
+                     project_id: str | None = None) -> dict:
     """
     Index a folder or file. Creates a source record, embeds all chunks,
     and writes them to LanceDB.
@@ -155,8 +161,8 @@ async def index_path(path: str, embed_model: str = DEFAULT_EMBED_MODEL) -> dict:
 
     conn = _get_sqlite()
     conn.execute(
-        "INSERT INTO sources (id, path, name, file_count, chunk_count, status, created_at) VALUES (?, ?, ?, 0, 0, 'indexing', ?)",
-        (source_id, path, name, now),
+        "INSERT INTO sources (id, path, name, file_count, chunk_count, status, created_at, project_id) VALUES (?, ?, ?, 0, 0, 'indexing', ?, ?)",
+        (source_id, path, name, now, project_id),
     )
     conn.commit()
 
@@ -205,6 +211,7 @@ async def search(
     embed_model: str = DEFAULT_EMBED_MODEL,
     hyde_enabled: bool = False,
     speed_model: str = "qwen2.5:1.5b",
+    project_id: str | None = None,
 ) -> list[dict]:
     """
     Semantic search over indexed chunks.
@@ -215,6 +222,11 @@ async def search(
     Falls back to raw query embedding automatically on timeout or error.
     """
     try:
+        # Filter before vector ranking. A selected project never searches
+        # legacy unassigned folders, even if their text is a closer match.
+        allowed = [s["id"] for s in list_sources() if s.get("project_id") == project_id]
+        if not allowed:
+            return []
         table = _get_lance_table()
         if table.count_rows() == 0:
             return []
@@ -222,9 +234,17 @@ async def search(
             from app.rag.hyde import hyde_embed
             vector = await hyde_embed(query, speed_model=speed_model, embed_model=embed_model)
         else:
-            vector = await embed_text(query, model=embed_model)
+            vector = await embed_text(query, model=embed_model, priority="foreground")
+        # Embedding can wait behind active inference. Re-check assignments
+        # after that await so a moved/deleted source cannot enter its old scope.
+        current_allowed = {s["id"] for s in list_sources() if s.get("project_id") == project_id}
+        allowed = [source_id for source_id in allowed if source_id in current_allowed]
+        if not allowed:
+            return []
+        ids = ", ".join("'" + source_id.replace("'", "''") + "'" for source_id in allowed)
         results = (
             table.search(vector)
+            .where(f"source_id IN ({ids})", prefilter=True)
             .limit(limit)
             .select(["id", "source_id", "file_path", "chunk_index", "content"])
             .to_list()
@@ -247,10 +267,18 @@ def list_sources() -> list[dict]:
     """Return all indexed sources, newest first."""
     conn = _get_sqlite()
     rows = conn.execute(
-        "SELECT id, path, name, file_count, chunk_count, status, created_at FROM sources ORDER BY created_at DESC"
+        "SELECT id, path, name, file_count, chunk_count, status, created_at, project_id FROM sources ORDER BY created_at DESC"
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def assign_source_project(source_id: str, project_id: str | None) -> bool:
+    conn = _get_sqlite()
+    cursor = conn.execute("UPDATE sources SET project_id = ? WHERE id = ?", (project_id, source_id))
+    conn.commit()
+    conn.close()
+    return cursor.rowcount > 0
 
 
 def delete_source(source_id: str) -> bool:

@@ -88,10 +88,19 @@ def list_conversations() -> list[dict]:
     """Return all conversations, newest first."""
     conn = _get_conn()
     rows = conn.execute(
-        "SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC"
+        "SELECT id, title, project_id, created_at, updated_at FROM conversations ORDER BY updated_at DESC"
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def get_conversation(conversation_id: str) -> dict | None:
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT id, title, project_id FROM conversations WHERE id = ?", (conversation_id,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 def get_messages(conversation_id: str) -> list[dict]:
