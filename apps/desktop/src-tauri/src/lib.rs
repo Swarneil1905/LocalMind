@@ -246,6 +246,19 @@ struct ChatSourcesPayload {
     sources: Vec<serde_json::Value>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum ChatPhase {
+    Searching,
+    Answering,
+}
+
+#[derive(Clone, Serialize)]
+struct ChatStatusPayload {
+    request_id: String,
+    phase: ChatPhase,
+}
+
 #[derive(Clone, Serialize)]
 struct MemoriesUpdatedPayload {
     memories: Vec<MemoryEntry>,
@@ -425,6 +438,14 @@ fn parse_pull_progress(line: &[u8]) -> Result<serde_json::Value, String> {
     Ok(value)
 }
 
+fn parse_chat_status(value: &serde_json::Value, request_id: &str) -> Option<ChatStatusPayload> {
+    if value.get("type")?.as_str()? != "status" {
+        return None;
+    }
+    let phase = serde_json::from_value(value.get("phase")?.clone()).ok()?;
+    Some(ChatStatusPayload { request_id: request_id.to_string(), phase })
+}
+
 #[cfg(test)]
 mod stream_tests {
     use super::{parse_pull_progress, take_json_line, take_sse_frame};
@@ -498,6 +519,37 @@ mod stream_tests {
         buffer.extend_from_slice(b"ond\n\n");
         assert_eq!(take_sse_frame(&mut buffer).as_deref(), Some("data: second"));
     }
+
+    #[test]
+    fn search_status_accepts_only_known_phases_and_uses_active_request_id() {
+        for phase in ["searching", "answering"] {
+            let event = serde_json::json!({"type": "status", "phase": phase, "request_id": "untrusted-id"});
+            let payload = super::parse_chat_status(&event, "current-request").unwrap();
+            let forwarded = serde_json::to_value(payload).unwrap();
+            assert_eq!(forwarded["request_id"], "current-request");
+            assert_eq!(forwarded["phase"], phase);
+        }
+        for event in [
+            serde_json::json!({"type": "status", "phase": "finished"}),
+            serde_json::json!({"type": "status", "phase": null}),
+            serde_json::json!({"type": "token", "phase": "searching"}),
+        ] {
+            assert!(super::parse_chat_status(&event, "current-request").is_none());
+        }
+    }
+
+    #[test]
+    fn memory_context_preserves_facts_without_a_second_system_policy() {
+        assert_eq!(super::build_memory_context(&[]), "");
+        let memory = super::MemoryEntry {
+            id: "memory-1".to_string(), content: "Prefers Python examples.".to_string(),
+            created_at: "2026-10-19".to_string(),
+        };
+        assert_eq!(
+            super::build_memory_context(&[memory]),
+            "Saved memory (background reference):\n- Prefers Python examples.",
+        );
+    }
 }
 
 #[tauri::command]
@@ -559,7 +611,8 @@ async fn chat_stream_inner(
         .timeout(std::time::Duration::from_secs(300))
         .build().map_err(|e| e.to_string())?;
 
-    let mut system_prompt = if memory_enabled {
+    // The service owns response policy. Desktop supplies only reference data.
+    let mut supplied_context = if memory_enabled {
         let (list_url, list_token) = sidecar_url(&sidecar_state, "/memory/list")?;
         let memories: Vec<MemoryEntry> = match client
             .get(&list_url)
@@ -593,20 +646,20 @@ async fn chat_stream_inner(
             _ => vec![],
         };
 
-        let mut prompt = build_system_prompt(&memories);
+        let mut context = build_memory_context(&memories);
         if !links.is_empty() {
             let link_lines: Vec<String> = links
                 .iter()
                 .map(|l| format!("- \"{}\" {} \"{}\"", l.from_content, l.relation, l.to_content))
                 .collect();
-            prompt = format!(
-                "{prompt}\n\nMemory connections:\n{}",
+            context = format!(
+                "{context}\n\nMemory connections:\n{}",
                 link_lines.join("\n")
             );
         }
-        prompt
+        context
     } else {
-        default_system_prompt()
+        String::new()
     };
 
     if knowledge_enabled {
@@ -634,8 +687,8 @@ async fn chat_stream_inner(
                             .map(|c| format!("[{}]\n{}", c.file_path, c.content))
                             .collect::<Vec<_>>()
                             .join("\n\n---\n\n");
-                        system_prompt = format!(
-                            "{system_prompt}\n\nRelevant context from the user knowledge base:\n\n{context}"
+                        supplied_context = format!(
+                            "{supplied_context}\n\nRelevant context from the user knowledge base:\n\n{context}"
                         );
                     }
                 }
@@ -647,7 +700,7 @@ async fn chat_stream_inner(
         "message": message,
         "model": model,
         "history": history,
-        "system_prompt": system_prompt,
+        "context": supplied_context,
         "web_search_enabled": web_search_enabled,
     });
 
@@ -681,6 +734,11 @@ async fn chat_stream_inner(
                     continue;
                 };
                 match value.get("type").and_then(|t| t.as_str()) {
+                    Some("status") => {
+                        if let Some(payload) = parse_chat_status(&value, &request_id) {
+                            app_handle.emit("chat-status", payload).ok();
+                        }
+                    }
                     Some("token") => {
                         let content = value
                             .get("content")
@@ -1504,32 +1562,19 @@ async fn update_search_config(
 }
 
 // ---------------------------------------------------------------------------
-// System prompt helpers
+// Reference context helpers (response policy lives in the Python service)
 // ---------------------------------------------------------------------------
 
-fn default_system_prompt() -> String {
-    "You are LocalMind, a private local AI assistant. \
-     Be concise and direct. No unnecessary filler, no \"Certainly!\", no \"Of course!\". \
-     When real-time context from Gmail or other apps is provided, use ONLY those facts. \
-     Never guess, hallucinate, or fill in details not explicitly stated in the context. \
-     If you don't know something from the provided context, say so plainly. \
-     Always address the user as 'you' — never use any name or refer to them in third person."
-        .to_string()
-}
-
-fn build_system_prompt(memories: &[MemoryEntry]) -> String {
-    let base = default_system_prompt();
+fn build_memory_context(memories: &[MemoryEntry]) -> String {
     if memories.is_empty() {
-        return base;
+        return String::new();
     }
     let facts = memories
         .iter()
         .map(|m| format!("- {}", m.content))
         .collect::<Vec<_>>()
         .join("\n");
-    format!(
-        "{base}\n\nBackground facts you remember (use as context, NOT to analyze — always respond directly to the user as 'you'):\n{facts}"
-    )
+    format!("Saved memory (background reference):\n{facts}")
 }
 
 // ---------------------------------------------------------------------------

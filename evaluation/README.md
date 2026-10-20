@@ -16,6 +16,10 @@ Keep any future training data separate from evaluation cases and near-duplicates
 
 Adding cases must extend behavioral coverage instead of merely multiplying paraphrases. Preserve the versioned baseline and its fixed case IDs; create and validate a separately versioned expanded suite when broader coverage is ready. The current validator intentionally accepts only the original 30-case suite.
 
+### Rubric correction
+
+LM-003 originally contained an arithmetic error in its expected results. The unchanged prompt gives predictions `[12, 15]`, tree outputs `[-2, 5]`, learning rate `0.5` and observed values `[10, 20]`. The corrected predictions are `[11, 17.5]`, with summed squared error decreasing from `29` to `7.25`. The old expectations `[11, 17]` and `10` were incorrect. This is a rubric correction, not a change to the prompt, split or model. Older run snapshots retain the original rubric and corpus hash; do not count agreement with the correct arithmetic as a model failure or silently rewrite those snapshots.
+
 ## Check the corpus and record the environment
 
 From the repository root, validate the file and run the evaluation-tool tests:
@@ -95,7 +99,11 @@ Memory fixtures should enter through the same prompt/context boundary being eval
 
 `evidence` supplies frozen retrieval data. An empty array means no usable sources are available. An omitted array means no source fixture is supplied; it does not authorize fetching arbitrary live sources. All source hosts end in `.invalid`. **Never fetch these URLs or replace them with live search results.** Dated notices describe a fictional town and are not real news.
 
-The service runner injects fixtures at the search-provider and extracted-page boundaries, and freezes both the chat and query-planning clocks to `as_of` (or the run's fixed UTC start). It exercises normal query planning and freshness filtering: stale, undated, or future-dated source fixtures may produce no usable evidence. These are evaluator adapters, not new chat API parameters. HTTP page fetching, HTML extraction and source-provider quality are not tested. Memory fixtures are supplied directly to the service prompt and labeled response-only; they cannot establish memory retrieval or persistence.
+The service runner injects fixtures at the search-provider and extracted-page boundaries, and freezes both the chat and query-planning clocks to `as_of` (or the run's fixed UTC start). It exercises normal query planning and freshness filtering: stale, undated, or future-dated source fixtures may produce no usable evidence. These are evaluator adapters, not new chat API parameters. HTTP page fetching, HTML extraction and source-provider quality are not tested. Memory fixtures use the service's `context` field, the same reference-data boundary used by the desktop. They are labeled response-only and cannot establish memory retrieval or persistence.
+
+The service owns the answer policy in `services/ai/app/chat_policy.py`. Desktop context, connected-app text and web excerpts enter as reference data, not system instructions. The legacy `system_prompt` request field remains accepted as reference data for older clients; it cannot replace the policy. Web permission alone does not require searching: ordinary explanations and edits use the model, while source-dependent requests use retrieval. Explicit search opt-outs take precedence over a query override. Status events distinguish actual searching from answering; they do not count as first useful content.
+
+Chat cannot execute task writes yet. A conservative rule in `services/ai/app/action_boundary.py` handles explicit task-saving commands with honest manual steps before calling a model, search provider or connector. Drafts, teaching exercises and code questions still reach the model. This rule covers selected English command forms, not every possible action request; other unsupported actions still rely on the answer policy and need separate evaluation. A manual-help response is not a task-creation result.
 
 Useful trace fields are the query decision, source IDs accepted/rejected, prompt size, first useful answer latency (separate from thinking latency), completion time, generated tokens, errors, and cancellation outcome. Trace private content only in the isolated synthetic profile. Source inclusion in a model response is not proof that a search was or was not performed; inspect the trace where the rubric requires routing behavior.
 
