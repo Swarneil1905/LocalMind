@@ -27,15 +27,17 @@ A captioned tour of chat, sources, Knowledge, Memory, Projects, Tasks, and theme
 
 | Workspace | What it does |
 | --- | --- |
-| **Chat** | Stream responses from local models, switch model presets, stop a response, and retry a failed request. |
+| **Chat** | Stream responses from local models, render equations and code, copy answers or code, stop a response, and retry. Reading earlier messages keeps your scroll position. |
 | **Sources** | Inspect links and available publication dates for web-assisted answers. Source details are saved with the conversation. |
-| **Knowledge** | Index local documents and folders, then retrieve relevant passages during chat. Optional expanded search uses a generated draft answer to find related passages. |
+| **Knowledge** | Assign indexed folders to a project and retrieve passages within that project's scope. Unassigned chats search unassigned sources. Optional expanded search uses a generated draft answer to find related passages. |
 | **Memory** | Review and remove facts extracted from conversations, including relationships between saved facts. |
 | **Projects and Tasks** | Group conversations by project and track work alongside them. |
 | **Connections** | Connect supported apps to bring their data into your workspace. Availability and setup depend on the service and operating system. |
-| **Settings** | Choose installed models, download more models, configure web search, and switch between light and dark themes. |
+| **Settings** | Choose installed models, adjust context and supported thinking controls, restore previous response settings, configure web search, and switch themes. |
 
 LocalMind is built for independent desktop installations. Each person has their own local workspace, models, and connections. There is no shared server or automatic conversation sync between devices.
+
+These features describe the current source branch; a published installer may not include the latest changes. New memories are scoped to their project, or to the originating conversation when no project is selected. Relevant legacy global memories remain available. Review and remove saved facts in Memory.
 
 ## Install
 
@@ -71,7 +73,7 @@ The setup screen currently offers these default models:
 | Model | Purpose |
 | --- | --- |
 | `qwen2.5:1.5b` | Speed preset and background work such as memory extraction |
-| `qwen3:8b` | Balanced and Boost presets by default; these can be changed in Settings |
+| `qwen3:8b` | Balanced preset by default; this can be changed in Settings |
 | `nomic-embed-text` | Embeddings for Knowledge search |
 
 Once models are installed, local chat and document retrieval can work offline. Web search, remote connections, model downloads, and update checks need their respective network services. Voice is not available in 0.7.0.
@@ -108,7 +110,7 @@ Ollama manages its model storage separately. See [desktop runtime and storage](d
 | A chat model is unavailable | Finish its download or choose an installed model in Settings. Source development also requires a running local Ollama service. |
 | Knowledge indexing or search fails | Check that `nomic-embed-text` is installed and the selected files are readable. |
 | A current-news question has no answer | Verify web search is enabled. LocalMind reports when it cannot retrieve suitable dated sources; try a more specific query. |
-| Responses are slow | Try a smaller installed model and disable expanded Knowledge search to reduce extra model calls. |
+| Responses are slow | Try a smaller installed model, disable expanded Knowledge search, or turn thinking off in response settings when the model supports it. |
 
 For a bug report, include the app version, operating system, model name, steps to reproduce, and relevant errors. Remove private conversation content and credentials before posting to [Issues](https://github.com/Swarneil1905/LocalMind/issues). Report security vulnerabilities using [SECURITY.md](SECURITY.md).
 
@@ -125,6 +127,7 @@ See the [desktop development guide](apps/desktop/README.md) for virtual-environm
 | `crates/` | Shared Rust runtime, database, and permission crates |
 | `services/ai` | Python/FastAPI service, retrieval, memory, and connections |
 | `scripts/release` | Runtime staging, packaging, smoke checks, and release validation |
+| `scripts/evaluation` | Reproducible conversation replays, dataset preparation, and installed-model comparisons |
 | `.github/workflows` | Frontend, Python, Rust, and native release workflows |
 
 ```mermaid
@@ -137,6 +140,8 @@ flowchart LR
 ```
 
 Rust owns service startup, readiness, cancellation, and recovery. Python owns retrieval and persistence. Request-scoped streaming keeps replies attached to the conversation that started them.
+
+See [conversation evaluation](evaluation/README.md) and [dataset preparation](evaluation/DATASETS.md) for reproducible checks. Downloaded conversations, model outputs, and working notes stay in ignored local artifacts. Importing examples or replaying them does not train the model.
 
 ### Checks and releases
 
