@@ -1,0 +1,27 @@
+.model-profile-settings {
+  margin-block: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+}
+.model-profile-settings > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.model-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1rem;
+  margin-block: 1rem;
+}
+.model-profile-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+.model-profile-field .page-input,
+.model-profile-field .page-select {
+  width: 100%;
+  min-width: 0;
+}

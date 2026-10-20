@@ -11,6 +11,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { OllamaStatus } from "../hooks/useOllama";
+import { ModelProfileSettings } from "./ModelProfileSettings";
 import "./supporting-pages.css";
 
 interface SettingsPageProps {
@@ -258,6 +259,9 @@ function ModelSettings({
         memory, and your hardware. Larger models can require more time and disk
         space.
       </p>
+      {running && names.length > 0 && (
+        <ModelProfileSettings speedModel={speedModel} balancedModel={balancedModel} />
+      )}
     </section>
   );
 }
