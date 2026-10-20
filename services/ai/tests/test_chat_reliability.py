@@ -81,6 +81,9 @@ class ChatStreamTests(unittest.IsolatedAsyncioTestCase):
         with patch("app.api.routes.chat._run_web_search", AsyncMock()) as search, patch("app.api.routes.chat.httpx.AsyncClient", return_value=Client()):
             frames = [json.loads(f.removeprefix("data: ")) async for f in _stream_ollama(ChatRequest(message="hello", model="test", web_search_enabled=True, connector_context_enabled=False))]
         search.assert_not_called()
+        budget = next(f["budget"] for f in frames if f["type"] == "context")
+        self.assertFalse(budget["trimmed"])
+        frames = [f for f in frames if f["type"] != "context"]
         self.assertEqual(frames[0], {"type": "status", "phase": "answering"})
         self.assertEqual(frames[1]["thinking"], "reason")
         self.assertEqual(frames[2]["content"], "Hello")
