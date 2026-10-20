@@ -92,7 +92,7 @@ class ReplayTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "completed")
         payload = result["effective_request"]
         self.assertEqual(payload["messages"][1:], case["messages"])
-        self.assertEqual(payload["options"], {"temperature": 0.2, "num_ctx": 16384})
+        self.assertEqual(payload["options"], {"temperature": 0.2, "num_ctx": 16384, "num_predict": 2048})
         self.assertIn("Current UTC date: 2026-10-14", payload["messages"][0]["content"])
         for excluded in ("SECRET_RUBRIC", "SECRET_FORBIDDEN", "LM-TEST", "test-category", "Do not send this metadata"):
             self.assertNotIn(excluded, json.dumps(payload))
@@ -100,6 +100,21 @@ class ReplayTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["trace"]["prompt_chars"], sum(len(m["content"]) for m in payload["messages"]))
         self.assertFalse(result["truncated"])
         self.assertTrue(result["trace"]["checkpoint_final"])
+
+    async def test_frozen_profile_controls_payload_without_live_profile_access(self):
+        profile = {"schema_version": 1, "preset": "balanced", "model": "test-local-model",
+                   "digest": "a" * 64, "context_limit": 32768, "thinking_values": [False, True],
+                   "capabilities": ["completion", "thinking"],
+                   "context_window": 8192, "response_tokens": 1024, "temperature": .2,
+                   "top_p": .9, "top_k": 40, "think": False}
+        result = await self.replay(generation_profile=profile)
+        self.assertEqual(result["status"], "completed", result["error"])
+        self.assertEqual(result["effective_request"]["options"]["num_ctx"], 8192)
+        self.assertEqual(result["effective_request"]["options"]["num_predict"], 1024)
+        self.assertIs(result["effective_request"]["think"], False)
+        self.assertEqual(len(self.requests), 1)
+        self.assertEqual(self.requests[0].url.path, "/api/chat")
+        self.assertFalse((self.profile / "model_profiles.db").exists())
 
     async def test_frozen_freshness_keeps_only_recent_source_and_traces_routing(self):
         evidence = []
@@ -164,8 +179,8 @@ class ReplayTests(unittest.IsolatedAsyncioTestCase):
         messages = result["effective_request"]["messages"]
         self.assertNotIn(injection, messages[0]["content"])
         self.assertNotIn("Synthetic preference", messages[0]["content"])
-        self.assertEqual(messages[-3]["role"], "user")
-        self.assertIn("Synthetic preference", messages[-3]["content"])
+        self.assertEqual([m["role"] for m in messages], ["system", "user", "user"])
+        self.assertIn("Synthetic preference", messages[-2]["content"])
         self.assertEqual(messages[-2]["role"], "user")
         self.assertIn(injection, messages[-2]["content"])
         self.assertIn("response-only", result["trace"]["memory_mode"])
@@ -213,6 +228,9 @@ class ReplayTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["truncated"])
         self.assertEqual(result["answer"], "Partial")
         self.assertTrue(self.stream.closed)
+        from app.inference_queue import current_queue
+        self.assertFalse(current_queue().active)
+        self.assertEqual(current_queue().pending, 0)
         self.assertTrue(any(c["answer"] == "Partial" and not c["trace"]["checkpoint_final"] for c in checkpoints))
         self.assertEqual(checkpoints[-1], result)
 
@@ -337,7 +355,8 @@ class WorkerTests(unittest.TestCase):
             result = adapter.initial_result(adapter.utc_clock(CLOCK))
             result.update(status="completed", answer="Done", error=None)
 
-            async def fake_replay(case, model, timeout, on_update, clock):
+            async def fake_replay(case, model, timeout, on_update, clock, generation_profile=None):
+                self.assertIsNone(generation_profile)
                 self.assertEqual(Path(os.environ["LOCALMIND_DATA_DIR"]), profile.resolve())
                 self.assertEqual(list(profile.iterdir()), [])
                 self.assertEqual(clock, CLOCK)

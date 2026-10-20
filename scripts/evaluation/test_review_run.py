@@ -275,5 +275,58 @@ class ReviewRunTests(unittest.TestCase):
             reviews.summarize(self.root)
 
 
+class ContextReviewTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.cases = [case("CTX-001"), case("CTX-005")]
+        self.manifest = {
+            "schema_version": 1, "suite_kind": "context_development",
+            "split": "development", "suite_sha256": "b" * 64,
+            "case_ids": [item["id"] for item in self.cases],
+        }
+        self.selected = {"schema_version": 1, "suite_kind": "context_development",
+                         "cases": self.cases}
+
+    def save(self):
+        write_json(self.root / "manifest.json", self.manifest)
+        write_json(self.root / "cases.json", self.selected)
+
+    def test_marked_context_subset_is_reviewable_without_automatic_pass(self):
+        self.save()
+        template = reviews.create_review(self.root)
+        self.assertEqual(template["run"]["case_ids"], ["CTX-001", "CTX-005"])
+        summary = reviews.summarize(self.root, template)
+        self.assertEqual(summary["overall"]["outcomes"]["pass"], 0)
+        self.assertEqual(summary["overall"]["selected_cases"], 2)
+
+    def test_context_markers_must_match_and_cannot_relabel_baseline_ids(self):
+        for marker, selected_marker, identity in (
+            (None, None, "CTX-001"),
+            ("context_development", None, "CTX-001"),
+            (None, "context_development", "CTX-001"),
+            ("other", "other", "CTX-001"),
+            ("context_development", "context_development", "CTX-006"),
+            ("context_development", "context_development", "LM-001"),
+        ):
+            with self.subTest(marker=marker, selected_marker=selected_marker, identity=identity):
+                self.manifest.update(suite_kind=marker, case_ids=[identity])
+                self.selected.update(suite_kind=selected_marker, cases=[case(identity)])
+                self.save()
+                with self.assertRaises(ValueError):
+                    reviews.create_review(self.root)
+
+    def test_context_cases_cannot_enter_held_out_or_desktop_results(self):
+        for split, layer in (("held_out", "service"), ("development", "desktop")):
+            with self.subTest(split=split, layer=layer):
+                self.manifest["split"] = split
+                for item in self.cases:
+                    item.update(split=split, evaluation_layer=layer)
+                self.save()
+                with self.assertRaises(ValueError):
+                    reviews.create_review(self.root)
+
+
 if __name__ == "__main__":
     unittest.main()

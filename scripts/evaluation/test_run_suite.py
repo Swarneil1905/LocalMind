@@ -121,6 +121,20 @@ class RunTests(unittest.TestCase):
         self.assertEqual(json.loads((self.args.out / "results/LM-007.json").read_text())["answer"], "partial")
         self.assertEqual(json.loads((self.args.out / "results/LM-016.json").read_text())["status"], "not_evaluated")
 
+    def test_validated_context_suite_identity_survives_evidence_export(self):
+        self.args.suite = DEFAULT_SUITE.with_name("context_cases.json")
+        self.args.cases = ["CTX-003"]
+        response = {"status": "completed", "answer": "Synthetic context answer"}
+        with patch.object(runner.inventory, "capture", return_value=self.environment), \
+                patch.object(runner, "execute_case", return_value=(response, False)):
+            self.assertEqual(runner.run(self.args), 0)
+        for filename in ("manifest.json", "cases.json"):
+            exported = json.loads((self.args.out / filename).read_text())
+            self.assertEqual(exported["suite_kind"], "context_development")
+        manifest = json.loads((self.args.out / "manifest.json").read_text())
+        self.assertEqual(manifest["case_ids"], ["CTX-003"])
+        self.assertEqual(manifest["split"], "development")
+
     def test_hard_deadline_kills_owned_worker_and_recovers_checkpoint(self):
         case = self.suite["cases"][6]
         process = MagicMock()
