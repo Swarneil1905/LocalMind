@@ -115,9 +115,11 @@ export default function App() {
     saveCurrentTurn,
     deleteConversation,
     renameConversation,
+    updateConversationProject,
     clearSelection,
   } = useConversations();
   const { projects, assignConversation } = useProjects();
+  const chatProjectId = conversations.find((c) => c.id === activeId)?.project_id ?? null;
 
   useEffect(() => {
     localStorage.setItem("lm-speed-model", speedModel);
@@ -230,6 +232,7 @@ export default function App() {
     hydeEnabled,
     webSearchEnabled,
     embedModel: EMBED_MODEL,
+    projectId: chatProjectId,
     onTurnComplete: handleComplete,
   });
   const draftKey = activeId || "new";
@@ -526,13 +529,16 @@ export default function App() {
               {activePage === "chats" && activeId && projects.length > 0 && (
                 <select
                   aria-label="Move chat to project"
-                  value=""
+                  value={chatProjectId ?? ""}
+                  disabled={isStreaming || pendingSend}
                   onChange={async (e) => {
                     const id = e.target.value;
                     try {
-                      await assignConversation(activeId, id);
+                      await assignConversation(activeId, id || null);
+                      updateConversationProject(activeId, id || null);
                       setNotice(
-                        `Chat added to ${projects.find((p) => p.id === id)?.name || "project"}.`,
+                        id ? `Chat added to ${projects.find((p) => p.id === id)?.name || "project"}.`
+                          : "Chat moved out of the project.",
                       );
                     } catch {
                       setNotice(
@@ -541,8 +547,8 @@ export default function App() {
                     }
                   }}
                 >
-                  <option value="" disabled>
-                    Move to project…
+                  <option value="">
+                    No project
                   </option>
                   {projects.map((p) => (
                     <option key={p.id} value={p.id}>
