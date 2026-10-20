@@ -64,7 +64,7 @@ Release assets include `SHA256SUMS.txt`. Update bundles are signed for LocalMind
 2. **Choose a model and start a chat.** Settings lets you change which installed model each preset uses. Start with a smaller model if responses are slow.
 3. **Add your files in Knowledge.** Install the embedding model before indexing documents. Ask a question about the files after indexing finishes.
 4. **Review Memory.** Check the facts saved from conversations and remove anything you do not want reused.
-5. **Enable web search when you need online information.** Choose DuckDuckGo or configure a SearXNG instance. Check the sources and their dates, especially for current events.
+5. **Enable web search when you need online information.** Choose DuckDuckGo or configure a SearXNG instance. LocalMind searches for source-dependent questions and answers ordinary explanations locally. Check the sources and their dates, especially for current events.
 
 The setup screen currently offers these default models:
 
