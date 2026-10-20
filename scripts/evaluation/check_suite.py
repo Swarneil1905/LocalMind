@@ -14,16 +14,21 @@ DEFAULT_SUITE = Path(__file__).resolve().parents[2] / "evaluation" / "cases.json
 def validate_suite(suite: dict) -> dict:
     if not isinstance(suite, dict) or suite.get("schema_version") != 1:
         raise ValueError("Expected a version 1 suite object")
+    context_suite = suite.get("suite_kind") == "context_development"
+    if suite.get("suite_kind") not in (None, "context_development"):
+        raise ValueError("Unknown supplemental suite kind")
     cases = suite.get("cases")
-    if not isinstance(cases, list) or len(cases) != 30:
-        raise ValueError("The baseline must contain exactly 30 cases")
+    expected_count = 5 if context_suite else 30
+    if not isinstance(cases, list) or len(cases) != expected_count:
+        raise ValueError(f"The {'context supplement' if context_suite else 'baseline'} must contain exactly {expected_count} cases")
     seen = set()
     splits, layers, categories = Counter(), Counter(), Counter()
     for case in cases:
         if not isinstance(case, dict):
             raise ValueError("Every case must be an object")
         identity = case.get("id")
-        if not isinstance(identity, str) or not identity.startswith("LM-") or identity in seen:
+        prefix = "CTX-" if context_suite else "LM-"
+        if not isinstance(identity, str) or not identity.startswith(prefix) or identity in seen:
             raise ValueError(f"Missing or duplicate case ID: {identity}")
         seen.add(identity)
         for field in ("title", "category"):
@@ -88,6 +93,13 @@ def validate_suite(suite: dict) -> dict:
         splits[case["split"]] += 1
         layers[case["evaluation_layer"]] += 1
         categories[case["category"]] += 1
+    if context_suite:
+        if splits != {"development": 5} or layers != {"service": 5}:
+            raise ValueError("Context supplement contains only five development service cases")
+        if seen != {f"CTX-{index:03d}" for index in range(1, 6)}:
+            raise ValueError("Keep context supplement IDs CTX-001 through CTX-005")
+        return {"cases": len(cases), "splits": dict(splits), "layers": dict(layers),
+                "categories": dict(categories), "suite_kind": "context_development"}
     if splits != {"development": 20, "held_out": 10}:
         raise ValueError("Keep the fixed 20 development / 10 held-out split")
     if seen != {f"LM-{index:03d}" for index in range(1, 31)}:
