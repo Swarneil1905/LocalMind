@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { KnowledgePage } from "../components/KnowledgePage";
 import { TasksPage } from "../components/TasksPage";
@@ -22,6 +22,36 @@ beforeEach(() => {
 });
 
 describe("supporting page recovery", () => {
+  it("assigns a Knowledge folder explicitly and limits search to the selected project", async () => {
+    const source = {
+      id: "source-a", path: "fixture", name: "Notes", file_count: 1,
+      chunk_count: 2, status: "ready", created_at: "2026-01-01", project_id: null,
+    };
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === "list_projects") return [project];
+      if (command === "list_knowledge_sources") return [source];
+      if (command === "assign_knowledge_project") return [{ ...source, project_id: project.id }];
+      return [];
+    });
+    render(<KnowledgePage embedModel="embed" />);
+    const assignment = await screen.findByRole("combobox", { name: "Project for Notes" });
+    await waitFor(() => expect(screen.getAllByRole("option", { name: "Research" })).toHaveLength(2));
+    fireEvent.change(assignment, { target: { value: project.id } });
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("assign_knowledge_project", {
+      sourceId: "source-a", projectId: project.id,
+    }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Knowledge project" }), {
+      target: { value: project.id },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Search your files" }), {
+      target: { value: "deadline" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("search_knowledge", {
+      query: "deadline", embedModel: "embed", limit: 5, projectId: project.id,
+    }));
+  });
+
   it("preserves an unavailable saved search provider until the user chooses another", async () => {
     vi.mocked(invoke).mockResolvedValue({
       provider: "brave",
@@ -68,6 +98,39 @@ describe("supporting page recovery", () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(false);
+  });
+
+  it("unlocks Knowledge search after a folder moves and ignores its pending old result", async () => {
+    const source = {
+      id: "source-a", path: "fixture", name: "Notes", file_count: 1,
+      chunk_count: 2, status: "ready", created_at: "2026-01-01", project_id: null,
+    };
+    let finishSearch!: (value: unknown[]) => void;
+    const pending = new Promise<unknown[]>((resolve) => { finishSearch = resolve; });
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === "list_projects") return [project];
+      if (command === "list_knowledge_sources") return [source];
+      if (command === "assign_knowledge_project") return [{ ...source, project_id: project.id }];
+      if (command === "search_knowledge") return pending;
+      return [];
+    });
+    render(<KnowledgePage embedModel="embed" />);
+    const input = await screen.findByRole("textbox", { name: "Search your files" });
+    fireEvent.change(input, { target: { value: "deadline" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect((screen.getByRole("button", { name: "Searching…" }) as HTMLButtonElement).disabled).toBe(true);
+    await waitFor(() => expect(screen.getAllByRole("option", { name: "Research" })).toHaveLength(2));
+    fireEvent.change(screen.getByRole("combobox", { name: "Project for Notes" }), {
+      target: { value: project.id },
+    });
+    await waitFor(() => expect((screen.getByRole("button", { name: "Search" }) as HTMLButtonElement).disabled).toBe(false));
+    await act(async () => {
+      finishSearch([{ id: "old", source_id: source.id, file_path: "old.txt",
+        chunk_index: 0, content: "Stale scope result" }]);
+      await pending;
+    });
+    expect(screen.queryByText("Stale scope result")).toBeNull();
+    expect((screen.getByRole("combobox", { name: "Knowledge project" }) as HTMLSelectElement).disabled).toBe(false);
   });
 
   it("loads and saves the configured SearxNG address", async () => {
@@ -147,6 +210,7 @@ describe("supporting page recovery", () => {
       query: "launch plan",
       embedModel: "embed",
       limit: 5,
+      projectId: null,
     });
   });
 

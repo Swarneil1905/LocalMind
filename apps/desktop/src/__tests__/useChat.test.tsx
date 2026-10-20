@@ -43,6 +43,23 @@ beforeEach(() => {
 });
 
 describe("request lifecycle", () => {
+  it("keeps project, conversation and profile bound to the completed turn", async () => {
+    const { result, rerender } = renderHook(
+      ({ projectId }) => useChat({ ...options, projectId }),
+      { initialProps: { projectId: "atlas" } },
+    );
+    const id = await start(result, "Explain the Atlas plan");
+    expect(invoke).toHaveBeenCalledWith("chat_stream", expect.objectContaining({
+      projectId: "atlas", conversationId: "conversation-a", profile: "balanced",
+    }));
+    rerender({ projectId: "other" });
+    emit("chat-token", { request_id: id, content: "The Atlas plan has two steps." });
+    emit("chat-done", { request_id: id, error: null });
+    expect(invoke).toHaveBeenCalledWith("extract_memories", expect.objectContaining({
+      projectId: "atlas", conversationId: "conversation-a",
+    }));
+  });
+
   it("shows searching only while the active request reports actual retrieval", async () => {
     const { result } = renderHook(() => useChat(options));
     const id = await start(result, "explain trees");
