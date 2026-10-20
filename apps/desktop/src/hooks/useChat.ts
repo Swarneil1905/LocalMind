@@ -131,6 +131,16 @@ export function useChat(options: UseChatOptions) {
       else unlisteners.push(off);
     };
     listenersReady.current = Promise.all([
+      register<{ request_id: string; phase: "searching" | "answering" }>(
+        "chat-status",
+        (p) => {
+          const turn = active.current;
+          if (!turn || p.request_id !== turn.id) return;
+          if (p.phase === "searching" || p.phase === "answering") {
+            setIsSearching(p.phase === "searching");
+          }
+        },
+      ),
       register<{ request_id: string; content: string; thinking?: string }>(
         "chat-token",
         (p) => {
@@ -237,7 +247,7 @@ export function useChat(options: UseChatOptions) {
         { id: turn.id, role: "assistant", content: "" },
       ]);
       setIsStreaming(true);
-      setIsSearching(options.webSearchEnabled);
+      setIsSearching(false);
       setWebSources([]);
       try {
         await listenersReady.current;

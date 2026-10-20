@@ -65,7 +65,7 @@ export function Composer(props: ComposerProps) {
       active: props.webSearchEnabled,
       toggle: props.onWebSearchToggle,
       Icon: Globe,
-      description: "Search the web; queries leave this device",
+      description: "Use the web when needed; queries leave this device",
     },
   ];
   return (
@@ -149,7 +149,7 @@ export function Composer(props: ComposerProps) {
       <div className="composer-caption" id="composer-help">
         <span>
           {props.webSearchEnabled
-            ? "Web search is on. Queries leave this device."
+            ? "Web is available when needed. Search queries leave this device."
             : "Local model. Check important details."}
         </span>
         <span className="keyboard-hint">Shift + Enter for a new line</span>
