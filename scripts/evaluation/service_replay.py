@@ -24,6 +24,7 @@ import httpx
 ROOT = Path(__file__).resolve().parents[2]
 OLLAMA_CHAT_URL = "http://127.0.0.1:11434/api/chat"
 CHECKPOINT_INTERVAL_SECONDS = 1.0
+CHECKPOINT_REPLACE_DELAYS = (0.02, 0.05, 0.1, 0.2, 0.4)
 REAL_ASYNC_CLIENT = httpx.AsyncClient
 METRIC_FIELDS = (
     "total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration",
@@ -262,13 +263,13 @@ async def replay(case: dict, model: str, timeout_seconds: float, on_update=None,
     try:
         chat, planning, page_type = load_service()
         request_messages = [{"role": item["role"], "content": item["content"]} for item in messages]
-        prompt = chat.DEFAULT_SYSTEM_PROMPT
+        context = ""
         if case.get("memory_context"):
-            prompt += "\n\nSynthetic approved memory fixture (background data):\n" + case["memory_context"]
-            trace["memory_mode"] = "direct service prompt injection; response-only, no memory retrieval or persistence"
+            context = "Synthetic approved memory fixture (background data):\n" + case["memory_context"]
+            trace["memory_mode"] = "direct service context injection; response-only, no memory retrieval or persistence"
         request = chat.ChatRequest(
             message=request_messages[-1]["content"], model=model,
-            history=request_messages[:-1], system_prompt=prompt,
+            history=request_messages[:-1], context=context,
             web_search_enabled=case["web_search"], connector_context_enabled=False,
         )
         original_plan = chat.plan_query
@@ -368,6 +369,11 @@ async def replay(case: dict, model: str, timeout_seconds: float, on_update=None,
     except Exception as error:
         # Do not persist exception messages that may include file paths or data.
         result["error"] = f"Replay failed: {type(error).__name__}"
+        if isinstance(error, OSError):
+            codes = [f"{name}={getattr(error, name)}" for name in ("errno", "winerror")
+                     if type(getattr(error, name, None)) is int]
+            if codes:
+                result["error"] += " (" + ", ".join(codes) + ")"
     finally:
         if ticker:
             ticker.cancel()
@@ -382,18 +388,38 @@ async def replay(case: dict, model: str, timeout_seconds: float, on_update=None,
 
 
 def write_checkpoint(output: Path, result: dict):
+    """Publish complete JSON, tolerating brief Windows reader/AV rename locks.
+
+    A failed replacement leaves both the previous checkpoint and the complete
+    staging file intact. It still raises; an unpublished final result must not
+    be mistaken for successful evaluation. Retrying never rewrites the staging
+    file or opens the destination for truncation.
+    """
+    encoded = json.dumps(result, ensure_ascii=False, allow_nan=False, indent=2) + "\n"
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n", dir=output.parent,
                                          prefix=output.name + ".", suffix=".tmp", delete=False) as stream:
             temporary = Path(stream.name)
-            json.dump(result, stream, ensure_ascii=False, allow_nan=False, indent=2)
-            stream.write("\n")
-        os.replace(temporary, output)
-    finally:
-        if temporary and temporary.exists():
-            temporary.unlink()
+            stream.write(encoded)
+    except BaseException:
+        if temporary:
+            temporary.unlink(missing_ok=True)
+        raise
+    for attempt in range(len(CHECKPOINT_REPLACE_DELAYS) + 1):
+        try:
+            os.replace(temporary, output)
+            return
+        except OSError as error:
+            # MoveFileExW may report ACCESS_DENIED (5), not just SHARING/LOCK
+            # VIOLATION (32/33), when an ordinary reader denies delete sharing.
+            # Only replacement is retried. Other platforms/errors fail at once;
+            # genuine ACL denial also propagates after this bounded backoff.
+            if (sys.platform != "win32" or getattr(error, "winerror", None) not in (5, 32, 33)
+                    or attempt == len(CHECKPOINT_REPLACE_DELAYS)):
+                raise
+            time.sleep(CHECKPOINT_REPLACE_DELAYS[attempt])
 
 
 def main(argv=None):
