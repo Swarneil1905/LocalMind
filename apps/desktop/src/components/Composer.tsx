@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useId, type RefObject } from "react";
 import { ArrowUp, BookOpen, Brain, Globe, Library, Square } from "lucide-react";
 import type { ModelMode } from "../types";
 
@@ -23,6 +23,7 @@ interface ComposerProps {
 }
 
 export function Composer(props: ComposerProps) {
+  const helpId = useId();
   const {
     textareaRef,
     value,
@@ -44,6 +45,10 @@ export function Composer(props: ComposerProps) {
   }, [value, textareaRef]);
   const send = () => {
     if (value.trim() && !disabled && !isStreaming) void onSend(value);
+  };
+  const stop = () => {
+    onStop();
+    textareaRef.current?.focus({ preventScroll: true });
   };
   const tools = [
     {
@@ -74,16 +79,23 @@ export function Composer(props: ComposerProps) {
         <textarea
           ref={textareaRef}
           aria-label="Message LocalMind"
-          aria-describedby="composer-help"
+          aria-describedby={helpId}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Message LocalMind…"
           rows={2}
           onKeyDown={(e) => {
+            if (e.key === "Escape" && isStreaming && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              e.stopPropagation();
+              stop();
+              return;
+            }
             if (
               e.key === "Enter" &&
               !e.shiftKey &&
-              !e.nativeEvent.isComposing
+              !e.nativeEvent.isComposing &&
+              e.keyCode !== 229
             ) {
               e.preventDefault();
               send();
@@ -93,22 +105,26 @@ export function Composer(props: ComposerProps) {
         <div className="composer-toolbar">
           <div className="composer-tools">
             <button
+              type="button"
               className="icon-button"
               onClick={props.onOpenKnowledge}
               title="Open knowledge library"
               aria-label="Open knowledge library"
             >
-              <Library size={17} />
+              <Library size={17} aria-hidden="true" />
             </button>
             {tools.map(({ label, active, toggle, Icon, description }) => (
               <button
+                type="button"
                 key={label}
                 className="composer-tool"
                 aria-pressed={active}
+                aria-label={label}
                 title={description}
+                disabled={isStreaming}
                 onClick={toggle}
               >
-                <Icon size={15} strokeWidth={1.7} />
+                <Icon size={15} strokeWidth={1.7} aria-hidden="true" />
                 <span>{label}</span>
               </button>
             ))}
@@ -118,6 +134,7 @@ export function Composer(props: ComposerProps) {
               aria-label="Model mode"
               title={`Current model: ${modelName}`}
               value={modelMode}
+              disabled={isStreaming}
               onChange={(e) => onModelModeChange(e.target.value as ModelMode)}
             >
               <option value="speed">Speed</option>
@@ -125,34 +142,36 @@ export function Composer(props: ComposerProps) {
             </select>
             {isStreaming ? (
               <button
-                className="send-button"
-                onClick={onStop}
+                type="button"
+                className="send-button stop-button"
+                onClick={stop}
                 aria-label="Stop generation"
-                title="Stop generation"
+                title="Stop generation (Escape in message field)"
               >
-                <Square size={14} fill="currentColor" />
+                <Square size={14} fill="currentColor" aria-hidden="true" />
               </button>
             ) : (
               <button
+                type="button"
                 className="send-button"
                 onClick={send}
                 disabled={disabled || !value.trim()}
                 aria-label="Send message"
                 title="Send message (Enter)"
               >
-                <ArrowUp size={19} />
+                <ArrowUp size={19} aria-hidden="true" />
               </button>
             )}
           </div>
         </div>
       </div>
-      <div className="composer-caption" id="composer-help">
+      <div className="composer-caption" id={helpId}>
         <span>
           {props.webSearchEnabled
             ? "Web is available when needed. Search queries leave this device."
             : "Local model. Check important details."}
         </span>
-        <span className="keyboard-hint">Shift + Enter for a new line</span>
+        <span className="keyboard-hint">{isStreaming ? "Esc to stop" : "Shift + Enter for a new line"}</span>
       </div>
     </div>
   );

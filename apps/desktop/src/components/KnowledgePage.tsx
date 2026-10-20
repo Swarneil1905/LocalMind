@@ -7,6 +7,7 @@ import {
   LoaderCircle,
 } from "lucide-react";
 import { useKnowledge, type KnowledgeChunk } from "../hooks/useKnowledge";
+import { useProjects } from "../hooks/useProjects";
 import "./supporting-pages.css";
 
 export function KnowledgePage({ embedModel }: { embedModel: string }) {
@@ -19,13 +20,23 @@ export function KnowledgePage({ embedModel }: { embedModel: string }) {
     addFolder,
     deleteSource,
     search,
+    assignProject,
   } = useKnowledge();
+  const { projects } = useProjects();
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [movingSource, setMovingSource] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<KnowledgeChunk[]>([]);
   const [searching, setSearching] = useState(false);
   const [submittedQuery, setSubmittedQuery] = useState("");
   const searchVersion = useRef(0);
   const readySources = sources.filter((source) => source.status === "ready");
+  function clearSearch() {
+    searchVersion.current++;
+    setResults([]);
+    setSubmittedQuery("");
+    setSearching(false);
+  }
   async function handleSearch(event: React.FormEvent) {
     event.preventDefault();
     const term = query.trim();
@@ -33,7 +44,7 @@ export function KnowledgePage({ embedModel }: { embedModel: string }) {
     const version = ++searchVersion.current;
     setSearching(true);
     try {
-      const chunks = await search(term, embedModel);
+      const chunks = await search(term, embedModel, 5, projectId);
       if (version === searchVersion.current) {
         setResults(chunks);
         setSubmittedQuery(term);
@@ -54,13 +65,28 @@ export function KnowledgePage({ embedModel }: { embedModel: string }) {
           </div>
           <button
             className="page-button primary"
-            onClick={() => void addFolder(embedModel).catch(() => {})}
+            onClick={() => void addFolder(embedModel, projectId).catch(() => {})}
             disabled={loading}
           >
             <FolderOpen size={15} />
             {loading ? "Adding folder…" : "Add folder"}
           </button>
         </header>
+        <label className="page-form-row">
+          Project for new folders and search
+          <select
+            aria-label="Knowledge project"
+            value={projectId ?? ""}
+            disabled={loading || searching}
+            onChange={(event) => {
+              setProjectId(event.target.value || null);
+              clearSearch();
+            }}
+          >
+            <option value="">Unassigned folders</option>
+            {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+          </select>
+        </label>
         {error && (
           <div className="page-notice error" role="alert">
             <span>{error}</span>
@@ -91,7 +117,7 @@ export function KnowledgePage({ embedModel }: { embedModel: string }) {
               </p>
               <button
                 className="page-button"
-                onClick={() => void addFolder(embedModel).catch(() => {})}
+                onClick={() => void addFolder(embedModel, projectId).catch(() => {})}
                 disabled={loading}
               >
                 <FolderOpen size={15} />
@@ -120,6 +146,25 @@ export function KnowledgePage({ embedModel }: { embedModel: string }) {
                           : `${source.file_count} files · ${source.chunk_count} indexed passages`}
                     </span>
                   </div>
+                  <select
+                    aria-label={`Project for ${source.name}`}
+                    value={source.project_id ?? ""}
+                    disabled={source.status === "indexing" || movingSource !== null}
+                    onChange={async (event) => {
+                      const selectedProject = event.target.value || null;
+                      setMovingSource(source.id);
+                      try {
+                        await assignProject(source.id, selectedProject);
+                        clearSearch();
+                      } catch { /* The hook displays the failure. */ }
+                      finally { setMovingSource(null); }
+                    }}
+                  >
+                    <option value="">Unassigned</option>
+                    {source.project_id && !projects.some((p) => p.id === source.project_id) &&
+                      <option value={source.project_id}>Unavailable project</option>}
+                    {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                  </select>
                   {source.status === "indexing" && (
                     <LoaderCircle size={16} className="spin" />
                   )}
@@ -133,7 +178,7 @@ export function KnowledgePage({ embedModel }: { embedModel: string }) {
                           `Remove “${source.name}” from Knowledge? Your original files won’t be deleted.`,
                         )
                       )
-                        void deleteSource(source.id).catch(() => {});
+                        void deleteSource(source.id).then(clearSearch).catch(() => {});
                     }}
                   >
                     <Trash2 size={15} />
@@ -193,8 +238,8 @@ export function KnowledgePage({ embedModel }: { embedModel: string }) {
           </section>
         )}
         <p className="page-footnote">
-          Enable Knowledge in chat to include relevant passages from your
-          indexed folders.
+          Project chats use only folders assigned to that project. Chats without a
+          project use unassigned folders. Enable Knowledge in chat to include passages.
         </p>
       </div>
     </div>
