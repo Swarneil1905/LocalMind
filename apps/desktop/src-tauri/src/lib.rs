@@ -133,6 +133,7 @@ pub struct MemoryEntry {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct KnowledgeSource {
     pub id: String,
+    pub project_id: Option<String>,
     pub path: String,
     pub name: String,
     pub file_count: i64,
@@ -153,6 +154,7 @@ pub struct KnowledgeChunk {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Conversation {
     pub id: String,
+    pub project_id: Option<String>,
     pub title: String,
     pub created_at: String,
     pub updated_at: String,
@@ -572,6 +574,9 @@ async fn chat_stream(
     embed_model: String,
     hyde_enabled: bool,
     web_search_enabled: bool,
+    project_id: Option<String>,
+    conversation_id: Option<String>,
+    profile: Option<String>,
     app_handle: tauri::AppHandle,
     sidecar_state: tauri::State<'_, SidecarState>,
     requests: tauri::State<'_, ChatRequests>,
@@ -584,7 +589,8 @@ async fn chat_stream(
     }
     let result = Abortable::new(chat_stream_inner(
         request_id.clone(), message, model, history, memory_enabled, knowledge_enabled,
-        embed_model, hyde_enabled, web_search_enabled, app_handle, sidecar_state,
+        embed_model, hyde_enabled, web_search_enabled, project_id, conversation_id, profile,
+        app_handle, sidecar_state,
     ), registration).await;
     requests.0.lock().map_err(|e| e.to_string())?.remove(&request_id);
     result.unwrap_or(Ok(()))
@@ -601,6 +607,9 @@ async fn chat_stream_inner(
     embed_model: String,
     hyde_enabled: bool,
     web_search_enabled: bool,
+    project_id: Option<String>,
+    conversation_id: Option<String>,
+    profile: Option<String>,
     app_handle: tauri::AppHandle,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<(), String> {
@@ -611,96 +620,18 @@ async fn chat_stream_inner(
         .timeout(std::time::Duration::from_secs(300))
         .build().map_err(|e| e.to_string())?;
 
-    // The service owns response policy. Desktop supplies only reference data.
-    let mut supplied_context = if memory_enabled {
-        let (list_url, list_token) = sidecar_url(&sidecar_state, "/memory/list")?;
-        let memories: Vec<MemoryEntry> = match client
-            .get(&list_url)
-            .header("Authorization", format!("Bearer {list_token}"))
-            .send()
-            .await
-        {
-            Ok(resp) if resp.status().is_success() => resp
-                .json::<serde_json::Value>()
-                .await
-                .ok()
-                .and_then(|v| serde_json::from_value(v["memories"].clone()).ok())
-                .unwrap_or_default(),
-            _ => vec![],
-        };
-
-        // 1-hop link expansion: fetch all links and append linked facts not already listed
-        let (links_url, links_token) = sidecar_url(&sidecar_state, "/memory/links")?;
-        let links: Vec<MemoryLink> = match client
-            .get(&links_url)
-            .header("Authorization", format!("Bearer {links_token}"))
-            .send()
-            .await
-        {
-            Ok(resp) if resp.status().is_success() => resp
-                .json::<serde_json::Value>()
-                .await
-                .ok()
-                .and_then(|v| serde_json::from_value(v["links"].clone()).ok())
-                .unwrap_or_default(),
-            _ => vec![],
-        };
-
-        let mut context = build_memory_context(&memories);
-        if !links.is_empty() {
-            let link_lines: Vec<String> = links
-                .iter()
-                .map(|l| format!("- \"{}\" {} \"{}\"", l.from_content, l.relation, l.to_content))
-                .collect();
-            context = format!(
-                "{context}\n\nMemory connections:\n{}",
-                link_lines.join("\n")
-            );
-        }
-        context
-    } else {
-        String::new()
-    };
-
-    if knowledge_enabled {
-        let (search_url, search_token) = sidecar_url(&sidecar_state, "/knowledge/search")?;
-        let search_body = serde_json::json!({
-            "query": message,
-            "limit": 5,
-            "embed_model": embed_model,
-            "hyde_enabled": hyde_enabled,
-        });
-        if let Ok(resp) = client
-            .post(&search_url)
-            .header("Authorization", format!("Bearer {search_token}"))
-            .json(&search_body)
-            .send()
-            .await
-        {
-            if resp.status().is_success() {
-                if let Ok(data) = resp.json::<serde_json::Value>().await {
-                    let chunks: Vec<KnowledgeChunk> =
-                        serde_json::from_value(data["results"].clone()).unwrap_or_default();
-                    if !chunks.is_empty() {
-                        let context = chunks
-                            .iter()
-                            .map(|c| format!("[{}]\n{}", c.file_path, c.content))
-                            .collect::<Vec<_>>()
-                            .join("\n\n---\n\n");
-                        supplied_context = format!(
-                            "{supplied_context}\n\nRelevant context from the user knowledge base:\n\n{context}"
-                        );
-                    }
-                }
-            }
-        }
-    }
-
+    // The service resolves scoped context and applies its token budget.
     let body = serde_json::json!({
         "message": message,
         "model": model,
         "history": history,
-        "context": supplied_context,
+        "memory_enabled": memory_enabled,
+        "knowledge_enabled": knowledge_enabled,
+        "embed_model": embed_model,
+        "hyde_enabled": hyde_enabled,
+        "project_id": project_id,
+        "conversation_id": conversation_id,
+        "profile": profile,
         "web_search_enabled": web_search_enabled,
     });
 
@@ -788,6 +719,8 @@ async fn extract_memories(
     user_message: String,
     assistant_message: String,
     speed_model: String,
+    project_id: Option<String>,
+    conversation_id: Option<String>,
     app_handle: tauri::AppHandle,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<(), String> {
@@ -796,6 +729,8 @@ async fn extract_memories(
         "user_message": user_message,
         "assistant_message": assistant_message,
         "speed_model": speed_model,
+        "project_id": project_id,
+        "conversation_id": conversation_id,
     });
     let client = localmind_core::http::local_client();
     let resp = client
@@ -940,11 +875,12 @@ async fn pick_folder(app_handle: tauri::AppHandle) -> Result<Option<String>, Str
 async fn index_knowledge(
     path: String,
     embed_model: String,
+    project_id: Option<String>,
     app_handle: tauri::AppHandle,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<(), String> {
     let (url, token) = sidecar_url(&sidecar_state, "/knowledge/index")?;
-    let body = serde_json::json!({ "path": path, "embed_model": embed_model });
+    let body = serde_json::json!({ "path": path, "embed_model": embed_model, "project_id": project_id });
     let client = localmind_core::http::local_client();
     client
         .post(&url)
@@ -1038,10 +974,27 @@ async fn delete_knowledge_source(
 }
 
 #[tauri::command]
+async fn assign_knowledge_project(
+    source_id: String,
+    project_id: Option<String>,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<Vec<KnowledgeSource>, String> {
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/knowledge/source/{source_id}/project"))?;
+    let response = localmind_core::http::local_client()
+        .patch(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&serde_json::json!({"project_id": project_id}))
+        .send().await.and_then(|r| r.error_for_status()).map_err(|e| e.to_string())?;
+    let data: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
+    serde_json::from_value(data["sources"].clone()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn search_knowledge(
     query: String,
     embed_model: String,
     limit: Option<usize>,
+    project_id: Option<String>,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<Vec<KnowledgeChunk>, String> {
     let (url, token) = sidecar_url(&sidecar_state, "/knowledge/search")?;
@@ -1049,6 +1002,7 @@ async fn search_knowledge(
         "query": query,
         "limit": limit.unwrap_or(5),
         "embed_model": embed_model,
+        "project_id": project_id,
     });
     let client = localmind_core::http::local_client();
     let resp = client
@@ -1565,6 +1519,7 @@ async fn update_search_config(
 // Reference context helpers (response policy lives in the Python service)
 // ---------------------------------------------------------------------------
 
+#[cfg(test)]
 fn build_memory_context(memories: &[MemoryEntry]) -> String {
     if memories.is_empty() {
         return String::new();
@@ -1580,6 +1535,48 @@ fn build_memory_context(memories: &[MemoryEntry]) -> String {
 // ---------------------------------------------------------------------------
 // Model management commands
 // ---------------------------------------------------------------------------
+
+async fn model_profile_request(
+    sidecar_state: &SidecarState,
+    path: &str,
+    model: String,
+    preset: String,
+    changes: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let (url, token) = sidecar_url(sidecar_state, path)?;
+    let response = localmind_core::http::local_client()
+        .post(url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&serde_json::json!({ "model": model, "preset": preset, "changes": changes }))
+        .send()
+        .await
+        .map_err(|_| "Could not reach LocalMind. Please retry.".to_string())?;
+    let status = response.status();
+    let value: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(value["detail"].as_str().unwrap_or("Could not update model settings.").to_string());
+    }
+    Ok(value)
+}
+
+#[tauri::command]
+async fn model_profile(
+    model: String,
+    preset: String,
+    changes: Option<serde_json::Value>,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<serde_json::Value, String> {
+    model_profile_request(&sidecar_state, "/models/profile", model, preset, changes).await
+}
+
+#[tauri::command]
+async fn restore_model_profile(
+    model: String,
+    preset: String,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<serde_json::Value, String> {
+    model_profile_request(&sidecar_state, "/models/profile/restore", model, preset, None).await
+}
 
 /// Returns the names of all locally pulled Ollama models.
 #[tauri::command]
@@ -1881,6 +1878,7 @@ pub fn run() {
             list_knowledge_sources,
             search_knowledge,
             delete_knowledge_source,
+            assign_knowledge_project,
             create_conversation,
             list_conversations,
             get_conversation_messages,
@@ -1906,6 +1904,8 @@ pub fn run() {
             delete_memory_link,
             get_followup_questions,
             list_ollama_models,
+            model_profile,
+            restore_model_profile,
             pull_ollama_model,
             check_for_updates,
             install_update,
