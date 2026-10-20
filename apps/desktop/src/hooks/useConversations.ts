@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface Conversation {
   id: string;
+  project_id?: string | null;
   title: string;
   created_at: string;
   updated_at: string;
@@ -146,6 +147,14 @@ export function useConversations() {
     setActiveId(null);
   }, []);
 
+  const updateConversationProject = useCallback((id: string, projectId: string | null) => {
+    setConversations((current) =>
+      current.map((conversation) =>
+        conversation.id === id ? { ...conversation, project_id: projectId } : conversation,
+      ),
+    );
+  }, []);
+
   return {
     conversations,
     activeId,
@@ -156,5 +165,6 @@ export function useConversations() {
     saveCurrentTurn,
     deleteConversation,
     renameConversation,
+    updateConversationProject,
   };
 }
