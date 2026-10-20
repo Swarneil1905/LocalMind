@@ -14,7 +14,9 @@ The 30 cases are a starting regression suite, not a training dataset or a broad 
 
 Keep any future training data separate from evaluation cases and near-duplicates. Training examples need usable target responses or preference pairs, permitted source data, quality review and their own validation split. Related conversations and paraphrases should remain in the same split to reduce leakage. Passing these regression cases alone cannot establish general conversational ability.
 
-Adding cases must extend behavioral coverage instead of merely multiplying paraphrases. Preserve the versioned baseline and its fixed case IDs; create and validate a separately versioned expanded suite when broader coverage is ready. The current validator intentionally accepts only the original 30-case suite.
+Adding cases must extend behavioral coverage instead of merely multiplying paraphrases. Preserve the versioned baseline and its fixed case IDs. `context_cases.json` is a separate five-case development supplement for long history, corrections and untrusted evidence, identified by `suite_kind: context_development`. It cannot relabel held-out cases or change the original suite's rules.
+
+For broader imported conversation candidates, see [dataset preparation](DATASETS.md). That pool is kept local, has separate grouped splits, and uses an unscored replay adapter. Dataset size is not a count of reviewed conversations or successful model answers.
 
 ### Rubric correction
 
@@ -48,7 +50,7 @@ python scripts/evaluation/run_suite.py --profile balanced --cases LM-006 LM-007 
 python scripts/evaluation/review_run.py prepare --run artifacts/evaluation/balanced-trial-01 --out artifacts/evaluation/balanced-trial-01/review.json
 ```
 
-The profile resolves the current UI model mapping (`speed`, `balanced`, or `boost`); `--model` explicitly overrides the model and labels that condition in the manifest. Preflight rejects cloud/remote aliases using installed-model and model-info metadata, including aliases renamed to look local. The inventory retains only an `is_remote` flag, not remote addresses. The runner preserves the Python service's own prompt and generation settings. This is not a native desktop replay: the Rust prompt, UI settings, authenticated HTTP transport and stateful tools are not exercised.
+The profile resolves the current model mapping; `--model` explicitly overrides the model and labels that condition in the manifest. Preflight rejects cloud/remote aliases using installed-model and model-info metadata, including aliases renamed to look local. The inventory retains only an `is_remote` flag, not remote addresses. The runner preserves the Python service's answer policy and legacy generation settings. It does not read a user's saved response profile. The separate model-comparison runner supplies a frozen capability-validated profile for each installed digest. This is not a native desktop replay: UI settings, authenticated HTTP transport and stateful tools are not exercised.
 
 Omit `--cases` to run all 20 development cases in their fixed order. `--timeout-seconds` defaults to 120 per case, including thinking; the worker has a separate hard stop with a 15-second startup allowance. Ctrl+C stops the evaluator's worker, preserves its last checkpoint and leaves remaining cases explicitly unevaluated. It does not stop the shared Ollama server. Repeating a run requires a **new output directory**.
 
@@ -106,6 +108,17 @@ The service owns the answer policy in `services/ai/app/chat_policy.py`. Desktop 
 Chat cannot execute task writes yet. A conservative rule in `services/ai/app/action_boundary.py` handles explicit task-saving commands with honest manual steps before calling a model, search provider or connector. Drafts, teaching exercises and code questions still reach the model. This rule covers selected English command forms, not every possible action request; other unsupported actions still rely on the answer policy and need separate evaluation. A manual-help response is not a task-creation result.
 
 Useful trace fields are the query decision, source IDs accepted/rejected, prompt size, first useful answer latency (separate from thinking latency), completion time, generated tokens, errors, and cancellation outcome. Trace private content only in the isolated synthetic profile. Source inclusion in a model response is not proof that a search was or was not performed; inspect the trace where the rubric requires routing behavior.
+
+`trace.context_budget` records retained/dropped history, shortened references, the input allowance and response reserve. Its UTF-8 byte bound is deliberately conservative for the supported byte-fallback models, not an exact tokenizer count. The current request and system policy are never silently truncated. This favors recent user requests and corrections before older turns.
+
+To replay the context supplement:
+
+```powershell
+python scripts/evaluation/run_suite.py --suite evaluation/context_cases.json --model qwen3:8b --out artifacts/evaluation/context-trial-01
+python scripts/evaluation/review_run.py prepare --run artifacts/evaluation/context-trial-01 --out artifacts/evaluation/context-trial-01/review.json
+```
+
+These five fixtures assess response behavior and packing. Separate service tests exercise real project/memory storage and vector-filter boundaries; a fixture replay alone does not prove those stateful paths.
 
 ## Coverage
 

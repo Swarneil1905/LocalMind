@@ -48,7 +48,7 @@
         {"role": "user", "content": "Observed values are [10, 20] and current predictions are [12, 15]. Suppose the next tree predicts [-2, 5] and the learning rate is 0.5. Calculate the new predictions and the sum of squared errors before and after. Then explain why this is only an illustration of XGBoost."}
       ],
       "expectation": {
-        "required": ["Computes new predictions [11, 17].", "Computes sum of squared errors 29 before and 10 after.", "Explains that the given tree updates are assumed; real XGBoost also chooses tree structure and regularized leaf values."],
+        "required": ["Computes new predictions [11, 17.5].", "Computes sum of squared errors 29 before and 7.25 after.", "Explains that the given tree updates are assumed; real XGBoost also chooses tree structure and regularized leaf values."],
         "forbidden": ["Confuses sum of squared errors with its mean without stating the distinction.", "Claims these two observations establish generalization performance.", "Omits the learning-rate multiplier."]
       },
       "severity": "normal"
