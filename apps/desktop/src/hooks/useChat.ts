@@ -13,6 +13,7 @@ interface UseChatOptions {
   hydeEnabled: boolean;
   webSearchEnabled: boolean;
   embedModel: string;
+  projectId?: string | null;
   onTurnComplete?: (
     user: string,
     answer: string,
@@ -114,6 +115,8 @@ export function useChat(options: UseChatOptions) {
           userMessage: turn.user,
           assistantMessage: parsed.content,
           speedModel: turn.options.speedModel,
+          projectId: turn.options.projectId ?? null,
+          conversationId: turn.conversationId,
         }).catch(() => {});
       }
     },
@@ -265,6 +268,9 @@ export function useChat(options: UseChatOptions) {
           embedModel: options.embedModel,
           hydeEnabled: options.hydeEnabled,
           webSearchEnabled: options.webSearchEnabled,
+          projectId: options.projectId ?? null,
+          conversationId: turn.conversationId,
+          profile: options.modelMode,
         });
       } catch (error) {
         finish(turn, String(error));
