@@ -43,6 +43,51 @@ beforeEach(() => {
 });
 
 describe("request lifecycle", () => {
+  it("shows searching only while the active request reports actual retrieval", async () => {
+    const { result } = renderHook(() => useChat(options));
+    const id = await start(result, "explain trees");
+    expect(result.current.isStreaming).toBe(true);
+    expect(result.current.isSearching).toBe(false);
+    emit("chat-status", { request_id: id, phase: "searching" });
+    expect(result.current.isSearching).toBe(true);
+    emit("chat-status", { request_id: id, phase: "unknown" });
+    expect(result.current.isSearching).toBe(true);
+    emit("chat-status", { request_id: id, phase: "answering" });
+    expect(result.current.isSearching).toBe(false);
+    emit("chat-token", { request_id: id, content: "A tree splits examples." });
+    emit("chat-done", { request_id: id, error: null });
+    emit("chat-status", { request_id: id, phase: "searching" });
+    expect(result.current.isSearching).toBe(false);
+  });
+
+  it("clears searching on cancellation and ignores old status during a new request", async () => {
+    const { result } = renderHook(() => useChat(options));
+    const old = await start(result, "latest news");
+    emit("chat-status", { request_id: old, phase: "searching" });
+    expect(result.current.isSearching).toBe(true);
+    act(() => result.current.stopStreaming());
+    expect(result.current.isSearching).toBe(false);
+    const current = await start(result, "new question");
+    emit("chat-status", { request_id: old, phase: "searching" });
+    expect(result.current.isSearching).toBe(false);
+    emit("chat-status", { request_id: current, phase: "searching" });
+    emit("chat-status", { request_id: old, phase: "answering" });
+    expect(result.current.isSearching).toBe(true);
+    emit("chat-done", { request_id: current, error: "Retrieval stopped." });
+    expect(result.current.isSearching).toBe(false);
+  });
+
+  it("keeps older token-only streams working without a status event", async () => {
+    const { result } = renderHook(() => useChat(options));
+    const id = await start(result, "hello");
+    expect(result.current.isSearching).toBe(false);
+    emit("chat-token", { request_id: id, content: "Hello." });
+    emit("chat-done", { request_id: id, error: null });
+    expect(result.current.messages[1].content).toBe("Hello.");
+    expect(result.current.isStreaming).toBe(false);
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
   it("ignores old tokens, sources, completion and errors after stop and resend", async () => {
     const { result } = renderHook(() => useChat(options));
     const old = await start(result, "old question");
