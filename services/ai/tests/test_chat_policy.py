@@ -98,7 +98,10 @@ class AnswerPolicyTests(unittest.IsolatedAsyncioTestCase):
                 frames = await self.stream(message, web_search_enabled=True)
                 search.assert_not_awaited()
                 self.assertEqual(len(self.payloads), 1)
-                self.assertEqual(frames[0], {"type": "status", "phase": "answering"})
+                self.assertEqual([f for f in frames if f["type"] == "status"],
+                                 [{"type": "status", "phase": "answering"}])
+                budget = next(f["budget"] for f in frames if f["type"] == "context")
+                self.assertLessEqual(budget["estimated_input_tokens"], budget["available_input_tokens"])
                 self.assertIn("No web search was performed", self.payloads[0]["messages"][0]["content"])
 
     async def test_opt_out_wins_over_explicit_query_override(self):
@@ -137,8 +140,8 @@ class AnswerPolicyTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(url, messages[-2]["content"])
         self.assertIn(published, messages[-2]["content"])
         self.assertEqual(frames[0], {"type": "status", "phase": "searching"})
-        self.assertEqual(frames[1]["sources"][0]["url"], url)
-        self.assertEqual(frames[2], {"type": "status", "phase": "answering"})
+        self.assertEqual(next(f["sources"] for f in frames if f["type"] == "sources")[0]["url"], url)
+        self.assertEqual([f["phase"] for f in frames if f["type"] == "status"], ["searching", "answering"])
         self.assertEqual(frames[-1]["type"], "done")
 
     async def test_stale_undated_and_future_news_cannot_reach_model(self):
@@ -178,6 +181,18 @@ class AnswerPolicyTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Mail says", messages[0]["content"])
         self.assertIn("Mail says", messages[-2]["content"])
         self.assertEqual(messages[-2]["role"], "user")
+
+    async def test_output_limit_keeps_partial_answer_and_reports_incomplete(self):
+        def client(**kwargs):
+            return REAL_CLIENT(**kwargs, transport=httpx.MockTransport(lambda _: httpx.Response(
+                200, text='{"message":{"content":"Partial explanation"}}\n{"done":true,"done_reason":"length"}\n')))
+        with patch.object(chat.httpx, "AsyncClient", side_effect=client):
+            frames = [json.loads(frame.removeprefix("data: ")) async for frame in chat._stream_ollama(
+                chat.ChatRequest(message="Explain the idea", model="fixture", connector_context_enabled=False))]
+        self.assertEqual(next(f["content"] for f in frames if f["type"] == "token"), "Partial explanation")
+        self.assertEqual(frames[-1]["type"], "error")
+        self.assertIn("length limit", frames[-1]["content"])
+        self.assertFalse(any(f["type"] == "done" for f in frames))
 
 
 if __name__ == "__main__":
