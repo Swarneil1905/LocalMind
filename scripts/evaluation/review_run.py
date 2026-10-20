@@ -68,10 +68,18 @@ def load_run(run_dir: Path) -> RunEvidence:
             "Unsupported selected-case schema")
     ids = manifest.get("case_ids")
     require(isinstance(ids, list) and bool(ids), "Manifest must select at least one case")
-    require(all(isinstance(identity, str) and re.fullmatch(r"LM-\d{3}", identity) for identity in ids),
+    suite_kind = manifest.get("suite_kind")
+    require(suite_kind in (None, "context_development")
+            and selected.get("suite_kind") == suite_kind,
+            "Supplemental suite identity must match manifest and selected cases")
+    context_suite = suite_kind == "context_development"
+    identity_pattern = r"CTX-00[1-5]" if context_suite else r"LM-\d{3}"
+    require(all(isinstance(identity, str) and re.fullmatch(identity_pattern, identity) for identity in ids),
             "Invalid selected case ID")
     require(len(ids) == len(set(ids)), "Manifest contains duplicate selected IDs")
     require(manifest.get("split") in ("development", "held_out"), "Invalid manifest split")
+    require(not context_suite or manifest["split"] == "development",
+            "Context supplemental cases are development-only")
     require(valid_sha(manifest.get("suite_sha256")), "Invalid suite SHA256")
     cases = selected.get("cases")
     require(isinstance(cases, list) and all(isinstance(case, dict) for case in cases),
@@ -82,6 +90,8 @@ def load_run(run_dir: Path) -> RunEvidence:
         identity = case["id"]
         require(case.get("split") == manifest["split"], f"{identity}: case split does not match run")
         require(case.get("evaluation_layer") in ("service", "desktop"), f"{identity}: invalid layer")
+        require(not context_suite or case["evaluation_layer"] == "service",
+                f"{identity}: context supplemental cases require the service layer")
         require(case.get("severity") in ("normal", "critical"), f"{identity}: invalid severity")
         expectation = case.get("expectation")
         require(isinstance(expectation, dict), f"{identity}: missing rubric")
