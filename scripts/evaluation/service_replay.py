@@ -212,7 +212,8 @@ def initial_result(clock):
 
 
 async def replay(case: dict, model: str, timeout_seconds: float, on_update=None, *,
-                 clock: str | None = None, transport_factory=None) -> dict:
+                 clock: str | None = None, transport_factory=None,
+                 generation_profile: dict | None = None) -> dict:
     """Replay one service case; callers must isolate the profile before import.
 
     transport_factory is a no-network unit-test seam. Module patching makes this
@@ -262,6 +263,13 @@ async def replay(case: dict, model: str, timeout_seconds: float, on_update=None,
     ticker = None
     try:
         chat, planning, page_type = load_service()
+        if generation_profile is not None:
+            from app.model_profiles import validate_profile
+            generation_profile = validate_profile(generation_profile, generation_profile)
+            if generation_profile["model"] != model:
+                raise ValueError("The generation profile belongs to a different model")
+            trace["generation_profile"] = generation_profile
+            trace["profile_mode"] = "frozen capability snapshot; no live profile or user settings"
         request_messages = [{"role": item["role"], "content": item["content"]} for item in messages]
         context = ""
         if case.get("memory_context"):
@@ -271,6 +279,7 @@ async def replay(case: dict, model: str, timeout_seconds: float, on_update=None,
             message=request_messages[-1]["content"], model=model,
             history=request_messages[:-1], context=context,
             web_search_enabled=case["web_search"], connector_context_enabled=False,
+            profile=generation_profile["preset"] if generation_profile else None,
         )
         original_plan = chat.plan_query
 
@@ -326,6 +335,8 @@ async def replay(case: dict, model: str, timeout_seconds: float, on_update=None,
                         result["answer"] += content
                         if content.strip() and result["timings"]["first_content_seconds"] is None:
                             result["timings"]["first_content_seconds"] = now
+                    elif kind == "context":
+                        trace["context_budget"] = event.get("budget", {})
                     elif kind == "sources":
                         accepted_ids.update(by_url[source["url"]]["id"]
                                             for source in event.get("sources", []) if source.get("url") in by_url)
@@ -338,6 +349,12 @@ async def replay(case: dict, model: str, timeout_seconds: float, on_update=None,
 
         checkpoint()
         with ExitStack() as stack:
+            if generation_profile:
+                async def frozen_profile(requested_model, requested_preset):
+                    if requested_model != model or requested_preset != generation_profile["preset"]:
+                        raise ValueError("Profile selection changed during replay")
+                    return generation_profile
+                stack.enter_context(patch.object(chat, "resolve_profile", frozen_profile))
             for owner, name, replacement in (
                 (chat, "search", fixture_search), (chat, "fetch_evidence", fixture_fetch),
                 (chat, "plan_query", planned_query), (chat, "datetime", frozen_datetime(moment)),
@@ -440,6 +457,7 @@ def main(argv=None):
     result = asyncio.run(replay(
         document["case"], document["model"], document["timeout_seconds"],
         on_update=lambda value: write_checkpoint(args.output, value), clock=document["clock"],
+        generation_profile=document.get("generation_profile"),
     ))
     return 0 if result["status"] == "completed" else 1
 

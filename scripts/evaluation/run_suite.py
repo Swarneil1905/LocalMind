@@ -5,6 +5,7 @@ Each case gets a fresh process/profile; live search and connectors are disabled.
 """
 
 import argparse
+import asyncio
 import hashlib
 import json
 import math
@@ -90,6 +91,28 @@ def source_hashes(root: Path = ROOT) -> dict:
             for path in files}
 
 
+def profile_api():
+    service = str(ROOT / "services" / "ai")
+    if service not in sys.path:
+        sys.path.insert(0, service)
+    # These helpers inspect metadata and validate snapshots without reading
+    # or changing the user's saved response settings.
+    from app import model_profiles
+    return model_profiles
+
+
+def load_generation_profile(path: Path, model: str, preset: str, metadata: dict, api=None) -> tuple[dict, str]:
+    with Path(path).open("rb") as stream:
+        raw = stream.read(65537)
+    if len(raw) > 65536:
+        raise ValueError("Generation profile exceeds the 64 KiB snapshot limit")
+    profile = json.loads(raw)
+    if not isinstance(profile, dict) or profile.get("model") != model or profile.get("preset") != preset:
+        raise ValueError("Generation profile must match the selected model and preset")
+    validated = (api or profile_api()).validate_profile(profile, metadata)
+    return validated, hashlib.sha256(raw).hexdigest()
+
+
 def base_result(case: dict, model: str, profile: str) -> dict:
     return {"schema_version": 1, "id": case["id"], "split": case["split"],
             "evaluation_layer": case["evaluation_layer"], "severity": case["severity"],
@@ -109,14 +132,15 @@ def read_checkpoint(path: Path) -> dict:
 
 
 def execute_case(case: dict, model: str, timeout_seconds: float, clock: str,
-                 scratch: Path) -> tuple[dict, bool]:
+                 scratch: Path, generation_profile: dict | None = None) -> tuple[dict, bool]:
     """Return result and interruption flag. Kill only this evaluator's child."""
     with tempfile.TemporaryDirectory(prefix=f"{case['id']}-", dir=scratch) as temporary:
         work = Path(temporary)
         request, response = work / "input.json", work / "output.json"
         profile = work / "profile"  # Worker creates it; never reuse an existing profile.
         write_json(request, {"case": case, "model": model, "timeout_seconds": timeout_seconds,
-                             "clock": clock, "profile_dir": str(profile.resolve())})
+                             "clock": clock, "profile_dir": str(profile.resolve()),
+                             "generation_profile": generation_profile})
         environment = os.environ.copy()
         environment["LOCALMIND_DATA_DIR"] = str(profile.resolve())
         # Prevent inherited desktop credentials from entering this process.
@@ -168,17 +192,37 @@ def run(args: argparse.Namespace) -> int:
                 "scope": "Synthetic fixtures; no desktop UI, auth transport, live web, connectors or real user profile.",
                 "held_out_acknowledged": args.allow_held_out if args.split == "held_out" else False,
                 "source_sha256": source_hashes()}
-    write_json(out / "cases.json", {"schema_version": 1, "cases": cases})
+    selected = {"schema_version": 1, "cases": cases}
+    # Preserve the validator-approved supplemental suite identity in both
+    # evidence files so review tools cannot confuse CTX cases with the baseline.
+    if suite.get("suite_kind"):
+        manifest["suite_kind"] = suite["suite_kind"]
+        selected["suite_kind"] = suite["suite_kind"]
+    write_json(out / "cases.json", selected)
     write_json(out / "manifest.json", manifest)
     for case in cases:
         result = base_result(case, model, args.profile)
         result["error"] = "Desktop state must be evaluated in the app." if case["evaluation_layer"] == "desktop" else "Case has not run."
         write_json(out / "results" / f"{case['id']}.json", result)
     interrupted, errors = False, 0
+    generation_profile = None
     try:
         environment = inventory.capture(model, ROOT)
         write_json(out / "environment.json", environment)
         manifest["model_snapshot"] = model_snapshot(environment["ollama"], model)
+        if getattr(args, "generation_profile", None) is not None:
+            api = profile_api()
+            try:
+                metadata = asyncio.run(api.inspect_model(model))
+            except api.httpx.HTTPError as exc:
+                raise ValueError("Could not inspect the installed model for the generation profile") from exc
+            captured_digest = manifest["model_snapshot"]["installed"]["digest"].removeprefix("sha256:")
+            if metadata["digest"].removeprefix("sha256:") != captured_digest:
+                raise ValueError("The installed model changed during profile preflight; start a new run")
+            generation_profile, profile_sha = load_generation_profile(
+                args.generation_profile, model, args.profile, metadata, api=api,
+            )
+            manifest.update(generation_profile=generation_profile, generation_profile_sha256=profile_sha)
         manifest["state"] = "running"
         write_json(out / "manifest.json", manifest)
         # All temporary profile state stays within the user-selected run directory.
@@ -188,7 +232,10 @@ def run(args: argparse.Namespace) -> int:
                     print(f"[{index}/{len(cases)}] {case['id']}: not evaluated (desktop state)", flush=True)
                     continue
                 print(f"[{index}/{len(cases)}] {case['id']}: running {model}", flush=True)
-                result, interrupted = execute_case(case, model, args.timeout_seconds, started, Path(scratch))
+                profile_options = {"generation_profile": generation_profile} if generation_profile else {}
+                result, interrupted = execute_case(
+                    case, model, args.timeout_seconds, started, Path(scratch), **profile_options,
+                )
                 result = {**base_result(case, model, args.profile), **result}
                 write_json(out / "results" / f"{case['id']}.json", result)
                 errors += result["status"] == "run_error"
@@ -219,6 +266,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--cases", nargs="+", help="Optional subset of case IDs, executed in fixed corpus order")
     parser.add_argument("--profile", choices=("speed", "balanced", "boost"), default="balanced")
     parser.add_argument("--model", help="Explicit installed local model override; recorded as a separate condition")
+    parser.add_argument("--generation-profile", type=Path,
+                        help="Frozen response-settings JSON; validated against the installed model and recorded")
     parser.add_argument("--timeout-seconds", type=float, default=120, help="Overall deadline for each service replay")
     parser.add_argument("--out", type=Path, required=True, help="New experiment directory; must not exist")
     args = parser.parse_args(argv)
