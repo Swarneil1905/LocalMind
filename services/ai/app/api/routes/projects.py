@@ -3,6 +3,7 @@ REST routes for projects and tasks - Phase 4.
 """
 
 import httpx
+from app.inference_queue import inference_slot
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -178,7 +179,7 @@ async def generate_summary(project_id: str, req: GenerateSummaryRequest) -> dict
     )
 
     try:
-        async with httpx.AsyncClient(trust_env=False, timeout=SUMMARY_TIMEOUT) as client:
+        async with inference_slot("background"), httpx.AsyncClient(trust_env=False, timeout=SUMMARY_TIMEOUT) as client:
             resp = await client.post(
                 f"{OLLAMA_BASE}/api/generate",
                 json={"model": req.speed_model, "prompt": prompt, "stream": False},

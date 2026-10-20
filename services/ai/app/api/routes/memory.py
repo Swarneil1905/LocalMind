@@ -33,6 +33,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.db import memories as mem_db
+from app.context_retrieval import resolve_project
+from app.inference_queue import inference_slot
 
 router = APIRouter(prefix="/memory")
 
@@ -79,6 +81,8 @@ class ExtractRequest(BaseModel):
     user_message: str
     assistant_message: str
     speed_model: str = "qwen2.5:1.5b"
+    project_id: str | None = None
+    conversation_id: str | None = None
 
 
 class CreateLinkRequest(BaseModel):
@@ -141,8 +145,17 @@ def _parse_extract_response(text: str) -> tuple[list[str], list[dict]]:
 
 @router.post("/extract")
 async def extract_memories(request: ExtractRequest) -> dict:
+    try:
+        project_id = resolve_project(request.project_id, request.conversation_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     # Build existing memories summary for the prompt (cap at 20 most recent)
-    existing = mem_db.list_all()[:20]
+    existing = [
+        row for row in mem_db.list_all()
+        if row.get("project_id") == project_id
+        and (project_id is not None or row.get("conversation_id") in (None, request.conversation_id))
+    ][:20]
+    existing_ids = {row["id"] for row in existing}
     existing_str = "\n".join(f"{m['id']}: {m['content']}" for m in existing) or "(none)"
 
     prompt = EXTRACT_PROMPT.format(
@@ -160,7 +173,7 @@ async def extract_memories(request: ExtractRequest) -> dict:
     extracted_texts: list[str] = []
     proposed_links: list[dict] = []
     try:
-        async with httpx.AsyncClient(trust_env=False, timeout=EXTRACT_TIMEOUT) as client:
+        async with inference_slot("background"), httpx.AsyncClient(trust_env=False, timeout=EXTRACT_TIMEOUT) as client:
             resp = await client.post(f"{OLLAMA_BASE}/api/chat", json=payload)
             resp.raise_for_status()
             data = resp.json()
@@ -169,7 +182,8 @@ async def extract_memories(request: ExtractRequest) -> dict:
     except Exception:
         pass  # Extraction failure is non-fatal
 
-    new_rows = mem_db.insert_memories(extracted_texts)
+    new_rows = mem_db.insert_memories(extracted_texts, project_id=project_id,
+                                    conversation_id=request.conversation_id)
 
     # Create links proposed by the model (from_new index => existing memory id)
     created_links: list[dict] = []
@@ -177,7 +191,7 @@ async def extract_memories(request: ExtractRequest) -> dict:
         idx = lnk.get("from_new", -1)
         to_id = lnk.get("to_id", "")
         relation = lnk.get("relation", "related_to")
-        if 0 <= idx < len(new_rows) and to_id:
+        if 0 <= idx < len(new_rows) and to_id in existing_ids:
             result = mem_db.create_link(new_rows[idx]["id"], to_id, relation)
             if result:
                 created_links.append(result)

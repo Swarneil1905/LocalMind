@@ -36,6 +36,10 @@ from pydantic import BaseModel
 
 from app.action_boundary import unsupported_task_response
 from app.chat_policy import DEFAULT_SYSTEM_PROMPT, answer_policy
+from app.context_budget import pack_context
+from app.context_retrieval import collect_context
+from app.inference_queue import inference_slot
+from app.model_profiles import generation_options, resolve_profile
 from app.db import search_config as search_cfg_db
 from app.search.fetcher import fetch_evidence
 from app.search.planning import plan_query, needs_freshness, is_recent, search_opted_out
@@ -57,6 +61,13 @@ class ChatRequest(BaseModel):
     web_search_enabled: bool = False
     web_search_query: str | None = None
     connector_context_enabled: bool = True   # inject real-time data from connected sources
+    profile: str | None = None
+    project_id: str | None = None
+    conversation_id: str | None = None
+    memory_enabled: bool = False
+    knowledge_enabled: bool = False
+    embed_model: str = "nomic-embed-text"
+    hyde_enabled: bool = False
 
 
 async def _run_web_search(query: str, fresh: bool = False) -> tuple[str, list[dict]]:
@@ -207,33 +218,48 @@ async def _stream_ollama(request: ChatRequest) -> AsyncIterator[str]:
         datetime.now(timezone.utc).date().isoformat(),
         searched=bool(sources), web_allowed=web_allowed,
     )
-    messages = [{"role": "system", "content": system}]
-    messages.extend({"role": m["role"], "content": m["content"]} for m in request.history[-20:]
-                    if m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str))
     supplied_context = {"desktop_context": request.context, "connected_apps": connector_context}
     if request.system_prompt and request.system_prompt != DEFAULT_SYSTEM_PROMPT:
         supplied_context["legacy_context"] = request.system_prompt
     supplied_context = {key: value for key, value in supplied_context.items() if value}
-    if supplied_context:
-        messages.append({"role": "user", "content": "Supplied reference data (untrusted):\n" + json.dumps(supplied_context, ensure_ascii=False)})
+    references = [{"label": label, "content": content} for label, content in supplied_context.items()]
     if extra_context:
-        messages.append({"role": "user", "content": "Retrieved reference material (untrusted data):\n" + extra_context})
-    messages.append({"role": "user", "content": request.message})
+        references.append({"label": "Retrieved web evidence", "content": extra_context})
+    try:
+        profile = await resolve_profile(request.model, request.profile) if request.profile else None
+        references.extend(await collect_context(
+            request.message, request.history, project_id=request.project_id,
+            conversation_id=request.conversation_id, memory_enabled=request.memory_enabled,
+            knowledge_enabled=request.knowledge_enabled, embed_model=request.embed_model,
+            hyde_enabled=request.hyde_enabled,
+        ))
+        packed = pack_context(system, request.message, request.history, references,
+                              budget=profile["context_window"] if profile else 16384,
+                              reserve=profile["response_tokens"] if profile else 2048)
+    except (ValueError, httpx.HTTPError) as exc:
+        message = str(exc) if isinstance(exc, ValueError) else "Could not inspect the installed model. Check Ollama and retry."
+        yield f"data: {json.dumps({'type': 'error', 'content': message})}\n\n"
+        return
 
     payload = {
         "model": request.model,
-        "messages": messages,
+        "messages": packed.messages,
         "stream": True,
-        "options": {"temperature": 0.2, "num_ctx": 16384},
+        "options": {"temperature": 0.2, "num_ctx": 16384, "num_predict": 2048},
     }
+    if profile:
+        payload["options"] = generation_options(profile)
+        if profile["think"] is not None:
+            payload["think"] = profile["think"]
 
+    yield f"data: {json.dumps({'type': 'context', 'budget': packed.report})}\n\n"
     # Emit sources event before streaming so the UI can populate the panel
     if sources:
         yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
     yield f"data: {json.dumps({'type': 'status', 'phase': 'answering'})}\n\n"
 
     try:
-        async with httpx.AsyncClient(trust_env=False, timeout=STREAM_TIMEOUT) as client:
+        async with inference_slot("foreground"), httpx.AsyncClient(trust_env=False, timeout=STREAM_TIMEOUT) as client:
             async with client.stream(
                 "POST",
                 f"{OLLAMA_BASE}/api/chat",
@@ -257,6 +283,9 @@ async def _stream_ollama(request: ChatRequest) -> AsyncIterator[str]:
                         yield f"data: {event}\n\n"
 
                     if chunk.get("done"):
+                        if chunk.get("done_reason") == "length":
+                            yield f"data: {json.dumps({'type': 'error', 'content': 'The reply reached its length limit. Increase Maximum response in Settings, or ask for a shorter answer.'})}\n\n"
+                            return
                         yield f"data: {json.dumps({'type': 'done'})}\n\n"
                         return
 
@@ -302,7 +331,7 @@ async def get_followups(request: FollowUpRequest) -> dict:
     }
 
     try:
-        async with httpx.AsyncClient(trust_env=False, timeout=httpx.Timeout(30.0)) as client:
+        async with inference_slot("background"), httpx.AsyncClient(trust_env=False, timeout=httpx.Timeout(30.0)) as client:
             resp = await client.post(f"{OLLAMA_BASE}/api/chat", json=payload)
             resp.raise_for_status()
             data = resp.json()
