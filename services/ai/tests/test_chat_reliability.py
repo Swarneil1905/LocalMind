@@ -64,7 +64,7 @@ class ChatStreamTests(unittest.IsolatedAsyncioTestCase):
             frames = [json.loads(frame.removeprefix("data: ")) async for frame in _stream_ollama(request)]
         client.assert_not_called()
         self.assertEqual(frames[-1]["type"], "done")
-        self.assertIn("couldn't verify", frames[1]["content"])
+        self.assertIn("couldn't verify", next(f["content"] for f in frames if f["type"] == "token"))
 
     async def test_greeting_skips_search_and_streams_native_reasoning(self):
         class Response:
@@ -81,9 +81,10 @@ class ChatStreamTests(unittest.IsolatedAsyncioTestCase):
         with patch("app.api.routes.chat._run_web_search", AsyncMock()) as search, patch("app.api.routes.chat.httpx.AsyncClient", return_value=Client()):
             frames = [json.loads(f.removeprefix("data: ")) async for f in _stream_ollama(ChatRequest(message="hello", model="test", web_search_enabled=True, connector_context_enabled=False))]
         search.assert_not_called()
-        self.assertEqual(frames[0]["thinking"], "reason")
-        self.assertEqual(frames[1]["content"], "Hello")
-        self.assertEqual(frames[2]["type"], "done")
+        self.assertEqual(frames[0], {"type": "status", "phase": "answering"})
+        self.assertEqual(frames[1]["thinking"], "reason")
+        self.assertEqual(frames[2]["content"], "Hello")
+        self.assertEqual(frames[3]["type"], "done")
 
 
 if __name__ == "__main__":
