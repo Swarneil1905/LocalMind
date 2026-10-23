@@ -6,6 +6,7 @@ import rehypeKatex from "rehype-katex";
 import { Check, Copy } from "lucide-react";
 import "katex/dist/katex.min.css";
 import type { WebSource } from "../types";
+import { KnowledgeCitation } from "./KnowledgeCitation";
 
 /** Generated links may open web pages, but never local files or application protocols. */
 export function safeWebUrl(value?: string): string | undefined {
@@ -40,9 +41,10 @@ function remarkCitations({ sources }: { sources: WebSource[] }) {
         }
         const parts: MarkdownNode[] = [];
         let cursor = 0;
-        for (const match of child.value.matchAll(/\[(\d{1,3})\]/g)) {
+        for (const match of child.value.matchAll(/\[(K?\d{1,3})\]/g)) {
           const index = Number(match[1]) - 1;
-          const url = safeWebUrl(sources[index]?.url);
+          const local = sources.find((source) => source.kind === "knowledge" && source.citation === match[1]);
+          const url = local?.chunk_id ? `#knowledge-${local.chunk_id}` : safeWebUrl(sources[index]?.url);
           if (!url) continue;
           if (match.index > cursor) parts.push({ type: "text", value: child.value.slice(cursor, match.index) });
           parts.push({ type: "link", url, children: [{ type: "text", value: match[1] }] });
@@ -122,6 +124,8 @@ export const AnswerContent = memo(function AnswerContent({ content, sources = EM
   const components = useMemo<Components>(() => ({
     pre: CodeBlock,
     a: ({ href, children }) => {
+      const local = sources.find((source) => source.kind === "knowledge" && source.chunk_id && href === `#knowledge-${source.chunk_id}`);
+      if (local) return <KnowledgeCitation source={local} inline />;
       const url = safeWebUrl(href);
       if (!url) return <span>{children}</span>;
       const label = plainText(children);
