@@ -12,7 +12,8 @@ export interface KnowledgeSource {
   name: string;
   file_count: number;
   chunk_count: number;
-  status: "indexing" | "ready" | "error";
+  status: "indexing" | "ready" | "partial" | "empty" | "error";
+  error_message?: string | null;
   created_at: string;
   project_id?: string | null;
 }
@@ -23,6 +24,8 @@ export interface KnowledgeChunk {
   file_path: string;
   chunk_index: number;
   content: string;
+  project_id?: string | null;
+  location?: string;
 }
 
 interface KnowledgeUpdatedPayload {
@@ -42,6 +45,7 @@ interface UseKnowledgeReturn {
   addFolder: (embedModel: string, projectId?: string | null) => Promise<void>;
   assignProject: (sourceId: string, projectId: string | null) => Promise<void>;
   deleteSource: (sourceId: string) => Promise<void>;
+  retrySource: (sourceId: string, embedModel: string) => Promise<void>;
   search: (
     query: string,
     embedModel: string,
@@ -109,6 +113,24 @@ export function useKnowledge(): UseKnowledgeReturn {
       offs.forEach((off) => off());
     };
   }, [refresh]);
+
+  const indexing = sources.some((source) => source.status === "indexing");
+  useEffect(() => {
+    if (!indexing) return;
+    const timer = setInterval(() => void refresh(), 3000);
+    return () => clearInterval(timer);
+  }, [indexing, refresh]);
+
+  const retrySource = async (sourceId: string, embedModel: string) => {
+    const epoch = generation.current;
+    try {
+      await invoke("retry_knowledge", { sourceId, embedModel });
+      if (epoch === generation.current) await refresh();
+    } catch (cause) {
+      if (epoch === generation.current) setError(String(cause));
+      throw cause;
+    }
+  };
 
   const addFolder = async (embedModel: string, projectId: string | null = null) => {
     if (adding.current) return;
@@ -205,6 +227,7 @@ export function useKnowledge(): UseKnowledgeReturn {
     refresh,
     addFolder,
     deleteSource,
+    retrySource,
     assignProject,
     search,
   };
