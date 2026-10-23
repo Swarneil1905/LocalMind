@@ -74,6 +74,22 @@ class AnswerPolicyTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(messages[-1]["content"], "Help me draft a task")
                 self.assertNotIn("tools", self.payloads[0])
 
+    async def test_local_source_metadata_reaches_stream_only_when_evidence_is_packed(self):
+        references = [{"label": f"[K{i}] notes-{i}.txt", "content": f"Evidence {i}",
+                       "source": {"kind": "knowledge", "citation": f"K{i}",
+                                  "chunk_id": f"chunk-{i}", "project_id": "atlas"}}
+                      for i in range(1, 101)]
+        with patch.object(chat, "collect_context", AsyncMock(return_value=references)):
+            frames = await self.stream("What do my notes say?", project_id="atlas", knowledge_enabled=True)
+        budget = next(frame["budget"] for frame in frames if frame["type"] == "context")
+        sources = next(frame["sources"] for frame in frames if frame["type"] == "sources")
+        self.assertEqual(len(sources), budget["references_retained"])
+        self.assertLess(len(sources), len(references))
+        for source in sources:
+            self.assertEqual(source["project_id"], "atlas")
+            self.assertTrue(any(label.startswith(f"[{source['citation']}]") for label in budget["reference_labels"]))
+        self.assertIn("exact [K1]", self.payloads[0]["messages"][0]["content"])
+
     async def test_policy_is_identical_with_and_without_desktop_context(self):
         await self.stream("Explain recursion")
         policy = self.payloads[0]["messages"][0]
