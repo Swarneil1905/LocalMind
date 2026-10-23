@@ -123,7 +123,12 @@ describe("supporting page recovery", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Project for Notes" }), {
       target: { value: project.id },
     });
-    await waitFor(() => expect((screen.getByRole("button", { name: "Search" }) as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() => expect((screen.getByRole("combobox", { name: "Knowledge project" }) as HTMLSelectElement).disabled).toBe(false));
+    // The former scope is now empty; switch to the folder's new project.
+    fireEvent.change(screen.getByRole("combobox", { name: "Knowledge project" }), {
+      target: { value: project.id },
+    });
+    expect((screen.getByRole("button", { name: "Search" }) as HTMLButtonElement).disabled).toBe(false);
     await act(async () => {
       finishSearch([{ id: "old", source_id: source.id, file_path: "old.txt",
         chunk_index: 0, content: "Stale scope result" }]);
