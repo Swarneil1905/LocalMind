@@ -140,6 +140,13 @@ pub struct KnowledgeSource {
     pub chunk_count: i64,
     pub status: String,
     pub created_at: String,
+    pub error_message: Option<String>,
+    #[serde(default)]
+    pub failed_files: i64,
+    #[serde(default)]
+    pub failed_chunks: i64,
+    #[serde(default)]
+    pub empty_files: i64,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -149,6 +156,11 @@ pub struct KnowledgeChunk {
     pub file_path: String,
     pub chunk_index: i64,
     pub content: String,
+    pub project_id: Option<String>,
+    pub location: Option<String>,
+    pub page: Option<i64>,
+    pub line_start: Option<i64>,
+    pub line_end: Option<i64>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -1022,6 +1034,54 @@ async fn search_knowledge(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
+async fn knowledge_passage(
+    chunk_id: String,
+    project_id: Option<String>,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<serde_json::Value, String> {
+    // IDs, never model-supplied filesystem paths, cross the native boundary.
+    let id = knowledge_id(&chunk_id)?;
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/knowledge/passage/{id}"))?;
+    let mut request = localmind_core::http::local_client().get(&url)
+        .header("Authorization", format!("Bearer {token}"));
+    if let Some(project) = project_id { request = request.query(&[("project_id", project)]); }
+    let response = request.send().await.map_err(|e| e.to_string())?;
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(body["detail"].as_str().unwrap_or("Could not open this passage. Search again.").to_string());
+    }
+    Ok(body)
+}
+
+#[tauri::command]
+async fn retry_knowledge(
+    source_id: String,
+    embed_model: String,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<(), String> {
+    let id = knowledge_id(&source_id)?;
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/knowledge/source/{id}/retry"))?;
+    let response = localmind_core::http::local_client().post(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&serde_json::json!({"embed_model": embed_model}))
+        .send().await.map_err(|e| e.to_string())?;
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(body["detail"].as_str().unwrap_or("Could not retry indexing.").to_string());
+    }
+    Ok(())
+}
+
+fn knowledge_id(value: &str) -> Result<&str, String> {
+    if value.len() != 36 || !value.bytes().enumerate().all(|(i, b)| {
+        if [8, 13, 18, 23].contains(&i) { b == b'-' } else { b.is_ascii_hexdigit() }
+    }) { return Err("Invalid knowledge identifier".into()); }
+    Ok(value)
+}
+
+#[tauri::command]
 async fn create_conversation(
     title: String,
     sidecar_state: tauri::State<'_, SidecarState>,
@@ -1877,6 +1937,8 @@ pub fn run() {
             index_knowledge,
             list_knowledge_sources,
             search_knowledge,
+            knowledge_passage,
+            retry_knowledge,
             delete_knowledge_source,
             assign_knowledge_project,
             create_conversation,

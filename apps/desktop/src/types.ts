@@ -3,6 +3,13 @@
 export type ModelMode = "speed" | "balanced" | "boost";
 
 export interface WebSource {
+  kind?: "web" | "knowledge";
+  citation?: string;
+  chunk_id?: string;
+  source_id?: string;
+  project_id?: string | null;
+  file_path?: string;
+  location?: string;
   title: string;
   url: string;
   snippet: string;

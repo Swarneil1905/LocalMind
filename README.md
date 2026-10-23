@@ -28,8 +28,8 @@ A captioned tour of chat, sources, Knowledge, Memory, Projects, Tasks, and theme
 | Workspace | What it does |
 | --- | --- |
 | **Chat** | Stream responses from local models, render equations and code, copy answers or code, stop a response, and retry. Reading earlier messages keeps your scroll position. |
-| **Sources** | Inspect links and available publication dates for web-assisted answers. Source details are saved with the conversation. |
-| **Knowledge** | Assign indexed folders to a project and retrieve passages within that project's scope. Unassigned chats search unassigned sources. Optional expanded search uses a generated draft answer to find related passages. |
+| **Sources** | Inspect web links and publication dates, or open local file citations to see the indexed passage and its PDF page or text lines. Changed and missing files are flagged. |
+| **Knowledge** | Assign folders to a project and search their text and meaning. Unassigned chats search unassigned sources. Text search remains available when embeddings fail; indexing shows partial results and offers retry. |
 | **Memory** | Review and remove facts extracted from conversations, including relationships between saved facts. |
 | **Projects and Tasks** | Group conversations by project and track work alongside them. |
 | **Connections** | Connect supported apps to bring their data into your workspace. Availability and setup depend on the service and operating system. |
@@ -64,7 +64,7 @@ Release assets include `SHA256SUMS.txt`. Update bundles are signed for LocalMind
 
 1. **Launch LocalMind and finish model setup.** The first-run screen shows download progress and lets you retry failed downloads. An internet connection is required to download models.
 2. **Choose a model and start a chat.** Settings lets you change which installed model each preset uses. Start with a smaller model if responses are slow.
-3. **Add your files in Knowledge.** Install the embedding model before indexing documents. Ask a question about the files after indexing finishes.
+3. **Add your files in Knowledge.** Select their project, add a folder, and check its indexing status. Install `nomic-embed-text` for semantic search; exact-term search can work without embeddings. Enable Knowledge in the matching project chat, then open a `[K1]` citation to inspect its supporting passage.
 4. **Review Memory.** Check the facts saved from conversations and remove anything you do not want reused.
 5. **Enable web search when you need online information.** Choose DuckDuckGo or configure a SearXNG instance. LocalMind searches for source-dependent questions and answers ordinary explanations locally. Check the sources and their dates, especially for current events.
 
@@ -108,11 +108,14 @@ Ollama manages its model storage separately. See [desktop runtime and storage](d
 | --- | --- |
 | The local AI service does not start | Use the app's retry control after the failure. Close another LocalMind instance using the same profile; only one service can own it. |
 | A chat model is unavailable | Finish its download or choose an installed model in Settings. Source development also requires a running local Ollama service. |
-| Knowledge indexing or search fails | Check that `nomic-embed-text` is installed and the selected files are readable. |
+| Knowledge shows a partial or empty index | Read its status message. Check file permissions and UTF-8 text encoding; PDFs must contain selectable text. Install `nomic-embed-text` for semantic search, then choose Retry indexing. |
+| A local citation says the file changed or is missing | The preview is the saved indexed passage. Restore the original file or re-add its new folder; retry indexing to update changed content. Older chat citations may become unavailable after reindexing. |
 | A current-news question has no answer | Verify web search is enabled. LocalMind reports when it cannot retrieve suitable dated sources; try a more specific query. |
 | Responses are slow | Try a smaller installed model, disable expanded Knowledge search, or turn thinking off in response settings when the model supports it. |
 
 For a bug report, include the app version, operating system, model name, steps to reproduce, and relevant errors. Remove private conversation content and credentials before posting to [Issues](https://github.com/Swarneil1905/LocalMind/issues). Report security vulnerabilities using [SECURITY.md](SECURITY.md).
+
+Knowledge supports UTF-8 text and code files and PDFs with selectable text, up to 10 MiB per file, 500 pages per PDF, 2,000 supported files and 20,000 passages per folder. It does not perform OCR or watch files for changes automatically. Hidden folders and common build directories are skipped. Retry indexing after editing files. Legacy indexes remain searchable; reindex them to add verified page or line locations.
 
 ## Development
 
