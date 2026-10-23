@@ -20,6 +20,8 @@ from app.api.routes import (
     models,
     projects,
     search_config,
+    task_actions,
+    project_graph,
 )
 from app.connectors.registry import setup_registry
 from app.db.messages import init_db as init_messages_db
@@ -36,6 +38,8 @@ async def lifespan(app: FastAPI):
         init_messages_db()
         init_people_db()
         knowledge.kb.recover_interrupted_sources()
+        from app.project_repairs import recover_interrupted
+        recover_interrupted()
         setup_registry()
         from app.sync_engine import start_background_sync, stop_background_sync
         await start_background_sync()
@@ -66,3 +70,5 @@ app.include_router(conversations.router)
 app.include_router(projects.router)
 app.include_router(search_config.router)
 app.include_router(connectors.router)
+app.include_router(task_actions.router)
+app.include_router(project_graph.router)

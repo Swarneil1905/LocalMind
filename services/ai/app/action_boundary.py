@@ -1,7 +1,8 @@
-"""Conservative handling of task writes that chat cannot currently execute.
+"""Conservative detection of explicit task-writing intent.
 
-This is a small boundary for explicit task-saving commands, not an action
-dispatcher or a general intent classifier. Ambiguous requests stay with chat.
+This returns manual fallback text for older clients. Review-capable desktop
+clients use the same intent boundary to prepare typed proposals instead.
+Ambiguous requests stay with chat; this module never writes a task.
 """
 
 import re

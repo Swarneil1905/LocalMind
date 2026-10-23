@@ -645,6 +645,8 @@ async fn chat_stream_inner(
         "conversation_id": conversation_id,
         "profile": profile,
         "web_search_enabled": web_search_enabled,
+        "task_actions_enabled": true,
+        "operation_id": request_id,
     });
 
     let resp = client
@@ -1347,6 +1349,60 @@ async fn generate_project_summary(
     Ok(data["summary"].as_str().unwrap_or("").to_string())
 }
 
+// Narrow JSON bridge for reviewed actions. Paths and methods are selected by
+// Rust, never by model output or a caller-supplied URL.
+async fn reviewed_request(
+    state: &tauri::State<'_, SidecarState>,
+    path: &str,
+    body: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let (url, token) = sidecar_url(state, path)?;
+    let client = localmind_core::http::local_client();
+    let request = match body {
+        Some(value) => client.post(&url).json(&value),
+        None => client.get(&url),
+    };
+    let response = request.bearer_auth(token).send().await.map_err(|e| e.to_string())?;
+    let status = response.status();
+    let value: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(value["detail"].as_str().unwrap_or("The local service could not complete this request.").to_string());
+    }
+    Ok(value)
+}
+
+#[tauri::command]
+async fn list_task_actions(conversation_id: String, sidecar_state: tauri::State<'_, SidecarState>) -> Result<serde_json::Value, String> {
+    let id = knowledge_id(&conversation_id).map_err(|_| "Invalid conversation ID")?;
+    reviewed_request(&sidecar_state, &format!("/task-actions/conversation/{id}"), None).await
+}
+
+#[tauri::command]
+async fn review_task_action(operation_id: String, conversation_id: String, decision: String, sidecar_state: tauri::State<'_, SidecarState>) -> Result<serde_json::Value, String> {
+    let id = knowledge_id(&operation_id).map_err(|_| "Invalid operation ID")?;
+    let conversation = knowledge_id(&conversation_id).map_err(|_| "Invalid conversation ID")?;
+    if !matches!(decision.as_str(), "confirm" | "dismiss") { return Err("Invalid review decision".into()); }
+    reviewed_request(&sidecar_state, &format!("/task-actions/{id}/review"), Some(serde_json::json!({"conversation_id": conversation.to_string(), "decision": decision}))).await
+}
+
+#[tauri::command]
+async fn project_graph(project_id: String, operation: String, payload: Option<serde_json::Value>, sidecar_state: tauri::State<'_, SidecarState>) -> Result<serde_json::Value, String> {
+    let id = knowledge_id(&project_id).map_err(|_| "Invalid project ID")?;
+    let suffix = match operation.as_str() {
+        "get" => "",
+        "approve" => "/approve",
+        "sources" => "/sources",
+        "links" => "/links",
+        "review" => "/review",
+        "rescan" => "/rescan",
+        "prepare" => "/prepare",
+        "selection" => "/selection",
+        _ => return Err("Unknown project dependency operation".into()),
+    };
+    let body = if operation == "get" { None } else { Some(payload.unwrap_or_else(|| serde_json::json!({}))) };
+    reviewed_request(&sidecar_state, &format!("/projects/{id}/graph{suffix}"), body).await
+}
+
 #[tauri::command]
 async fn create_task(
     project_id: String,
@@ -1953,6 +2009,9 @@ pub fn run() {
             delete_project,
             generate_project_summary,
             create_task,
+            list_task_actions,
+            review_task_action,
+            project_graph,
             list_tasks,
             list_all_tasks,
             update_task,

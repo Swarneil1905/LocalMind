@@ -14,8 +14,9 @@ import { Project, Task, useProjects } from "../hooks/useProjects";
 import { Conversation } from "../hooks/useConversations";
 import { MODEL_MAP } from "../types";
 import "./supporting-pages.css";
+import { ProjectDependencies } from "./ProjectDependencies";
 
-type Tab = "summary" | "tasks" | "conversations";
+type Tab = "summary" | "tasks" | "conversations" | "dependencies";
 const STATUS_LABEL: Record<Task["status"], string> = {
   open: "Open",
   in_progress: "In progress",
@@ -237,7 +238,7 @@ export function ProjectsPage({
                   </div>
                 </div>
                 <div className="page-tabs" aria-label="Project view">
-                  {(["summary", "tasks", "conversations"] as Tab[]).map(
+                  {(["summary", "tasks", "conversations", "dependencies"] as Tab[]).map(
                     (value) => (
                       <button
                         key={value}
@@ -252,13 +253,14 @@ export function ProjectsPage({
                           ? "Overview"
                           : value === "tasks"
                             ? "Tasks"
-                            : "Conversations"}
+                            : value === "dependencies" ? "Dependencies" : "Conversations"}
                         {value === "tasks" && <span>{activeTasks.length}</span>}
                       </button>
                     ),
                   )}
                 </div>
                 <div className="project-detail-body">
+                  {tab === "dependencies" && <ProjectDependencies key={activeProject.id} project={activeProject} />}
                   {tab === "summary" && (
                     <ProjectSummary
                       key={activeProject.id}

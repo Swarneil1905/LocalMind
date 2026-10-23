@@ -22,6 +22,7 @@ import { ConversationList } from "./components/ConversationList";
 import { FirstRunSetup } from "./components/FirstRunSetup";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { MessageList } from "./components/MessageList";
+import { TaskActions } from "./components/TaskActions";
 import { MemoryPage } from "./components/MemoryPage";
 import { ConnectionsPage } from "./components/ConnectionsPage";
 import { TodayPage } from "./components/TodayPage";
@@ -636,6 +637,7 @@ export default function App() {
                   </div>
                 </div>
               )}
+              {activeId && !loadingConversation && !chatLoadError && <TaskActions key={activeId} conversationId={activeId} projectId={chatProjectId} isStreaming={isStreaming} onOpenTasks={() => navigate("tasks")} />}
               {!ready && (
                 <div className="runtime-banner" role="status">
                   <div>

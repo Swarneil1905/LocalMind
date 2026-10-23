@@ -1,0 +1,19 @@
+.project-dependencies { display: grid; gap: 16px; min-width: 0; }
+.project-dependencies h4 { margin: 0; font-size: 15px; }
+.project-dependencies p { margin: 0 0 10px; }
+.dependency-card { border: 1px solid var(--border); border-radius: 8px; padding: 16px; min-width: 0; overflow-wrap: anywhere; }
+.dependency-card.needs-review { border-inline-start: 3px solid var(--link); }
+.dependency-card summary { cursor: pointer; font-weight: 600; }
+.dependency-card summary + p { margin-top: 12px; }
+.dependency-state { font-size: 12px; font-weight: 500; color: var(--text-2); margin-left: 8px; }
+.dependency-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; min-width: 0; }
+.dependency-form { display: grid; gap: 14px; padding-block: 16px; border-block: 1px solid var(--border); }
+.dependency-form .page-button { justify-self: start; }
+.dependency-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.project-dependencies pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; font-size: 12px; line-height: 1.6; padding: 12px; background: var(--surface-2); border-radius: 6px; }
+.project-dependencies blockquote { margin: 12px 0; padding-left: 12px; border-left: 2px solid var(--border); white-space: pre-wrap; }
+.task-action-panel { width: min(860px, calc(100% - 32px)); margin: 0 auto 8px; max-height: 250px; overflow: auto; flex-shrink: 0; font-size: 13px; }
+.task-action-panel summary { cursor: pointer; padding: 8px 0; }
+.task-action-panel .dependency-card { margin-bottom: 8px; }
+.task-action-panel p { margin: 6px 0; }
+.task-action-panel small { display: block; }

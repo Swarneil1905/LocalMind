@@ -35,6 +35,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.action_boundary import unsupported_task_response
+from app.task_actions import propose_from_chat
 from app.chat_policy import DEFAULT_SYSTEM_PROMPT, answer_policy
 from app.context_budget import pack_context
 from app.context_retrieval import collect_context
@@ -68,6 +69,8 @@ class ChatRequest(BaseModel):
     knowledge_enabled: bool = False
     embed_model: str = "nomic-embed-text"
     hyde_enabled: bool = False
+    task_actions_enabled: bool = False
+    operation_id: str | None = None
 
 
 async def _run_web_search(query: str, fresh: bool = False) -> tuple[str, list[dict]]:
@@ -175,11 +178,15 @@ async def _gather_connector_context(message: str) -> str:
 
 async def _stream_ollama(request: ChatRequest) -> AsyncIterator[str]:
     """Yield SSE-formatted strings from Ollama's streaming chat API."""
-    # There is no task dispatcher in this route. A direct creation request
-    # must not become an invented model confirmation (or an external query).
     unsupported = unsupported_task_response(request.message)
     if unsupported:
         yield f"data: {json.dumps({'type': 'status', 'phase': 'answering'})}\n\n"
+        if request.task_actions_enabled:
+            try:
+                unsupported = await propose_from_chat(request)
+            except Exception:
+                yield f"data: {json.dumps({'type': 'error', 'content': 'Could not prepare the task. No task was created. Try again, or add it in Tasks.'})}\n\n"
+                return
         yield f"data: {json.dumps({'type': 'token', 'content': unsupported})}\n\n"
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return

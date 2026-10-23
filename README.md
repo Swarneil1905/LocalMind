@@ -31,7 +31,8 @@ A captioned tour of chat, sources, Knowledge, Memory, Projects, Tasks, and theme
 | **Sources** | Inspect web links and publication dates, or open local file citations to see the indexed passage and its PDF page or text lines. Changed and missing files are flagged. |
 | **Knowledge** | Assign folders to a project and search their text and meaning. Unassigned chats search unassigned sources. Text search remains available when embeddings fail; indexing shows partial results and offers retry. |
 | **Memory** | Review and remove facts extracted from conversations, including relationships between saved facts. |
-| **Projects and Tasks** | Group conversations by project and track work alongside them. |
+| **Projects and Tasks** | Group conversations by project. Ask chat to add a task, review its title and date, and confirm creation. Saved receipts make repeated confirmations safe. |
+| **Dependencies** | Capture selected text-file revisions, quote a supporting fact, and confirm which files or project tasks depend on it. Rescans show affected work. Prepare exact-value repairs on copies and inspect each diff before accepting or rejecting a proposal. |
 | **Connections** | Connect supported apps to bring their data into your workspace. Availability and setup depend on the service and operating system. |
 | **Settings** | Choose installed models, adjust context and supported thinking controls, restore previous response settings, configure web search, and switch themes. |
 
@@ -77,6 +78,26 @@ The setup screen currently offers these default models:
 | `nomic-embed-text` | Embeddings for Knowledge search |
 
 Once models are installed, local chat and document retrieval can work offline. Web search, remote connections, model downloads, and update checks need their respective network services. Voice is not available in 0.7.0.
+
+## Tasks and project dependencies
+
+To create a task from chat, select its project in the chat header and ask, for example, **“Add a task called Review the launch draft, due 2026-11-18.”** LocalMind prepares a proposal using the local model. Check the destination, title and date, then choose **Create task**. A task is created only after confirmation; the card shows the saved task ID. Retrying the same confirmation returns the original receipt, even if the reply was lost. Dismissed proposals create nothing. Moving a chat to another project blocks its older pending requests.
+
+In **Projects → Dependencies**:
+
+1. Set the working folder in Overview and explicitly approve it for dependency tracking.
+2. Capture a source using its relative path, such as `notes/release.md`.
+3. Copy an exact quote from the captured source, explain the dependency, and choose a dependent text file or an existing task in that project.
+4. Inspect the proposal and confirm or reject the link.
+5. Choose **Rescan tracked files** after making edits. Changed sources or missing targets flag confirmed dependencies for review, with the original quote and reason still available.
+
+Dependency tracking supports UTF-8 `.md`, `.markdown` and `.txt` files up to 256 KiB, with up to 200 sources and 200 links per project. It reads only registered files within the approved folder and excludes linked paths. A changed hash signals a revision difference, not proof that a fact's meaning changed. Results reflect the last scan.
+
+After a source changes, **Prepare a repair preview** lets you specify an old value and its replacement, such as `2026-11-18` → `2026-11-25`. Both values must be verified against the captured and current source. LocalMind stages copies of confirmed dependent items, checks exact matches and unchanged target revisions, validates supported text/task constraints, and shows each before/after diff. Multiple matches, missing or modified targets, unsupported formats, and failed checks block that candidate. Markdown checks include balanced fenced code blocks; they do not prove semantic correctness.
+
+Accepting or rejecting individual proposals saves review choices only. **There is no apply action yet, and original files and tasks remain unchanged.** Repair previews and copies persist locally across restarts, with limits of 50 operations per project, 8 MiB of staged copies per operation, and 16 MiB of preview text per project. Captured source revisions stay fixed; automatic repair and accepting a new baseline revision are not implemented yet.
+
+Task extraction uses [Ollama's structured output format](https://ollama.com/blog/structured-outputs), followed by local validation and explicit review. Model output can still be wrong, so review the proposal rather than treating its wording as a completed action.
 
 ## Data and privacy
 
