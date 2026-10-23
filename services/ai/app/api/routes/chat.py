@@ -233,9 +233,13 @@ async def _stream_ollama(request: ChatRequest) -> AsyncIterator[str]:
             knowledge_enabled=request.knowledge_enabled, embed_model=request.embed_model,
             hyde_enabled=request.hyde_enabled,
         ))
+        if request.knowledge_enabled:
+            system += "\nCite supplied local file evidence using its exact [K1], [K2], etc. label. Never invent a local citation."
         packed = pack_context(system, request.message, request.history, references,
                               budget=profile["context_window"] if profile else 16384,
                               reserve=profile["response_tokens"] if profile else 2048)
+        sources.extend(ref["source"] for ref in references if "source" in ref
+                       and ref["label"][:160] in packed.report["reference_labels"])
     except (ValueError, httpx.HTTPError) as exc:
         message = str(exc) if isinstance(exc, ValueError) else "Could not inspect the installed model. Check Ollama and retry."
         yield f"data: {json.dumps({'type': 'error', 'content': message})}\n\n"
