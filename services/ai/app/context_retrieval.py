@@ -91,9 +91,15 @@ async def collect_context(
     if knowledge_enabled:
         chunks = await knowledge.search(query, limit=5, embed_model=embed_model,
                                         hyde_enabled=hyde_enabled, project_id=project_id)
-        references.extend({"label": f"Project source: {chunk['file_path']}" if project_id
-                           else f"Unassigned source: {chunk['file_path']}",
-                           "content": chunk["content"]} for chunk in chunks)
+        for number, chunk in enumerate(chunks, 1):
+            citation = f"K{number}"
+            source = {"kind": "knowledge", "citation": citation, "chunk_id": chunk["id"],
+                      "source_id": chunk["source_id"], "project_id": project_id,
+                      "title": chunk["file_path"].replace("\\", "/").rsplit("/", 1)[-1],
+                      "url": "", "snippet": chunk["content"], "file_path": chunk["file_path"],
+                      "location": chunk.get("location", f"Passage {chunk['chunk_index'] + 1}")}
+            references.append({"label": f"[{citation}] {source['title']} · {source['location']}",
+                               "content": chunk["content"], "source": source})
         # A conversation may move while retrieval waits for the local model.
         # Preserve the resolved scope for this turn or fail before inference.
         if resolve_project(project_id, conversation_id) != project_id:

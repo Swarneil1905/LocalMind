@@ -35,6 +35,7 @@ async def lifespan(app: FastAPI):
         migrate_legacy_connectors()
         init_messages_db()
         init_people_db()
+        knowledge.kb.recover_interrupted_sources()
         setup_registry()
         from app.sync_engine import start_background_sync, stop_background_sync
         await start_background_sync()

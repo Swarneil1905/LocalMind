@@ -143,5 +143,6 @@ def pack_context(
         "references_retained": len(selected_refs),
         "references_dropped": len(refs) - len(selected_refs),
         "references_shortened": shortened,
+        "reference_labels": [ref["label"] for ref in selected_refs],
         "trimmed": len(retained) < len(valid_history) or len(selected_refs) < len(refs) or shortened > 0,
     })
