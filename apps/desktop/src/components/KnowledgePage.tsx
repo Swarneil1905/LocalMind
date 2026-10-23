@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useKnowledge, type KnowledgeChunk } from "../hooks/useKnowledge";
 import { useProjects } from "../hooks/useProjects";
+import { KnowledgeCitation } from "./KnowledgeCitation";
 import "./supporting-pages.css";
 
 export function KnowledgePage({ embedModel }: { embedModel: string }) {
@@ -21,16 +22,18 @@ export function KnowledgePage({ embedModel }: { embedModel: string }) {
     deleteSource,
     search,
     assignProject,
+    retrySource,
   } = useKnowledge();
   const { projects } = useProjects();
   const [projectId, setProjectId] = useState<string | null>(null);
   const [movingSource, setMovingSource] = useState<string | null>(null);
+  const [retryingSource, setRetryingSource] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<KnowledgeChunk[]>([]);
   const [searching, setSearching] = useState(false);
   const [submittedQuery, setSubmittedQuery] = useState("");
   const searchVersion = useRef(0);
-  const readySources = sources.filter((source) => source.status === "ready");
+  const readySources = sources.filter((source) => ["ready", "partial"].includes(source.status) && (source.project_id ?? null) === projectId);
   function clearSearch() {
     searchVersion.current++;
     setResults([]);
@@ -141,11 +144,19 @@ export function KnowledgePage({ embedModel }: { embedModel: string }) {
                     >
                       {source.status === "indexing"
                         ? "Indexing files…"
-                        : source.status === "error"
-                          ? "Indexing failed. Remove the source and add it again to retry."
-                          : `${source.file_count} files · ${source.chunk_count} indexed passages`}
+                        : `${source.file_count} files · ${source.chunk_count} indexed passages${source.status === "partial" ? " · Partially indexed" : source.status === "empty" ? " · No readable text" : source.status === "error" ? " · Indexing failed" : ""}`}
                     </span>
+                    {source.error_message && <p>{source.error_message}</p>}
                   </div>
+                  {source.status !== "indexing" && <button className="page-button" type="button"
+                    disabled={retryingSource !== null} aria-label={`Retry indexing ${source.name}`}
+                    onClick={async () => {
+                      setRetryingSource(source.id);
+                      clearSearch();
+                      try { await retrySource(source.id, embedModel); }
+                      catch { /* Hook displays the error. */ }
+                      finally { setRetryingSource(null); }
+                    }}>{retryingSource === source.id ? "Retrying…" : "Retry indexing"}</button>}
                   <select
                     aria-label={`Project for ${source.name}`}
                     value={source.project_id ?? ""}
@@ -192,7 +203,7 @@ export function KnowledgePage({ embedModel }: { embedModel: string }) {
           <section className="page-section" aria-labelledby="knowledge-search">
             <div className="section-heading">
               <h2 id="knowledge-search">Search your files</h2>
-              <span className="muted">Search by meaning</span>
+              <span className="muted">Search by meaning or exact terms</span>
             </div>
             <form className="page-form-row" onSubmit={handleSearch}>
               <label className="page-search grow">
@@ -231,6 +242,11 @@ export function KnowledgePage({ embedModel }: { embedModel: string }) {
                       </strong>
                     </div>
                     <p>{chunk.content}</p>
+                    <KnowledgeCitation source={{ kind: "knowledge", chunk_id: chunk.id,
+                      source_id: chunk.source_id, project_id: chunk.project_id ?? projectId,
+                      title: chunk.file_path.split(/[\\/]/).pop() || "File",
+                      file_path: chunk.file_path, location: chunk.location,
+                      url: "", snippet: chunk.content }} />
                   </article>
                 ))}
               </div>

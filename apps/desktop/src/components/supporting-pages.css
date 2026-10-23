@@ -1127,6 +1127,16 @@
   }
 }
 @media (max-width: 1080px) {
+  .source-record {
+    flex-wrap: wrap;
+  }
+  .source-record > .record-copy {
+    flex-basis: calc(100% - 40px);
+  }
+  .source-record > select {
+    flex: 1;
+    min-width: 0;
+  }
   .workspace-page-inner {
     padding: 30px 28px 40px;
   }

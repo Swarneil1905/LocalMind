@@ -3,6 +3,7 @@ import { ArrowDown, ExternalLink, RefreshCw } from "lucide-react";
 import type { Message } from "../types";
 import { Brand } from "./Brand";
 import { AnswerContent, CopyButton, safeWebUrl } from "./AnswerContent";
+import { KnowledgeCitation } from "./KnowledgeCitation";
 
 interface MessageListProps {
   messages: Message[];
@@ -156,6 +157,13 @@ const MessageRow = memo(function MessageRow({
         </details>
       )}
       {message.cancelled && <p className="response-status">Response stopped</p>}
+      {(message.sources || []).some((source) => source.kind === "knowledge") && (
+        <details className="message-sources">
+          <summary>Local file passages</summary>
+          {(message.sources || []).filter((source) => source.kind === "knowledge").map((source) =>
+            <KnowledgeCitation key={source.chunk_id} source={source} />)}
+        </details>
+      )}
       {!user && !streaming && (message.content || onRegenerate) && (
         <div className="message-actions">
           {message.content && <CopyButton text={message.content} compact />}

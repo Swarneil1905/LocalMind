@@ -1,0 +1,13 @@
+.knowledge-citation { display: inline; padding: 0 3px; color: var(--link); background: var(--accent-dim); border: 0; border-radius: 4px; font: inherit; cursor: pointer; }
+.knowledge-source-button { display: block; margin: 6px 0; padding: 8px 10px; max-width: 100%; color: var(--text-1); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.passage-dialog { width: min(760px, calc(100vw - 48px)); max-height: 85vh; margin: auto; padding: 24px; color: var(--text-1); background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 20px 60px rgb(0 0 0 / 20%); line-height: 1.6; }
+.passage-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.passage-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.passage-dialog h2 { font-size: 18px; margin: 0; overflow-wrap: anywhere; }
+.passage-dialog p { margin: 12px 0; }
+.passage-dialog button { padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px; color: inherit; background: var(--surface); cursor: pointer; }
+.passage-dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; background: var(--bg); line-height: 1.65; font-size: 14px; }
+.passage-path { overflow-wrap: anywhere; color: var(--text-2); font-size: 13px; }
+.passage-warning { border-left: 3px solid var(--accent); padding-left: 12px; }
+
+
