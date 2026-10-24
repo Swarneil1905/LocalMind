@@ -205,5 +205,7 @@ def get_graph(project_id):
             link['impact_reason'] = ('The supporting source revision changed or cannot be checked. Review the saved quote and dependent item.'
                                      if source['state'] != 'unchanged' else 'The dependent item changed or is missing. Review the saved dependency.') if link['needs_review'] else None
         from app.project_repairs import list_operations
+        from app.repair_apply import capabilities, receipts
         return {'root': dict(root) if root else None, 'sources': sources, 'links': links,
-                'tasks': projects.list_tasks(project_id), 'repairs': list_operations(project_id)}
+                'tasks': projects.list_tasks(project_id), 'repairs': list_operations(project_id),
+                'apply_capabilities': capabilities(), 'write_receipts': receipts(project_id)}

@@ -1,4 +1,4 @@
-"""Prepare exact-value repairs on owned copies. There is deliberately no apply API."""
+"""Prepare exact-value repairs on owned copies; applying requires separate review."""
 import difflib
 import hashlib
 import json
@@ -198,8 +198,11 @@ def prepare(project_id, operation_id, source_id, old_value, new_value):
 def select_item(project_id, operation_id, item_id, selection):
     if selection not in {'accepted', 'rejected'}:
         raise ValueError('Choose accepted or rejected.')
-    with closing(_conn()) as conn, conn:
+    from app.repair_apply import _conn as apply_conn
+    with closing(apply_conn()) as conn, conn:
         conn.execute('BEGIN IMMEDIATE')
+        if conn.execute('SELECT 1 FROM repair_writes WHERE item_id=?', (item_id,)).fetchone():
+            raise ValueError('This item has a write receipt. Review recovery instead of changing its selection.')
         row = conn.execute('SELECT i.*, o.state AS operation_state FROM repair_items i JOIN repair_operations o ON o.id=i.operation_id WHERE i.id=? AND o.id=? AND o.project_id=?',
                            (item_id, operation_id, project_id)).fetchone()
         if not row or row['operation_state'] != 'ready':

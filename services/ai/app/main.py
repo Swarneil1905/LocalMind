@@ -40,6 +40,8 @@ async def lifespan(app: FastAPI):
         knowledge.kb.recover_interrupted_sources()
         from app.project_repairs import recover_interrupted
         recover_interrupted()
+        from app.repair_apply import recover_interrupted as recover_writes
+        recover_writes()
         setup_registry()
         from app.sync_engine import start_background_sync, stop_background_sync
         await start_background_sync()
