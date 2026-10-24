@@ -138,3 +138,22 @@ it("retries preparation with the same operation identity until inputs change", (
   fireEvent.click(prepare);
   expect(run.mock.calls[2][1].operation_id).not.toBe(run.mock.calls[0][1].operation_id);
 });
+
+it("reloads the recovery receipt after a failed apply without retrying the write", async () => {
+  let failed = false;
+  const repair = { id: "r1", source_id: "s1", state: "ready", error: null, old_value: "old", new_value: "new", items: [
+    { id: "i1", target_kind: "file", target_id: "draft.md", reason: "Launch", fact: "old", before_text: "old", after_text: "new", diff: "-old\n+new", validation: "passed", checks: [], selection: "accepted" },
+  ] };
+  vi.mocked(invoke).mockImplementation(async (_command, args) => {
+    if ((args as { operation: string }).operation === "apply") { failed = true; throw new Error("Disk full"); }
+    return { ...graph, repairs: [repair], apply_capabilities: { files: true, tasks: true, reason: "Available" },
+      write_receipts: failed ? [{ item_id: "i1", state: "recovery_required", error: "Inspect saved backup", updated_at: "now" }] : [] };
+  });
+  render(<ProjectDependencies project={project} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Apply this change…" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirm apply" }));
+  await screen.findByText("Write receipt: recovery required");
+  expect(screen.getByText("Error: Disk full")).not.toBeNull();
+  expect(screen.getByRole("button", { name: "Check recovery" })).not.toBeNull();
+  expect(vi.mocked(invoke).mock.calls.filter(([, args]) => (args as { operation: string }).operation === "apply")).toHaveLength(1);
+});

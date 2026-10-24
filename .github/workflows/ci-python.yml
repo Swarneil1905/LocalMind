@@ -41,6 +41,7 @@ jobs:
           ruff check --config services/ai/pyproject.toml scripts/evaluation
           python scripts/evaluation/check_suite.py
           python -m unittest discover -s scripts/evaluation -p "test_*.py" -v
+          python scripts/evaluation/workspace_repair_gate.py
 
       - name: Verify sidecar entry point imports cleanly
         working-directory: services/ai
@@ -54,3 +55,28 @@ jobs:
           sudo apt-get install -y minisign gcc
           ruff check --config services/ai/pyproject.toml scripts/release
           python -m unittest discover -s scripts/release -p "test_*.py" -v
+
+  windows-repair-gate:
+    name: Windows repair conflicts and recovery
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install focused test dependencies
+        run: python -m pip install fastapi==0.115.5 httpx==0.28.1
+      - name: Exercise real Windows file locks and process interruptions
+        env:
+          PYTHONPATH: services/ai
+        run: |
+          python -m unittest discover -s services/ai/tests -p "test_repair_apply.py" -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/evaluation/workspace_repair_gate.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload repair gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-repair-gate
+          path: artifacts/evaluation/workspace-repair-gate.json
