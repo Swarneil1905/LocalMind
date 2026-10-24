@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Project, Task } from "../hooks/useProjects";
 import "./project-dependencies.css";
 import { RepairReview, type RepairOperation } from "./RepairReview";
+import type { ApplyCapabilities, WriteReceipt } from "./RepairWriteControls";
 
 interface Source {
   id: string; path: string; sha256: string; content: string;
@@ -14,7 +15,7 @@ interface Link {
   state: "proposed" | "confirmed" | "rejected"; target_state: string; source_state: string;
   needs_review: boolean; impact_reason: string | null; target_notice: string | null;
 }
-interface Graph { root: { path: string } | null; sources: Source[]; links: Link[]; tasks: Task[]; repairs?: RepairOperation[] }
+interface Graph { root: { path: string } | null; sources: Source[]; links: Link[]; tasks: Task[]; repairs?: RepairOperation[]; apply_capabilities?: ApplyCapabilities; write_receipts?: WriteReceipt[] }
 
 export function ProjectDependencies({ project }: { project: Project }) {
   const [graph, setGraph] = useState<Graph | null>(null);
@@ -45,14 +46,21 @@ export function ProjectDependencies({ project }: { project: Project }) {
     setBusy(true); setError("");
     const version = epoch.current;
     try { await request(operation, payload); if (version === epoch.current) await refresh(); return true; }
-    catch (cause) { if (version === epoch.current) setError(String(cause)); return false; }
+    catch (cause) {
+      // A failed write can still have a durable recovery receipt. Reload it
+      // without hiding the original failure or automatically retrying a mutation.
+      try { const value = await request("get"); if (version === epoch.current) setGraph(value); }
+      catch { /* Preserve the actionable mutation error when reload also fails. */ }
+      if (version === epoch.current) setError(String(cause));
+      return false;
+    }
     finally { setBusy(false); }
   }
   const selected = graph?.sources.find(source => source.id === sourceId);
   const impacts = graph?.links.filter(link => link.needs_review) ?? [];
   return <section className="project-dependencies" aria-label="Project dependencies">
     <div className="section-heading"><h3>Sources and dependencies</h3><button className="page-button" disabled={busy} onClick={() => void refresh()}>Refresh</button></div>
-    <p>Track an exact source quote and the files or tasks that depend on it. File changes flag items for review; LocalMind does not rewrite them.</p>
+    <p>Track an exact source quote and the files or tasks that depend on it. File changes flag items for review. Applying a reviewed repair requires a separate confirmation.</p>
     {error && <p role="alert" className="error-text">{error}</p>}
     {!graph ? <p role="status">{error ? "Could not load dependencies. Use Refresh to try again." : "Loading dependencies…"}</p> : <>
       {!graph.root ? <div className="dependency-card">
@@ -102,7 +110,7 @@ export function ProjectDependencies({ project }: { project: Project }) {
           <details><summary>Inspect captured dependent item</summary><pre tabIndex={0}>{link.target_preview}</pre><small>{link.target_id}</small></details>
           {link.state === "proposed" && <div className="dependency-actions"><button className="page-button primary" disabled={busy} onClick={() => void run("review", { link_id: link.id, decision: "confirm" })}>Confirm dependency</button><button className="page-button" disabled={busy} onClick={() => void run("review", { link_id: link.id, decision: "reject" })}>Reject</button></div>}
         </article>)}
-        <RepairReview sources={graph.sources} repairs={graph.repairs ?? []} busy={busy} run={run} />
+        <RepairReview sources={graph.sources} repairs={graph.repairs ?? []} busy={busy} run={run} capabilities={graph.apply_capabilities} receipts={graph.write_receipts} />
       </>}
     </>}
   </section>;
