@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from app import project_graph as graph
 from app import project_repairs as repairs
+from app import repair_apply
 
 router = APIRouter(prefix='/projects/{project_id}/graph', tags=['project-dependencies'])
 
@@ -40,6 +41,12 @@ class SelectionRequest(StrictRequest):
     operation_id: str = Field(min_length=36, max_length=36)
     item_id: str = Field(min_length=36, max_length=36)
     selection: Literal['accepted', 'rejected']
+
+
+class WriteRequest(StrictRequest):
+    operation_id: str = Field(min_length=36, max_length=36)
+    item_id: str = Field(min_length=36, max_length=36)
+    confirm: Literal[True]
 
 
 def call(function, *args, **kwargs):
@@ -87,3 +94,18 @@ def prepare(project_id: UUID, request: RepairRequest):
 @router.post('/selection')
 def selection(project_id: UUID, request: SelectionRequest):
     return call(repairs.select_item, str(project_id), **request.model_dump())
+
+
+@router.post('/apply')
+def apply(project_id: UUID, request: WriteRequest):
+    return call(repair_apply.apply_item, str(project_id), request.operation_id, request.item_id)
+
+
+@router.post('/recover')
+def recover(project_id: UUID, request: WriteRequest):
+    return call(repair_apply.recover_item, str(project_id), request.operation_id, request.item_id)
+
+
+@router.post('/restore')
+def restore(project_id: UUID, request: WriteRequest):
+    return call(repair_apply.recover_item, str(project_id), request.operation_id, request.item_id, restore=True)
