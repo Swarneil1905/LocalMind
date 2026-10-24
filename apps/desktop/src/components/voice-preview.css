@@ -1,0 +1,7 @@
+.voice-card { margin: 24px 0; padding: 24px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); }
+.voice-field { display: grid; gap: 8px; max-width: 720px; margin: 16px 0; }
+.voice-status { display: flex; align-items: center; gap: 10px; min-height: 48px; font-weight: 600; }
+.recording-dot { width: 10px; height: 10px; border-radius: 50%; background: #d75353; }
+.voice-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0 24px; }
+.voice-actions button { display: inline-flex; align-items: center; gap: 8px; touch-action: none; }
+@media (max-width: 800px) { .voice-card { padding: 16px; } }

@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { RepairWriteControls, type ApplyCapabilities, type WriteReceipt } from "./RepairWriteControls";
 
 export interface RepairOperation {
   id: string; source_id: string; state: string; error: string | null; old_value: string; new_value: string;
@@ -7,11 +8,12 @@ export interface RepairOperation {
     checks: string[]; selection: string }[];
 }
 
-export function RepairReview({ sources, repairs, busy, run }: {
+export function RepairReview({ sources, repairs, busy, run, capabilities, receipts = [] }: {
   sources: { id: string; path: string; state: string }[];
   repairs: RepairOperation[];
   busy: boolean;
   run: (operation: string, payload?: object) => Promise<boolean>;
+  capabilities?: ApplyCapabilities; receipts?: WriteReceipt[];
 }) {
   const [source, setSource] = useState("");
   const [oldValue, setOldValue] = useState("");
@@ -20,7 +22,8 @@ export function RepairReview({ sources, repairs, busy, run }: {
   const changed = sources.filter(item => item.state === "changed");
   return <section className="project-dependencies" aria-label="Repair previews">
     <h4>Prepare a repair preview</h4>
-    <p>Replace one exact value in confirmed dependent files or tasks. Candidates are prepared on separate copies. Accepting a preview only saves your review choice; applying edits is not available yet.</p>
+    <p>Replace one exact value in confirmed dependent files or tasks. Candidates are prepared on separate copies. Accepting saves your review choice. Apply each accepted change separately after checking its diff.</p>
+    {capabilities && <p className="page-footnote">{capabilities.reason}</p>}
     {changed.length ? <form className="dependency-form" onSubmit={async event => {
       event.preventDefault();
       const key = JSON.stringify([source, oldValue, newValue]);
@@ -34,7 +37,7 @@ export function RepairReview({ sources, repairs, busy, run }: {
     </form> : <p className="page-footnote">Rescan tracked files after changing a source to prepare a preview.</p>}
     {repairs.map(repair => <article key={repair.id} className="dependency-card" aria-label="Repair operation">
       <h4>{repair.old_value} → {repair.new_value}</h4>
-      <p>Preview: {repair.state}. Originals remain unchanged.</p>
+      <p>Preview: {repair.state}. Creating a preview does not change originals. Write receipts below show any applied changes.</p>
       {repair.error && <p role="alert">{repair.error}</p>}
       {repair.state === "failed" && <button className="page-button" disabled={busy} onClick={() => {
         operation.current = null;
@@ -47,10 +50,13 @@ export function RepairReview({ sources, repairs, busy, run }: {
         <ul>{item.checks.map(check => <li key={check}>{check}</li>)}</ul>
         {item.diff && <pre tabIndex={0} aria-label={`Proposed diff for ${item.target_id}`}>{item.diff}</pre>}
         {item.after_text !== null && <details><summary>Inspect full before and after</summary><h5>Before</h5><pre tabIndex={0}>{item.before_text}</pre><h5>After</h5><pre tabIndex={0}>{item.after_text}</pre></details>}
-        {repair.state === "ready" && <div className="dependency-actions">
+        {repair.state === "ready" && !receipts.some(receipt => receipt.item_id === item.id) && <div className="dependency-actions">
           <button className="page-button" disabled={busy || item.validation !== "passed" || item.selection === "accepted"} onClick={() => void run("selection", { operation_id: repair.id, item_id: item.id, selection: "accepted" })}>Accept proposal</button>
           <button className="page-button" disabled={busy || item.selection === "rejected"} onClick={() => void run("selection", { operation_id: repair.id, item_id: item.id, selection: "rejected" })}>Reject proposal</button>
         </div>}
+        <RepairWriteControls operationId={repair.id} itemId={item.id} target={item.target_id} kind={item.target_kind}
+          accepted={item.selection === "accepted" && item.validation === "passed" && repair.state === "ready"}
+          receipt={receipts.find(receipt => receipt.item_id === item.id)} capabilities={capabilities} busy={busy} run={run} />
       </section>)}
     </article>)}
   </section>;
