@@ -32,7 +32,7 @@ A captioned tour of chat, sources, Knowledge, Memory, Projects, Tasks, and theme
 | **Knowledge** | Assign folders to a project and search their text and meaning. Unassigned chats search unassigned sources. Text search remains available when embeddings fail; indexing shows partial results and offers retry. |
 | **Memory** | Review and remove facts extracted from conversations, including relationships between saved facts. |
 | **Projects and Tasks** | Group conversations by project. Ask chat to add a task, review its title and date, and confirm creation. Saved receipts make repeated confirmations safe. |
-| **Dependencies** | Capture selected text-file revisions, quote a supporting fact, and confirm which files or project tasks depend on it. Rescans show affected work. Prepare exact-value repairs on copies and inspect each diff before accepting or rejecting a proposal. |
+| **Dependencies** | Capture selected text-file revisions, quote a supporting fact, and confirm which files or project tasks depend on it. Rescans show affected work. Review exact-value repair diffs, then apply accepted changes individually with backups and recovery receipts. File apply is a Windows pilot. |
 | **Connections** | Connect supported apps to bring their data into your workspace. Availability and setup depend on the service and operating system. |
 | **Settings** | Choose installed models, adjust context and supported thinking controls, restore previous response settings, configure web search, and switch themes. |
 
@@ -95,9 +95,23 @@ Dependency tracking supports UTF-8 `.md`, `.markdown` and `.txt` files up to 256
 
 After a source changes, **Prepare a repair preview** lets you specify an old value and its replacement, such as `2026-11-18` → `2026-11-25`. Both values must be verified against the captured and current source. LocalMind stages copies of confirmed dependent items, checks exact matches and unchanged target revisions, validates supported text/task constraints, and shows each before/after diff. Multiple matches, missing or modified targets, unsupported formats, and failed checks block that candidate. Markdown checks include balanced fenced code blocks; they do not prove semantic correctness.
 
-Accepting or rejecting individual proposals saves review choices only. **There is no apply action yet, and original files and tasks remain unchanged.** Repair previews and copies persist locally across restarts, with limits of 50 operations per project, 8 MiB of staged copies per operation, and 16 MiB of preview text per project. Captured source revisions stay fixed; automatic repair and accepting a new baseline revision are not implemented yet.
+Accepting or rejecting individual proposals saves review choices only. **Apply this change** opens a separate confirmation for one accepted item. The service rechecks its source and original revision, saves a durable backup and journal entry, and records a write receipt. Repeating the request returns that receipt instead of repeating the update. Multi-item repairs are not one atomic transaction: inspect each item's receipt for progress.
+
+Local task updates and their journal records commit together in SQLite. File apply is enabled only on Windows, using handles that deny competing writes and deletes while the approved file is open. Mac/Linux file apply remains disabled because advisory locks cannot guarantee that another editor will cooperate. Set `LOCALMIND_REPAIR_APPLY=0` before launching the app to disable all apply/restore writes; previews and recovery checks remain available.
+
+**Check recovery** compares current content with the saved original and intended revision without modifying it. **Restore original** requires another confirmation and refuses to overwrite a later edit. If interrupted content matches neither revision, the receipt reports a conflict and requires manual recovery. Original bytes remain in the local `projects.db` repair journal, with the original staged copy under `repair-staging/<operation-id>/<item-id>.before`. Preserve this profile when recovering work; do not delete it or the project before recovery. File writes preserve the existing file and its permissions but are not atomic during a process or power failure, which is why backups are committed first.
+
+Repair previews and copies persist locally across restarts, with limits of 50 operations per project, 8 MiB of staged copies per operation, and 16 MiB of preview text per project. Captured source revisions stay fixed; automatic repair and accepting a new baseline revision are not implemented yet. A receipt reconciled as **not applied** or **restored** cannot be reused to apply again; prepare a new preview.
 
 Task extraction uses [Ollama's structured output format](https://ollama.com/blog/structured-outputs), followed by local validation and explicit review. Model output can still be wrong, so review the proposal rather than treating its wording as a completed action.
+
+## Voice controls preview
+
+The source build includes a **Voice → Simulation** page. Choose a sample input and grant simulated permission, then hold **Hold to talk** or use **Start sample recording** and **Stop sample recording**. The recording indicator has a 30-second limit. Stop produces editable sample text; Cancel preserves the previous draft and discards only the new attempt. Leaving the page stops the simulation and clears its draft. Nothing is sent to chat automatically.
+
+This is a controls prototype, not speech recognition: it never opens a real microphone, records audio, transcribes speech, or generates a spoken reply. Permission-denied and missing-device scenarios can be exercised on the page. Real microphone integration and local speech models are later work.
+
+Developers can run `python scripts/evaluation/workspace_repair_gate.py` for ten isolated repair journeys. Its JSON evidence stays under ignored `artifacts/evaluation/`. The Windows Python CI job checks exclusive handles and real process interruptions; the full service suite also checks knowledge isolation and task creation.
 
 ## Data and privacy
 
