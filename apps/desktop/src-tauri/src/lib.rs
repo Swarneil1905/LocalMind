@@ -1397,6 +1397,9 @@ async fn project_graph(project_id: String, operation: String, payload: Option<se
         "rescan" => "/rescan",
         "prepare" => "/prepare",
         "selection" => "/selection",
+        "apply" => "/apply",
+        "recover" => "/recover",
+        "restore" => "/restore",
         _ => return Err("Unknown project dependency operation".into()),
     };
     let body = if operation == "get" { None } else { Some(payload.unwrap_or_else(|| serde_json::json!({}))) };
