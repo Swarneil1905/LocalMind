@@ -1,5 +1,6 @@
 import { useEffect, useId, type RefObject } from "react";
-import { ArrowUp, BookOpen, Brain, Globe, Library, Square } from "lucide-react";
+import { ArrowUp, Square } from "lucide-react";
+import { ChatTools } from "./ChatTools";
 import type { ModelMode } from "../types";
 
 interface ComposerProps {
@@ -50,29 +51,6 @@ export function Composer(props: ComposerProps) {
     onStop();
     textareaRef.current?.focus({ preventScroll: true });
   };
-  const tools = [
-    {
-      label: "Memory",
-      active: props.memoryEnabled,
-      toggle: props.onMemoryToggle,
-      Icon: Brain,
-      description: "Use saved memories in this conversation",
-    },
-    {
-      label: "Knowledge",
-      active: props.knowledgeEnabled,
-      toggle: props.onKnowledgeToggle,
-      Icon: BookOpen,
-      description: "Search your indexed documents",
-    },
-    {
-      label: "Web",
-      active: props.webSearchEnabled,
-      toggle: props.onWebSearchToggle,
-      Icon: Globe,
-      description: "Use the web when needed; queries leave this device",
-    },
-  ];
   return (
     <div className="composer-wrap">
       <div className="composer-box">
@@ -83,7 +61,7 @@ export function Composer(props: ComposerProps) {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Message LocalMind…"
-          rows={2}
+          rows={1}
           onKeyDown={(e) => {
             if (e.key === "Escape" && isStreaming && !e.nativeEvent.isComposing) {
               e.preventDefault();
@@ -103,32 +81,7 @@ export function Composer(props: ComposerProps) {
           }}
         />
         <div className="composer-toolbar">
-          <div className="composer-tools">
-            <button
-              type="button"
-              className="icon-button"
-              onClick={props.onOpenKnowledge}
-              title="Open knowledge library"
-              aria-label="Open knowledge library"
-            >
-              <Library size={17} aria-hidden="true" />
-            </button>
-            {tools.map(({ label, active, toggle, Icon, description }) => (
-              <button
-                type="button"
-                key={label}
-                className="composer-tool"
-                aria-pressed={active}
-                aria-label={label}
-                title={description}
-                disabled={isStreaming}
-                onClick={toggle}
-              >
-                <Icon size={15} strokeWidth={1.7} aria-hidden="true" />
-                <span>{label}</span>
-              </button>
-            ))}
-          </div>
+          <ChatTools {...props} />
           <div className="composer-send">
             <select
               aria-label="Model mode"
