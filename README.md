@@ -28,6 +28,7 @@ A captioned tour of chat, sources, Knowledge, Memory, Projects, Tasks, and theme
 | Workspace | What it does |
 | --- | --- |
 | **Chat** | Stream responses from local models, render equations and code, copy answers or code, stop a response, and retry. Reading earlier messages keeps your scroll position. |
+| **Mini chat** | Shrink the current conversation to a small, resizable desktop window. Pin it above other apps, minimize it, or expand it without losing the current draft or interrupting a response. |
 | **Sources** | Inspect web links and publication dates, or open local file citations to see the indexed passage and its PDF page or text lines. Changed and missing files are flagged. |
 | **Knowledge** | Assign folders to a project and search their text and meaning. Unassigned chats search unassigned sources. Text search remains available when embeddings fail; indexing shows partial results and offers retry. |
 | **Memory** | Review and remove facts extracted from conversations, including relationships between saved facts. |
@@ -78,6 +79,12 @@ The setup screen currently offers these default models:
 | `nomic-embed-text` | Embeddings for Knowledge search |
 
 Once models are installed, local chat and document retrieval can work offline. Web search, remote connections, model downloads, and update checks need their respective network services. Voice is not available in 0.7.0.
+
+### Chat controls
+
+Open **Tools** beside the message field to turn Memory, Knowledge, or Web on and off. These choices are locked while a response is running. Starter cards fill in a draft for you to edit before sending.
+
+Choose **Mini chat** in the chat header, or press **Ctrl+Shift+M** on Windows/Linux (**Cmd+Shift+M** on macOS) while LocalMind is focused. This compacts the current window; it does not create a second conversation. Use **Stay on top** to keep it above other windows, **Minimize mini chat** to send it to the taskbar, and **Expand chat** to return to the previous window size. Expanding also turns pinning off. Leave full screen before entering mini chat. Closing the window exits the app as usual.
 
 ## Tasks and project dependencies
 

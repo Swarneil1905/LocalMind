@@ -11,6 +11,8 @@ use localmind_core::{
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
+mod mini_window;
+use mini_window::{get_mini_state, set_mini_mode, pin_mini_window, minimize_mini_window, MiniWindow};
 
 // ---------------------------------------------------------------------------
 // Managed state
@@ -1926,6 +1928,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ChatRequests(Mutex::new(HashMap::new())))
+        .manage(MiniWindow(Mutex::new(None)))
         .manage(SidecarState(Mutex::new(None)))
         .manage(RuntimeState(Mutex::new(RuntimeStatus { status: "starting".into(), error: None })))
         .manage(OllamaState(Mutex::new(None)))
@@ -1982,6 +1985,10 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            get_mini_state,
+            set_mini_mode,
+            pin_mini_window,
+            minimize_mini_window,
             get_ollama_status,
             get_sidecar_status,
             get_runtime_status,
