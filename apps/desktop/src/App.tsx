@@ -10,13 +10,19 @@ import {
   MessageSquare,
   PanelLeft,
   Plug,
-  Plus,
+  SquarePen,
+  PictureInPicture2,
+  Maximize2,
+  Pin,
+  Minus,
   Settings,
   ShieldCheck,
   X,
   AudioLines,
 } from "lucide-react";
 import { Brand } from "./components/Brand";
+import { ChatStarters } from "./components/ChatStarters";
+import { useMiniWindow } from "./hooks/useMiniWindow";
 import { Composer } from "./components/Composer";
 import { ConversationList } from "./components/ConversationList";
 import { FirstRunSetup } from "./components/FirstRunSetup";
@@ -40,6 +46,7 @@ import { useProjects } from "./hooks/useProjects";
 import { MODEL_MAP } from "./types";
 import type { ModelMode, WebSource } from "./types";
 import "./App.css";
+import "./workspace-design.css";
 
 type PageId =
   | "today"
@@ -63,6 +70,9 @@ const NAV = [
 const EMBED_MODEL = "nomic-embed-text";
 
 export default function App() {
+  const mini = useMiniWindow();
+  const { active: miniActive, setCompact } = mini;
+  const miniSidebar = useRef(true);
   const [setupComplete, setSetupComplete] = useState(false);
   const finishSetup = useCallback(() => setSetupComplete(true), []);
   const [modelSetupOpen, setModelSetupOpen] = useState(false);
@@ -138,7 +148,7 @@ export default function App() {
     return () => media.removeEventListener("change", resize);
   }, []);
   useEffect(() => {
-    if (!sidebarOpen || !narrow) return;
+    if (!sidebarOpen || !narrow || miniActive) return;
     const previous = document.activeElement;
     const buttons = () =>
       Array.from(
@@ -172,7 +182,7 @@ export default function App() {
             ?.focus();
       });
     };
-  }, [sidebarOpen, narrow]);
+  }, [sidebarOpen, narrow, miniActive]);
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const apply = () =>
@@ -250,9 +260,18 @@ export default function App() {
     runtime.status === "ready" && !!ollama?.running && modelAvailable;
 
   const navigate = useCallback((page: PageId) => {
-    setActivePage(page);
-    if (window.innerWidth <= 760) setSidebarOpen(false);
-  }, []);
+    const show = () => {
+      setActivePage(page);
+      if (window.innerWidth <= 760) setSidebarOpen(false);
+    };
+    if (miniActive && page !== "chats") void setCompact(false).then((ok) => {
+      if (ok) {
+        setSidebarOpen(window.innerWidth > 760 && miniSidebar.current);
+        show();
+      }
+    });
+    else show();
+  }, [miniActive, setCompact]);
   const newChat = useCallback(() => {
     navigationVersion.current++;
     changingConversation.current = false;
@@ -348,8 +367,24 @@ export default function App() {
     ],
   );
 
+  const toggleMini = useCallback(async () => {
+    if (!miniActive) miniSidebar.current = sidebarOpen;
+    const compact = !miniActive;
+    if (await setCompact(compact)) {
+      if (compact) { navigate("chats"); setSidebarOpen(false); }
+      else setSidebarOpen(window.innerWidth > 760 && miniSidebar.current);
+      requestAnimationFrame(() => composerRef.current?.focus());
+    }
+  }, [miniActive, setCompact, sidebarOpen, navigate]);
+
+
   useEffect(() => {
     const shortcuts = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "m") {
+        event.preventDefault();
+        void toggleMini();
+        return;
+      }
       if (
         (event.ctrlKey || event.metaKey) &&
         event.shiftKey &&
@@ -363,7 +398,7 @@ export default function App() {
     };
     window.addEventListener("keydown", shortcuts);
     return () => window.removeEventListener("keydown", shortcuts);
-  }, [newChat]);
+  }, [newChat, toggleMini]);
 
   const title =
     activePage === "chats"
@@ -397,7 +432,7 @@ export default function App() {
         <FirstRunSetup forceShow onComplete={closeModelSetup} />
       )}
       <div
-        className="app-shell"
+        className={`app-shell ${miniActive ? "mini-mode" : ""}`}
         inert={!setupComplete || modelSetupOpen}
         style={{ visibility: setupComplete ? "visible" : "hidden" }}
       >
@@ -415,7 +450,7 @@ export default function App() {
           ref={sidebarRef}
           className={`app-sidebar ${sidebarOpen ? "is-open" : "is-closed"}`}
           aria-label="Workspace navigation"
-          inert={!sidebarOpen}
+          inert={!sidebarOpen || miniActive}
         >
           <div className="sidebar-brand">
             <Brand />
@@ -429,7 +464,7 @@ export default function App() {
             </button>
           </div>
           <button className="new-chat-button" onClick={newChat}>
-            <Plus size={17} />
+            <span className="new-chat-icon"><SquarePen size={17} /></span>
             New chat<kbd title="Ctrl+Shift+O">Ctrl ⇧ O</kbd>
           </button>
           <nav className="workspace-nav" aria-label="Workspace">
@@ -508,10 +543,10 @@ export default function App() {
           id="main-content"
           className="app-main"
           tabIndex={-1}
-          inert={narrow && sidebarOpen}
+          inert={narrow && sidebarOpen && !miniActive}
         >
-          <header className="app-header">
-            {!sidebarOpen && (
+          <header className={`app-header ${activePage === "chats" ? "chat-header" : ""}`}>
+            {!sidebarOpen && !miniActive && (
               <button
                 ref={sidebarToggleRef}
                 className="icon-button"
@@ -527,7 +562,17 @@ export default function App() {
               <h1 title={title}>{title}</h1>
             </div>
             <div className="header-actions">
-              {activePage === "chats" && activeId && projects.length > 0 && (
+              {miniActive ? <div className="mini-window-controls">
+                <button className="icon-button" disabled={mini.busy} aria-label="Stay on top" aria-pressed={mini.pinned}
+                  title="Stay on top" onClick={() => void mini.setPinned(!mini.pinned)}><Pin size={16} /></button>
+                <button className="icon-button" disabled={mini.busy} aria-label="Minimize mini chat" title="Minimize"
+                  onClick={() => void mini.minimize()}><Minus size={16} /></button>
+                <button className="icon-button" disabled={mini.busy} aria-label="Expand chat" title="Expand chat"
+                  onClick={() => void toggleMini()}><Maximize2 size={16} /></button>
+              </div> : <button className="mini-launch" disabled={mini.busy} onClick={() => void toggleMini()}
+                title="Open mini chat (Ctrl/Cmd + Shift + M)"><PictureInPicture2 size={16} />Mini chat</button>}
+
+              {!miniActive && activePage === "chats" && activeId && projects.length > 0 && (
                 <select
                   aria-label="Move chat to project"
                   value={chatProjectId ?? ""}
@@ -565,6 +610,7 @@ export default function App() {
             </div>
           </header>
           {setupComplete && <UpdateBanner />}
+          {mini.error && <div className="app-notice" role="alert">{mini.error}</div>}
           {notice && (
             <div className="app-notice" role="status">
               <span>{notice}</span>
@@ -611,33 +657,12 @@ export default function App() {
                 />
               ) : (
                 <div className="chat-welcome">
-                  <Brand size={46} />
-                  <h2>What would you like to work on?</h2>
-                  <p>A question, a rough idea, a first draft. Start here.</p>
-                  <div className="starter-prompts">
-                    {[
-                      {
-                        label: "Work through an idea",
-                        text: "Help me think through an idea: ",
-                      },
-                      {
-                        label: "Find the right words",
-                        text: "Help me write a clear reply to: ",
-                      },
-                      {
-                        label: "Make a practical plan",
-                        text: "Help me break this goal into steps: ",
-                      },
-                    ].map((p) => (
-                      <button key={p.label} onClick={() => openPrompt(p.text)}>
-                        {p.label}
-                        <Plus size={14} />
-                      </button>
-                    ))}
-                  </div>
+                  <div className="welcome-identity"><span className="welcome-rule" />A little space for your next big idea</div>
+                  <h2>Good things start<br />with <em>a conversation.</em></h2>
+                  <p>Think it through. Make something. Find your next step.</p>
                 </div>
               )}
-              {activeId && !loadingConversation && !chatLoadError && <TaskActions key={activeId} conversationId={activeId} projectId={chatProjectId} isStreaming={isStreaming} onOpenTasks={() => navigate("tasks")} />}
+              {!miniActive && activeId && !loadingConversation && !chatLoadError && <TaskActions key={activeId} conversationId={activeId} projectId={chatProjectId} isStreaming={isStreaming} onOpenTasks={() => navigate("tasks")} />}
               {!ready && (
                 <div className="runtime-banner" role="status">
                   <div>
@@ -708,6 +733,7 @@ export default function App() {
                 modelName={selectedModel}
                 onOpenKnowledge={() => navigate("knowledge")}
               />
+              {messages.length === 0 && !loadingConversation && !chatLoadError && !miniActive && <ChatStarters onChoose={openPrompt} />}
             </div>
           ) : activePage === "today" ? (
             <TodayPage
