@@ -186,6 +186,7 @@ describe("composer keyboard controls", () => {
     expect(props.onStop).toHaveBeenCalledOnce();
     expect((input as HTMLTextAreaElement).value).toBe("A draft");
     expect((input as HTMLTextAreaElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
     expect(screen.getByRole("button", { name: "Memory" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("button", { name: "Stop generation" }).hasAttribute("disabled")).toBe(false);
   });
@@ -194,11 +195,38 @@ describe("composer keyboard controls", () => {
     const props = composerProps();
     const user = userEvent.setup();
     render(<Composer {...props} disabled />);
+    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
     expect(screen.getByRole("button", { name: "Memory" }).getAttribute("aria-pressed")).toBe("true");
     screen.getByRole("button", { name: "Web" }).focus();
     await user.keyboard("{Enter}");
     expect(props.onWebSearchToggle).toHaveBeenCalledOnce();
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
     expect(props.onSend).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("chat tools disclosure", () => {
+  it("opens by keyboard, updates context, and returns focus on Escape without stopping a reply", async () => {
+    const props = composerProps();
+    const user = userEvent.setup();
+    render(<Composer {...props} />);
+    const trigger = screen.getByRole("button", { name: "Tools" });
+    trigger.focus();
+    await user.keyboard("{Enter}{Tab}{Tab}{Tab}{Enter}");
+    expect(props.onWebSearchToggle).toHaveBeenCalledOnce();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("region", { name: "Chat tools" })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    expect(props.onStop).not.toHaveBeenCalled();
+  });
+  it("dismisses on outside pointer input and disables context changes during a stream", () => {
+    const props = composerProps();
+    render(<Composer {...props} isStreaming />);
+    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
+    expect(screen.getByRole("button", { name: "Web" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.pointerDown(screen.getByRole("textbox"));
+    expect(screen.queryByRole("region", { name: "Chat tools" })).toBeNull();
+    expect(props.onStop).not.toHaveBeenCalled();
   });
 });

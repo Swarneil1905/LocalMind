@@ -13,6 +13,9 @@ import App from "../App";
 
 const handlers = new Map<string, Set<(event: { payload: unknown }) => void>>();
 let failCreate = false;
+let miniActive = false;
+let miniPinned = false;
+let failWindow = false;
 let failLoad = false;
 let pendingCreate: Promise<unknown> | null = null;
 const conversation = {
@@ -36,6 +39,9 @@ beforeEach(() => {
   handlers.clear();
   localStorage.clear();
   failCreate = false;
+  miniActive = false;
+  miniPinned = false;
+  failWindow = false;
   failLoad = false;
   pendingCreate = null;
   Object.defineProperty(window, "matchMedia", {
@@ -55,6 +61,17 @@ beforeEach(() => {
     };
   });
   vi.mocked(invoke).mockImplementation(async (command, args) => {
+    if (command === "get_mini_state") return { active: miniActive, pinned: miniPinned };
+    if (command === "set_mini_mode") {
+      if (failWindow) throw new Error("Window resize failed");
+      miniActive = (args as { compact: boolean }).compact;
+      if (!miniActive) miniPinned = false;
+      return { active: miniActive, pinned: miniPinned };
+    }
+    if (command === "pin_mini_window") {
+      miniPinned = (args as { pinned: boolean }).pinned;
+      return { active: miniActive, pinned: miniPinned };
+    }
     if (command === "get_runtime_status")
       return { status: "ready", error: null };
     if (command === "list_ollama_models") return ["qwen3:8b"];
@@ -173,5 +190,57 @@ describe("desktop chat workflow", () => {
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("restart_sidecar"));
     emit("sidecar-ready", null);
     await screen.findByText("Running locally");
+  });
+});
+
+
+describe("mini chat window", () => {
+  it("restores navigation when opening the knowledge library from mini chat", async () => {
+    await setup();
+    fireEvent.click(screen.getByRole("button", { name: "Mini chat" }));
+    await screen.findByRole("button", { name: "Expand chat" });
+    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open knowledge library" }));
+    await screen.findByRole("button", { name: "Close sidebar" });
+    expect(miniActive).toBe(false);
+    expect(screen.getByRole("complementary", { name: "Workspace navigation" }).hasAttribute("inert")).toBe(false);
+  });
+  it("keeps a saved conversation and its draft while compacting, pinning and expanding", async () => {
+    const input = await setup();
+    fireEvent.click(screen.getByRole("button", { name: "Saved conversation" }));
+    await screen.findByText("Previous answer");
+    fireEvent.change(input, { target: { value: "Keep this exact draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Mini chat" }));
+    await screen.findByRole("button", { name: "Expand chat" });
+    expect(input.value).toBe("Keep this exact draft");
+    fireEvent.click(screen.getByRole("button", { name: "Stay on top" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Stay on top" }).getAttribute("aria-pressed")).toBe("true"));
+    fireEvent.click(screen.getByRole("button", { name: "Expand chat" }));
+    await screen.findByRole("button", { name: "Mini chat" });
+    expect(screen.getByText("Previous answer")).toBeDefined();
+    expect(input.value).toBe("Keep this exact draft");
+    expect(miniPinned).toBe(false);
+    expect(vi.mocked(invoke).mock.calls.filter(([name]) => name === "create_conversation")).toHaveLength(0);
+  });
+  it("does not cancel or restart a stream when using the compact shortcut", async () => {
+    const input = await setup();
+    fireEvent.change(input, { target: { value: "A question" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await screen.findByRole("button", { name: "Stop generation" });
+    fireEvent.keyDown(window, { key: "M", ctrlKey: true, shiftKey: true });
+    await screen.findByRole("button", { name: "Expand chat" });
+    expect(screen.getByRole("button", { name: "Stop generation" })).toBeDefined();
+    expect(vi.mocked(invoke).mock.calls.filter(([name]) => name === "chat_stream")).toHaveLength(1);
+    expect(vi.mocked(invoke).mock.calls.filter(([name]) => name === "cancel_chat")).toHaveLength(0);
+  });
+  it("keeps the full interface and draft available when the native operation fails", async () => {
+    const input = await setup();
+    failWindow = true;
+    fireEvent.change(input, { target: { value: "Keep me" } });
+    fireEvent.click(screen.getByRole("button", { name: "Mini chat" }));
+    await screen.findByRole("alert");
+    expect(screen.getByRole("button", { name: "Mini chat" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.queryByRole("button", { name: "Expand chat" })).toBeNull();
+    expect(input.value).toBe("Keep me");
   });
 });
