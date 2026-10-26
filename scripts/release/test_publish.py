@@ -24,19 +24,27 @@ RELEASE_ID = 123
 class FakeGitHub:
     """Model a pending-tag draft: tag lookup must not be used to find it."""
 
-    def __init__(self, *, exists=False, draft=True, commit=SHA, bad_digest=False):
+    def __init__(self, *, exists=False, draft=True, commit=SHA, bad_digest=False, placeholder=False):
         self.calls = []
         self.exists = exists
         self.bad_digest = bad_digest
         self.published = False
+        self.placeholder = placeholder
+        self.pending_tag = None
         self.release = {
             "id": RELEASE_ID,
-            "tag_name": TAG,
+            "tag_name": "untagged-abc123" if placeholder else TAG,
             "draft": draft,
             "target_commitish": commit,
             "assets": [],
             "upload_url": f"https://uploads.github.com/{API}/releases/{RELEASE_ID}/assets{{?name,label}}",
         }
+        if placeholder:
+            self.release.update({
+                "name": f"LocalMind {TAG}",
+                "author": {"login": "github-actions[bot]"},
+                "body": Path(f"docs/releases/{TAG}.md").read_text(encoding="utf-8"),
+            })
 
     def __call__(self, *args, **kwargs):
         self.calls.append(args)
@@ -95,8 +103,14 @@ class FakeGitHub:
             f"{API}/releases/{RELEASE_ID}",
             "-f",
             f"target_commitish={SHA}",
+            "-f",
+            f"tag_name={TAG}",
         ):
             self.release["target_commitish"] = SHA
+            return json.dumps(self.release)
+        if args == ("api", "--method", "PATCH", f"{API}/releases/{RELEASE_ID}", "-f", f"tag_name={TAG}"):
+            self.pending_tag = TAG
+            # Model GitHub continuing to expose the temporary name on a draft.
             return json.dumps(self.release)
         if args == ("api", f"{API}/releases/{RELEASE_ID}"):
             return json.dumps(self.release)
@@ -112,11 +126,30 @@ class FakeGitHub:
         ):
             self.published = True
             self.release["draft"] = False
+            if self.placeholder and self.pending_tag:
+                self.release["tag_name"] = self.pending_tag
             return json.dumps(self.release)
         raise AssertionError(f"Unexpected GitHub call: {args}")
 
 
 class PublishTests(unittest.TestCase):
+    def test_publication_preflight_needs_no_assets_and_never_writes(self):
+        github = FakeGitHub()
+        with patch.object(publish, "gh", side_effect=github), patch.dict(
+            os.environ, {"GITHUB_REPOSITORY": REPOSITORY, "GITHUB_SHA": SHA}
+        ), redirect_stdout(io.StringIO()):
+            publish.main(["--version", VERSION, "--preflight"])
+        self.assertFalse(any("--method" in c for c in github.calls))
+
+    def test_preflight_stops_when_existing_tag_points_to_older_code(self):
+        with patch.object(publish, "gh", return_value=json.dumps(
+            {"object": {"type": "commit", "sha": "b" * 40}}
+        )) as call, patch.dict(
+            os.environ, {"GITHUB_REPOSITORY": REPOSITORY, "GITHUB_SHA": SHA}
+        ), self.assertRaisesRegex(SystemExit, "tag does not match"):
+            publish.main(["--version", VERSION, "--preflight"])
+        self.assertEqual(call.call_count, 1)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="localmind-publish-test-")
         self.addCleanup(self.temporary.cleanup)
@@ -151,6 +184,25 @@ class PublishTests(unittest.TestCase):
         verified_index = github.calls.index(("api", f"{API}/releases/{RELEASE_ID}"))
         published_index = next(i for i, call in enumerate(github.calls) if "PATCH" in call)
         self.assertLess(verified_index, published_index)
+
+    def test_temporary_draft_tag_is_bound_before_publication_and_resumes_by_id(self):
+        for exists in (False, True):
+            with self.subTest(existing=exists):
+                github = FakeGitHub(exists=exists, placeholder=True)
+                self.run_publication(github)
+                self.assertTrue(github.published)
+                self.assertEqual(github.release["tag_name"], TAG)
+                self.assertEqual(sum(c[:4] == ("api", "--method", "POST", f"{API}/releases")
+                                     for c in github.calls), 0 if exists else 1)
+
+    def test_unrecognized_placeholder_draft_is_not_adopted_or_duplicated(self):
+        for update in ({"body": "someone else's notes"}, {"author": {"login": "someone"}}):
+            with self.subTest(update=update):
+                github = FakeGitHub(exists=True, placeholder=True)
+                github.release.update(update)
+                with self.assertRaisesRegex(SystemExit, "unrecognized draft"):
+                    self.run_publication(github)
+                self.assertFalse(any("--method" in c for c in github.calls))
 
     def test_resume_existing_draft_found_on_later_page_without_recreating_it(self):
         github = FakeGitHub(exists=True)

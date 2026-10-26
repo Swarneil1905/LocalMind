@@ -195,6 +195,20 @@ describe("desktop chat workflow", () => {
 
 
 describe("mini chat window", () => {
+  it("removes the old transcript when starting a new chat after expanding", async () => {
+    await setup();
+    fireEvent.click(screen.getByRole("button", { name: "Saved conversation" }));
+    await screen.findByText("Previous answer");
+    fireEvent.click(screen.getByRole("button", { name: "Mini chat" }));
+    await screen.findByRole("button", { name: "Expand chat" });
+    fireEvent.click(screen.getByRole("button", { name: "Expand chat" }));
+    await screen.findByRole("button", { name: "Mini chat" });
+    fireEvent.click(screen.getByRole("button", { name: /New chat/ }));
+    await screen.findByRole("heading", { name: /Good things start/ });
+    expect(screen.queryByText("Previous answer")).toBeNull();
+    expect(screen.queryByRole("log", { name: "Conversation" })).toBeNull();
+  });
+
   it("restores navigation when opening the knowledge library from mini chat", async () => {
     await setup();
     fireEvent.click(screen.getByRole("button", { name: "Mini chat" }));

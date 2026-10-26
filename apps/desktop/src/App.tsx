@@ -645,7 +645,7 @@ export default function App() {
                 </div>
               ) : messages.length > 0 ? (
                 <MessageList
-                  key={activeId || "new"}
+                  key={`messages-${activeId || "new"}`}
                   messages={messages}
                   isStreaming={isStreaming}
                   isSearching={isSearching}
@@ -662,7 +662,7 @@ export default function App() {
                   <p>Think it through. Make something. Find your next step.</p>
                 </div>
               )}
-              {!miniActive && activeId && !loadingConversation && !chatLoadError && <TaskActions key={activeId} conversationId={activeId} projectId={chatProjectId} isStreaming={isStreaming} onOpenTasks={() => navigate("tasks")} />}
+              {!miniActive && activeId && !loadingConversation && !chatLoadError && <TaskActions key={`tasks-${activeId}`} conversationId={activeId} projectId={chatProjectId} isStreaming={isStreaming} onOpenTasks={() => navigate("tasks")} />}
               {!ready && (
                 <div className="runtime-banner" role="status">
                   <div>

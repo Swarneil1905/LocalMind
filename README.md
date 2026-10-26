@@ -17,11 +17,11 @@ Chat with models running on your computer, search your documents, and keep conve
 
 ## See it in action
 
-[![LocalMind walkthrough showing chat and its source panel](docs/media/localmind-preview.gif)](https://github.com/Swarneil1905/LocalMind/raw/refs/heads/main/docs/media/localmind-walkthrough.mp4)
+[![LocalMind desktop walkthrough with live local model responses](docs/media/localmind-preview.gif)](https://github.com/Swarneil1905/LocalMind/raw/refs/heads/main/docs/media/localmind-walkthrough.mp4)
 
-**[Watch or download the full walkthrough (MP4, 80 seconds, 4.1 MB)](https://github.com/Swarneil1905/LocalMind/raw/refs/heads/main/docs/media/localmind-walkthrough.mp4)**
+**[Watch or download the full walkthrough (MP4, 1:59, 1.6 MB)](https://github.com/Swarneil1905/LocalMind/raw/refs/heads/main/docs/media/localmind-walkthrough.mp4)**
 
-A captioned tour of chat, sources, Knowledge, Memory, Projects, Tasks, and themes. The recording uses a sample workspace and example responses; it is a product tour, not a live model benchmark.
+A captioned recording of the Windows 0.7.1 release candidate: local chat, contextual follow-ups, the Tools menu, pinned mini chat, draft preservation when expanding, and light and dark themes. The answers are generated live by Qwen2.5 1.5B through Ollama in a separate demo workspace. Idle pauses are trimmed; this is a product walkthrough, not a performance benchmark.
 
 ## What you can do
 
@@ -45,9 +45,9 @@ These features describe the current source branch; a published installer may not
 
 **[Open the latest published release](https://github.com/Swarneil1905/LocalMind/releases/latest)** and choose an installer from its assets.
 
-This branch contains **0.7.0**. The latest published release may be older; the release page is the source of truth for available downloads. See the [0.7.0 release notes](docs/releases/v0.7.0.md) for the changes in this branch.
+This branch contains **0.7.1**. The latest published release may be older; the release page is the source of truth for available downloads. See the [0.7.1 release notes](docs/releases/v0.7.1.md) for the changes in this branch.
 
-The 0.7.0 release workflow builds these installers:
+The 0.7.1 release workflow builds these installers:
 
 | Computer | Installer |
 | --- | --- |
@@ -56,7 +56,7 @@ The 0.7.0 release workflow builds these installers:
 | macOS Intel, macOS 14 or later | `_x64.dmg` |
 | Linux x64 | `.deb` or `.AppImage` |
 
-The 0.7.0 installers include the Python AI service and Ollama runtime. You do not need to install Python, Node.js, Rust, or Docker to use them. If Ollama is already running locally, LocalMind uses it.
+The 0.7.1 installers include the Python AI service and Ollama runtime. You do not need to install Python, Node.js, Rust, or Docker to use them. If Ollama is already running locally, LocalMind uses it.
 
 Model weights are downloaded separately. Allow disk space for both the installer and your chosen models; memory requirements and response speed depend on the model and your hardware.
 
@@ -78,7 +78,7 @@ The setup screen currently offers these default models:
 | `qwen3:8b` | Balanced preset by default; this can be changed in Settings |
 | `nomic-embed-text` | Embeddings for Knowledge search |
 
-Once models are installed, local chat and document retrieval can work offline. Web search, remote connections, model downloads, and update checks need their respective network services. Voice is not available in 0.7.0.
+Once models are installed, local chat and document retrieval can work offline. Web search, remote connections, model downloads, and update checks need their respective network services. Voice is not available in 0.7.1.
 
 ### Chat controls
 

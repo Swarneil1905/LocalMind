@@ -188,6 +188,23 @@ describe("request lifecycle", () => {
       expect(invoke).toHaveBeenCalledWith("chat_stream", expect.anything()),
     );
   });
+  it("preserves a partial answer on failure without saving it as complete", async () => {
+    const { result } = renderHook(() => useChat(options));
+    const id = await start(result, "Make a plan");
+    emit("chat-token", { request_id: id, content: "Start with a short walk." });
+    emit("chat-done", { request_id: id, error: "The reply reached its length limit." });
+    expect(result.current.messages[1]).toMatchObject({
+      content: "Start with a short walk.",
+      error: true,
+      errorMessage: "The reply reached its length limit.",
+    });
+    expect(complete).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalledWith("extract_memories", expect.anything());
+    expect(result.current.isStreaming).toBe(false);
+    await start(result, "A different question");
+    expect(invoke).toHaveBeenLastCalledWith("chat_stream", expect.objectContaining({ history: [] }));
+  });
+
   it("does not persist errors or empty replies", async () => {
     const { result } = renderHook(() => useChat(options));
     const id = await start(result, "question");

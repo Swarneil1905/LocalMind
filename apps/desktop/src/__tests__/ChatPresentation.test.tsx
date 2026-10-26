@@ -112,6 +112,16 @@ describe("transcript interactions", () => {
     expect(log.getAttribute("aria-live")).toBe("off");
   });
 
+  it("keeps partial text readable with a separate failure notice and retry", () => {
+    render(<MessageList messages={[answer("Start with a short walk.", {
+      error: true, errorMessage: "The reply reached its length limit.",
+    })]} isStreaming={false} onRegenerate={vi.fn()} />);
+    expect(screen.getByText("Start with a short walk.")).toBeDefined();
+    expect(screen.getByRole("note").textContent).toBe("The reply reached its length limit.");
+    expect(screen.getByRole("button", { name: "Copy response" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
+  });
+
   it("supports keyboard retry after an empty stopped response", async () => {
     const user = userEvent.setup();
     const retry = vi.fn();

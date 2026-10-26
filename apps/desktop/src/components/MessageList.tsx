@@ -156,6 +156,7 @@ const MessageRow = memo(function MessageRow({
           </div>
         </details>
       )}
+      {message.errorMessage && <p className="response-status" role="note">{message.errorMessage}</p>}
       {message.cancelled && <p className="response-status">Response stopped</p>}
       {(message.sources || []).some((source) => source.kind === "knowledge") && (
         <details className="message-sources">

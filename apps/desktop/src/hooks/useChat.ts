@@ -93,7 +93,8 @@ export function useChat(options: UseChatOptions) {
           m.id === turn.id
             ? {
                 ...m,
-                content: failure || parsed.content,
+                content: parsed.content.trim() ? parsed.content : failure || "",
+                errorMessage: failure && parsed.content.trim() ? failure : undefined,
                 thinking: turn.thinking || parsed.thinking,
                 isThinking: false,
                 error: !!failure,

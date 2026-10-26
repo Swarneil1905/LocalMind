@@ -52,22 +52,47 @@ def list_api(endpoint):
     return [item for page in pages for item in page]
 
 
+def is_workflow_placeholder(release, tag):
+    """GitHub may expose a draft's temporary tag instead of its intended tag."""
+    notes = Path(f"docs/releases/{tag}.md")
+    return (
+        release.get("draft") is True
+        and re.fullmatch(r"untagged-[0-9a-f]+", release.get("tag_name", "")) is not None
+        and release.get("name") == f"LocalMind {tag}"
+        and release.get("author", {}).get("login") == "github-actions[bot]"
+        and notes.is_file()
+        and (release.get("body") or "").strip() == notes.read_text(encoding="utf-8").strip()
+    )
+
+
 def find_release(api, tag):
-    matches = [r for r in list_api(f"{api}/releases") if r.get("tag_name") == tag]
+    matches = []
+    for release in list_api(f"{api}/releases"):
+        if release.get("tag_name") == tag:
+            matches.append(release)
+        elif (release.get("draft") is True
+              and release.get("name") == f"LocalMind {tag}"
+              and str(release.get("tag_name", "")).startswith("untagged-")):
+            if not is_workflow_placeholder(release, tag):
+                raise SystemExit("An unrecognized draft has this release name; inspect it before retrying")
+            matches.append(release)
     if len(matches) > 1:
         raise SystemExit("Multiple releases have this tag; refusing an ambiguous publication")
     return matches[0] if matches else None
 
 
-def require_identity(release, tag, release_id=None):
+def require_identity(release, tag, release_id=None, *, allow_placeholder=False):
     if type(release.get("id")) is not int or release["id"] <= 0:
         raise RuntimeError("GitHub returned an invalid release ID")
-    if release.get("tag_name") != tag or (release_id is not None and release["id"] != release_id):
+    matching_tag = release.get("tag_name") == tag or (
+        allow_placeholder and is_workflow_placeholder(release, tag)
+    )
+    if not matching_tag or (release_id is not None and release["id"] != release_id):
         raise RuntimeError("GitHub returned a different release")
 
 
 def require_matching_draft(release, sha, tag, release_id=None):
-    require_identity(release, tag, release_id)
+    require_identity(release, tag, release_id, allow_placeholder=True)
     if release.get("draft") is not True:
         raise SystemExit("This release is already public; refusing to replace it")
     if release.get("target_commitish") != sha:
@@ -124,10 +149,10 @@ def prepare_draft(api, tag, sha, notes_path):
                 "inspect GitHub Releases before rerunning. No second draft was created by this run."
             ) from error
     else:
-        require_identity(release, tag)
+        require_identity(release, tag, allow_placeholder=True)
         release_id = release["id"]
         release = read_api(f"{api}/releases/{release_id}")
-        require_identity(release, tag, release_id)
+        require_identity(release, tag, release_id, allow_placeholder=True)
         # The old publisher could leave an empty bot draft before uploading anything.
         # Only that recognizable empty draft may be reused after a code fix.
         if (
@@ -147,9 +172,11 @@ def prepare_draft(api, tag, sha, notes_path):
                     f"{api}/releases/{release_id}",
                     "-f",
                     f"target_commitish={sha}",
+                    "-f",
+                    f"tag_name={tag}",
                 )
             )
-            require_identity(release, tag, release_id)
+            require_identity(release, tag, release_id, allow_placeholder=True)
             print(f"Reusing empty workflow draft {release_id} for tested commit {sha}", flush=True)
     require_matching_draft(release, sha, tag)
     print(f"Using draft {release['id']} for {tag} at {sha}", flush=True)
@@ -170,7 +197,8 @@ def check_tag(api, tag, sha):
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", required=True)
-    parser.add_argument("--assets", type=Path, required=True)
+    parser.add_argument("--assets", type=Path)
+    parser.add_argument("--preflight", action="store_true", help="Check publication conflicts without changing GitHub")
     args = parser.parse_args(argv)
     if not re.fullmatch(r"\d+\.\d+\.\d+", args.version):
         raise SystemExit("Invalid release version")
@@ -179,6 +207,15 @@ def main(argv=None):
         raise SystemExit("Invalid repository or commit")
     tag = f"v{args.version}"
     api = f"repos/{repo}"
+    if args.preflight:
+        check_tag(api, tag, sha)
+        release = find_release(api, tag)
+        if release and release.get("draft") is not True:
+            raise SystemExit("This release is already public; choose a new version")
+        print(f"Publication preflight passed for {tag} at {sha}")
+        return
+    if args.assets is None:
+        parser.error("--assets is required unless --preflight is used")
     files = sorted(args.assets.iterdir())
     if not files or any(not p.is_file() or p.is_symlink() for p in files):
         raise SystemExit("Release assets must be regular files")
@@ -250,6 +287,11 @@ def main(argv=None):
             raise SystemExit(f"Incomplete upload: {path.name}")
         if asset.get("digest") != f"sha256:{digests[path.name]}":
             raise SystemExit(f"GitHub upload checksum mismatch: {path.name}")
+    check_tag(api, tag, sha)
+    # Restore the intended tag in a separate request while the release is still
+    # private. Combining this with draft=false can publish the placeholder tag.
+    bound = json.loads(gh("api", "--method", "PATCH", endpoint, "-f", f"tag_name={tag}"))
+    require_matching_draft(bound, sha, tag, release_id)
     check_tag(api, tag, sha)
     result = json.loads(
         gh(

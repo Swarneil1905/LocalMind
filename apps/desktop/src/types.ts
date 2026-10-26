@@ -27,6 +27,8 @@ export interface Message {
   isThinking?: boolean;
   /** true when the message contains an error from the sidecar or Ollama */
   error?: boolean;
+  /** Failure notice kept separate from any partial answer. */
+  errorMessage?: string;
   cancelled?: boolean;
   sources?: WebSource[];
 }

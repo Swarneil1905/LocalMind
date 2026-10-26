@@ -32,6 +32,11 @@ jobs:
           python-version: "3.11"
       - id: version
         run: python scripts/release/check_version.py
+      - name: Check publication conflicts before building installers
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish == true
+        run: python scripts/release/publish.py --version ${{ steps.version.outputs.version }} --preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
 
   frontend:
     name: Frontend checks
