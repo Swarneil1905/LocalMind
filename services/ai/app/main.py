@@ -22,6 +22,7 @@ from app.api.routes import (
     search_config,
     task_actions,
     project_graph,
+    voice,
 )
 from app.connectors.registry import setup_registry
 from app.db.messages import init_db as init_messages_db
@@ -35,6 +36,8 @@ async def lifespan(app: FastAPI):
     configured_token()
     with profile_lock():
         migrate_legacy_connectors()
+        from app.voice import cleanup_audio
+        cleanup_audio()
         init_messages_db()
         init_people_db()
         knowledge.kb.recover_interrupted_sources()
@@ -48,6 +51,8 @@ async def lifespan(app: FastAPI):
         try:
             yield
         finally:
+            from app.voice import jobs
+            await jobs().shutdown()
             await stop_background_sync()
 
 
@@ -74,3 +79,4 @@ app.include_router(search_config.router)
 app.include_router(connectors.router)
 app.include_router(task_actions.router)
 app.include_router(project_graph.router)
+app.include_router(voice.router)
