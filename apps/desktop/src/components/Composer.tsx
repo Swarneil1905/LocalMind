@@ -1,13 +1,17 @@
 import { useEffect, useId, type RefObject } from "react";
 import { ArrowUp, Square } from "lucide-react";
 import { ChatTools } from "./ChatTools";
-import type { ModelMode } from "../types";
+import type { Message, ModelMode } from "../types";
+import { useVoice } from "../hooks/useVoice";
+import { VoiceControls } from "./VoiceControls";
 
 interface ComposerProps {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   value: string;
   onChange: (value: string) => void;
-  onSend: (text: string) => Promise<boolean>;
+  onSend: (text: string, turnId?: string) => Promise<boolean>;
+  messages?: Message[];
+  voiceScope?: string;
   onStop: () => void;
   isStreaming: boolean;
   disabled: boolean;
@@ -29,7 +33,6 @@ export function Composer(props: ComposerProps) {
     textareaRef,
     value,
     onChange,
-    onSend,
     onStop,
     isStreaming,
     disabled,
@@ -37,6 +40,7 @@ export function Composer(props: ComposerProps) {
     onModelModeChange,
     modelName,
   } = props;
+  const voice = useVoice({ ...props, scope: props.voiceScope || "new", messages: props.messages || [] });
   useEffect(() => {
     const el = textareaRef.current;
     if (el) {
@@ -45,9 +49,10 @@ export function Composer(props: ComposerProps) {
     }
   }, [value, textareaRef]);
   const send = () => {
-    if (value.trim() && !disabled && !isStreaming) void onSend(value);
+    if (value.trim() && !disabled && !isStreaming && !voice.busy) void voice.send(value);
   };
   const stop = () => {
+    voice.cancel();
     onStop();
     textareaRef.current?.focus({ preventScroll: true });
   };
@@ -108,7 +113,7 @@ export function Composer(props: ComposerProps) {
                 type="button"
                 className="send-button"
                 onClick={send}
-                disabled={disabled || !value.trim()}
+                disabled={disabled || !value.trim() || voice.busy}
                 aria-label="Send message"
                 title="Send message (Enter)"
               >
@@ -118,6 +123,7 @@ export function Composer(props: ComposerProps) {
           </div>
         </div>
       </div>
+      <VoiceControls voice={voice} disabled={disabled} />
       <div className="composer-caption" id={helpId}>
         <span>
           {props.webSearchEnabled
