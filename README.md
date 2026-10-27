@@ -112,11 +112,13 @@ Repair previews and copies persist locally across restarts, with limits of 50 op
 
 Task extraction uses [Ollama's structured output format](https://ollama.com/blog/structured-outputs), followed by local validation and explicit review. Model output can still be wrong, so review the proposal rather than treating its wording as a completed action.
 
-## Voice controls preview
+## Local voice pilot (source build)
 
-The source build includes a **Voice → Simulation** page. Choose a sample input and grant simulated permission, then hold **Hold to talk** or use **Start sample recording** and **Stop sample recording**. The recording indicator has a 30-second limit. Stop produces editable sample text; Cancel preserves the previous draft and discards only the new attempt. Leaving the page stops the simulation and clears its draft. Nothing is sent to chat automatically.
+The current source adds English voice input and spoken replies on **Windows x64**. This is newer than the published 0.7.1 release. Open **Voice** in the sidebar to download the verified whisper.cpp runtime and `base.en` weights (about 157 MB). Audio transcription runs on the CPU; spoken replies use an installed Windows stock voice. No paid speech API is needed.
 
-This is a controls prototype, not speech recognition: it never opens a real microphone, records audio, transcribes speech, or generates a spoken reply. Permission-denied and missing-device scenarios can be exercised on the page. Real microphone integration and local speech models are later work.
+In chat, open **Voice**, choose your microphone and optionally a reply voice, then use **Start recording** or **Hold to talk**. Record up to 30 seconds, review and edit the transcript, and choose **Add to message**. It preserves existing draft text and does not send automatically. **Stop voice** interrupts generation and playback. Ctrl/⌘ + Shift + V starts or finishes recording; Escape stops voice.
+
+Raw audio stays on this device and temporary capture files are removed. Sent transcripts follow the normal chat settings, including any enabled web search or connectors. Mac/Linux voice, hands-free conversation, and broader language support are not implemented yet. See the [voice guide](docs/voice.md) for setup, architecture, benchmark commands, and the human microphone acceptance checklist.
 
 Developers can run `python scripts/evaluation/workspace_repair_gate.py` for ten isolated repair journeys. Its JSON evidence stays under ignored `artifacts/evaluation/`. The Windows Python CI job checks exclusive handles and real process interruptions; the full service suite also checks knowledge isolation and task creation.
 

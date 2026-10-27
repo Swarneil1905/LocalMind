@@ -1374,6 +1374,22 @@ async fn reviewed_request(
 }
 
 #[tauri::command]
+async fn voice_request(
+    operation: String,
+    payload: Option<serde_json::Value>,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<serde_json::Value, String> {
+    if !matches!(operation.as_str(), "status" | "install" | "transcribe" | "speak" | "cancel") {
+        return Err("Unknown voice operation".into());
+    }
+    if payload.as_ref().is_some_and(|body| body.to_string().len() > 1_300_000) {
+        return Err("Voice request is too large".into());
+    }
+    let body = if operation == "status" { None } else { Some(payload.unwrap_or(serde_json::json!({}))) };
+    reviewed_request(&sidecar_state, &format!("/voice/{operation}"), body).await
+}
+
+#[tauri::command]
 async fn list_task_actions(conversation_id: String, sidecar_state: tauri::State<'_, SidecarState>) -> Result<serde_json::Value, String> {
     let id = knowledge_id(&conversation_id).map_err(|_| "Invalid conversation ID")?;
     reviewed_request(&sidecar_state, &format!("/task-actions/conversation/{id}"), None).await
@@ -2022,6 +2038,7 @@ pub fn run() {
             list_task_actions,
             review_task_action,
             project_graph,
+            voice_request,
             list_tasks,
             list_all_tasks,
             update_task,

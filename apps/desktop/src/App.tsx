@@ -247,6 +247,7 @@ export default function App() {
     onTurnComplete: handleComplete,
   });
   const draftKey = activeId || "new";
+  const [voiceScope, setVoiceScope] = useState(0);
   const draft = drafts[draftKey] || "";
   const setDraft = useCallback(
     (value: string) => setDrafts((prev) => ({ ...prev, [draftKey]: value })),
@@ -273,6 +274,7 @@ export default function App() {
     else show();
   }, [miniActive, setCompact]);
   const newChat = useCallback(() => {
+    setVoiceScope(value => value + 1);
     navigationVersion.current++;
     changingConversation.current = false;
     setLoadingConversation(false);
@@ -286,6 +288,7 @@ export default function App() {
   }, [clearMessages, clearSelection, navigate]);
   const selectChat = useCallback(
     async (id: string) => {
+      setVoiceScope(value => value + 1);
       const version = ++navigationVersion.current;
       changingConversation.current = true;
       setLoadingConversation(true);
@@ -316,7 +319,7 @@ export default function App() {
     [clearMessages, loadMessages, selectConversation, navigate],
   );
   const send = useCallback(
-    async (text: string): Promise<boolean> => {
+    async (text: string, voiceTurnId?: string): Promise<boolean> => {
       if (
         !text.trim() ||
         changingConversation.current ||
@@ -344,7 +347,7 @@ export default function App() {
             [id]: remaining,
           };
         });
-        void sendMessage(text, id);
+        void sendMessage(text, id, voiceTurnId);
         return true;
       } catch {
         setNotice(
@@ -505,7 +508,7 @@ export default function App() {
                 onClick={() => navigate("buddy")}
               >
                 <AudioLines size={16} />
-                Voice<span className="muted-tag">Preview</span>
+                Voice<span className="muted-tag">Pilot</span>
               </button>
               <button
                 aria-current={activePage === "settings" ? "page" : undefined}
@@ -713,6 +716,8 @@ export default function App() {
                 </div>
               )}
               <Composer
+                messages={messages}
+                voiceScope={`${voiceScope}:${chatProjectId || "unassigned"}`}
                 textareaRef={composerRef}
                 value={draft}
                 onChange={setDraft}

@@ -1,0 +1,22 @@
+[
+  {"id":"quiet-01","group":"quiet","text":"Help me plan tomorrow morning in three practical steps."},
+  {"id":"quiet-02","group":"quiet","text":"Summarize the document and tell me what changed."},
+  {"id":"quiet-03","group":"quiet","text":"Keep this as a draft until I confirm it."},
+  {"id":"quiet-04","group":"quiet","text":"Explain gradient boosting with a simple example."},
+  {"id":"quiet-05","group":"quiet","text":"I meant next Friday, not this Friday."},
+  {"id":"quiet-06","group":"quiet","text":"Do not send the email. Show me a preview first."},
+  {"id":"quiet-07","group":"quiet","text":"Find the source for the delivery deadline."},
+  {"id":"quiet-08","group":"quiet","text":"Turn the second suggestion into one action I can take now."},
+  {"id":"quiet-09","group":"quiet","text":"What are the tradeoffs between these two approaches?"},
+  {"id":"quiet-10","group":"quiet","text":"Please stop speaking. I want to change the question."},
+  {"id":"pause-01","group":"pause","text":"First, check the project. Then, explain the missing dependency."},
+  {"id":"pause-02","group":"pause","text":"Wait. I need a shorter answer. Just one sentence, please."},
+  {"id":"names-01","group":"names","text":"Compare Python and TypeScript for this project."},
+  {"id":"names-02","group":"names","text":"My meeting with Priya is in San Antonio."},
+  {"id":"names-03","group":"names","text":"Explain how XGBoost differs from a random forest."},
+  {"id":"noise-01","group":"noise","text":"Make a checklist for reviewing the release notes."},
+  {"id":"noise-02","group":"noise","text":"The current budget is fifty dollars per month."},
+  {"id":"noise-03","group":"noise","text":"Show me the tasks that depend on this file."},
+  {"id":"noise-04","group":"noise","text":"Keep my original message and add this sentence."},
+  {"id":"silence-01","group":"silence","text":""}
+]

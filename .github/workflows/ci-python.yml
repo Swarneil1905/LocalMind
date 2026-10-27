@@ -74,6 +74,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python scripts/evaluation/workspace_repair_gate.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise Windows speech cancellation and audio cleanup
+        env:
+          PYTHONPATH: services/ai
+        run: python -m unittest discover -s services/ai/tests -p "test_voice.py" -v
       - name: Upload repair gate evidence
         if: always()
         uses: actions/upload-artifact@v4
