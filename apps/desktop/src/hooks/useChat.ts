@@ -220,11 +220,11 @@ export function useChat(options: UseChatOptions) {
   }, [updateMessages]);
 
   const sendMessage = useCallback(
-    async (text: string, conversationId: string | null = null) => {
+    async (text: string, conversationId: string | null = null, requestId?: string) => {
       const user = text.trim();
       if (!user || active.current) return;
       const turn: Turn = {
-        id: crypto.randomUUID(),
+        id: requestId || crypto.randomUUID(),
         user,
         raw: "",
         thinking: "",
