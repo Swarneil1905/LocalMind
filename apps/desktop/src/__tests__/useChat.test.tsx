@@ -43,6 +43,17 @@ beforeEach(() => {
 });
 
 describe("request lifecycle", () => {
+  it("uses the reviewed voice turn identity and saves the normal text conversation once", async () => {
+    const { result } = renderHook(() => useChat(options));
+    const turnId = crypto.randomUUID();
+    await act(() => result.current.sendMessage("Reviewed transcript", "voice-conversation", turnId));
+    expect(invoke).toHaveBeenCalledWith("chat_stream", expect.objectContaining({ requestId: turnId, message: "Reviewed transcript" }));
+    emit("chat-token", { request_id: turnId, content: "Text answer." });
+    emit("chat-done", { request_id: turnId, error: null });
+    emit("chat-done", { request_id: turnId, error: null });
+    expect(complete).toHaveBeenCalledOnce();
+    expect(complete).toHaveBeenCalledWith("Reviewed transcript", "Text answer.", null, "voice-conversation", []);
+  });
   it("keeps project, conversation and profile bound to the completed turn", async () => {
     const { result, rerender } = renderHook(
       ({ projectId }) => useChat({ ...options, projectId }),

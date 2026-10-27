@@ -1,6 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { BuddyPage } from "../components/BuddyPage";
 import { VoiceRecorder } from "../components/VoiceRecorder";
 import { syntheticRecorder, type RecordingAdapter } from "../lib/syntheticRecorder";
 import { RepairWriteControls } from "../components/RepairWriteControls";
@@ -80,11 +79,11 @@ it("handles push-to-talk release and losing focus", async () => {
 });
 
 it("exposes denied and missing-device states without recording", async () => {
-  render(<BuddyPage />);
-  fireEvent.change(screen.getByLabelText("Simulation scenario"), { target: { value: "denied" } });
+  const view = render(<VoiceRecorder recorder={syntheticRecorder("denied")} />);
   fireEvent.click(screen.getByRole("button", { name: "Allow simulated microphone" }));
   expect((await screen.findByRole("alert")).textContent).toContain("denied");
-  fireEvent.change(screen.getByLabelText("Simulation scenario"), { target: { value: "missing" } });
+  view.unmount();
+  render(<VoiceRecorder recorder={syntheticRecorder("missing")} />);
   fireEvent.click(screen.getByRole("button", { name: "Allow simulated microphone" }));
   expect((await screen.findByRole("alert")).textContent).toContain("No simulated input");
   expect((screen.getByRole("button", { name: "Start sample recording" }) as HTMLButtonElement).disabled).toBe(true);
