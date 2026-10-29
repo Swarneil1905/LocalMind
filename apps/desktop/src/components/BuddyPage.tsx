@@ -37,11 +37,12 @@ export function BuddyPage({
           <span className="page-badge">Local voice · Windows pilot</span>
         </header>
         <section className="voice-setup">
+          {status?.disabled_reason && <p className="page-notice" role="status">{status.disabled_reason}</p>}
           <div className="voice-card">
             <h2>Local transcription</h2>
             <p>Whisper turns English recordings into editable text on your CPU. Windows stock voices read replies without a cloud speech service.</p>
             <p>No microphone is activated from this page. Recordings are limited to 30 seconds; temporary audio is removed after processing or cancellation.</p>
-            <p role="status">{!status ? "Checking local speech…" : status.stt_ready ? "Transcription is installed and ready." : !status.supported ? "Voice setup is currently available on Windows x64. Text chat works on every supported platform." : "Install the speech runtime and English model to begin (about 157 MB)."}</p>
+            <p role="status">{!status ? "Checking local speech…" : status.disabled_reason ? "Text chat is available while voice checks are pending." : status.stt_ready ? "Transcription is installed and ready." : !status.supported ? "Voice setup is currently available on Windows x64. Text chat works on every supported platform." : "Install the speech runtime and English model to begin (about 157 MB)."}</p>
             {status?.supported && !status.stt_ready && <button className="page-button primary" disabled={downloading} onClick={async () => {
               setStarting(true); setError("");
               try { await voiceRequest("install"); setPoll(value => value + 1); }
