@@ -27,6 +27,18 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
+it("beta gate blocks keyboard and pointer recording without requesting microphone access", async () => {
+  const options = fixture();
+  vi.mocked(invoke).mockResolvedValue({ ...status, stt_ready: false, supported: false, disabled_reason: "Voice beta checks pending" });
+  function Controls() { const voice = useVoice(options); return <VoiceControls voice={voice} disabled={false} />; }
+  render(<Controls />);
+  fireEvent.keyDown(window, { key: "v", ctrlKey: true, shiftKey: true });
+  await screen.findByRole("alert");
+  expect(options.microphone.start).not.toHaveBeenCalled();
+  expect((screen.getByRole("button", { name: "Start recording" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(options.onChange).not.toHaveBeenCalled();
+});
+
 async function dictate(result: { current: ReturnType<typeof useVoice> }) {
   await act(() => result.current.start());
   expect(result.current.phase).toBe("listening");
