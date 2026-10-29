@@ -1,5 +1,6 @@
 """Connector registry — central lookup for all installed connectors."""
 from .base import BaseConnector
+from dataclasses import asdict
 
 
 class ConnectorRegistry:
@@ -27,6 +28,8 @@ class ConnectorRegistry:
                 "status": status.value,
                 "requires_browser": c.meta.requires_browser,
                 "platform": c.meta.platform,
+                "capabilities": asdict(c.capabilities),
+                "detail": c.detail,
             })
         return results
 

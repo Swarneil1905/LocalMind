@@ -12,6 +12,21 @@ class ConnectorStatus(str, Enum):
     CONNECTED = "connected"
     ERROR = "error"
     SYNCING = "syncing"
+    EXPIRED = "expired"
+    OFFLINE = "offline"
+    DISABLED = "disabled"
+    LOCKED = "locked"
+
+
+@dataclass(frozen=True)
+class ConnectorCapabilities:
+    authorization: str = "local"
+    read: bool = True
+    sync: bool = True
+    actions: tuple[str, ...] = ()
+    revoke: bool = True
+    range_days: int | None = None
+    max_items: int | None = None
 
 
 @dataclass
@@ -37,6 +52,12 @@ class BaseConnector(ABC):
     """Every connector inherits from this."""
 
     meta: ConnectorMeta
+    capabilities = ConnectorCapabilities()
+    detail: str = ""
+
+    async def action(self, name: str, arguments: dict):
+        # Tool text and model output cannot enable a write adapter.
+        raise PermissionError("This connector has no enabled actions.")
 
     @abstractmethod
     async def status(self) -> ConnectorStatus:
