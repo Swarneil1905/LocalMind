@@ -169,7 +169,7 @@ class DesktopProfileTests(unittest.TestCase):
             migrate_legacy_connectors()
         self.assertFalse((data_dir() / "tokens").exists())
 
-    def test_completed_migration_does_not_restore_deleted_credentials(self):
+    def test_migration_never_copies_plaintext_gmail_credentials(self):
         legacy = self.root / ".localmind" / "tokens"
         legacy.mkdir(parents=True)
         (legacy / "gmail_oauth.json").write_text('{"access_token": "private"}')
@@ -177,9 +177,7 @@ class DesktopProfileTests(unittest.TestCase):
         with patch("app.storage.Path.home", return_value=self.root), patch("app.storage.default_data_dir", return_value=profile):
             migrate_legacy_connectors()
             migrated = profile / "tokens" / "gmail_oauth.json"
-            self.assertTrue(migrated.exists())
-            migrated.unlink()
-            migrated.parent.rmdir()
+            self.assertFalse(migrated.exists())
             migrate_legacy_connectors()
             self.assertFalse(migrated.exists())
 

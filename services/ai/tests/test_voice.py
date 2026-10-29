@@ -191,7 +191,7 @@ class VoiceRuntimeTests(unittest.IsolatedAsyncioTestCase):
         app.middleware("http")(verify_bearer_token)
         app.include_router(router)
         turn = str(uuid4())
-        with patch.dict(os.environ, {"LOCALMIND_TOKEN": "test-token"}):
+        with patch.dict(os.environ, {"LOCALMIND_TOKEN": "test-token", "LOCALMIND_VOICE_PILOT": "1"}):
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=app), base_url="http://test"
             ) as client:
@@ -226,6 +226,7 @@ class VoiceRuntimeTests(unittest.IsolatedAsyncioTestCase):
         from fastapi import HTTPException
 
         with (
+            patch.dict(os.environ, {"LOCALMIND_VOICE_PILOT": "1"}),
             patch.object(voice.jobs(), "stock_voices", AsyncMock(return_value=[{"id": "stock"}])),
             patch("app.voice.sapi", AsyncMock()) as synth,
         ):
