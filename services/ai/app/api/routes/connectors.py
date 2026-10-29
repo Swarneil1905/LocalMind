@@ -62,7 +62,7 @@ async def sync(connector_id: str, background_tasks: BackgroundTasks):
         raise HTTPException(404, f"Connector '{connector_id}' not found")
 
     status = await connector.status()
-    if status not in (ConnectorStatus.CONNECTED, ConnectorStatus.SYNCING):
+    if status not in (ConnectorStatus.CONNECTED, ConnectorStatus.EXPIRED, ConnectorStatus.OFFLINE):
         raise HTTPException(400, f"Connector '{connector_id}' is not connected (status: {status.value})")
 
     # Run sync in background so the API returns immediately
@@ -70,7 +70,8 @@ async def sync(connector_id: str, background_tasks: BackgroundTasks):
         result = await connector.sync()
         # After sync, trigger People Profiles extraction
         from ...connectors.people_extractor import extract_profiles_from_source
-        await extract_profiles_from_source(connector_id)
+        if not result.error and connector_id != "gmail":
+            await extract_profiles_from_source(connector_id)
         return result
 
     background_tasks.add_task(_run)
@@ -84,7 +85,10 @@ async def disconnect(connector_id: str):
     connector = registry.get(connector_id)
     if not connector:
         raise HTTPException(404, f"Connector '{connector_id}' not found")
-    await connector.disconnect()
+    try:
+        await connector.disconnect()
+    except RuntimeError:
+        raise HTTPException(400, "Disconnect is incomplete. Retry when online with the credential store unlocked.") from None
     return {"message": f"{connector_id} disconnected"}
 
 
@@ -100,7 +104,7 @@ async def gmail_oauth_callback(body: OAuthCallbackBody):
     gmail = registry.get("gmail")
     if not gmail:
         raise HTTPException(404, "Gmail connector not registered")
-    success = await gmail.handle_oauth_callback(body.code)
+    success = await gmail.handle_oauth_callback(body.code, body.state)
     if success:
         return {"message": "Gmail connected successfully"}
     raise HTTPException(500, "Failed to exchange OAuth code")
@@ -132,46 +136,10 @@ async def extract_profiles(background_tasks: BackgroundTasks):
     return {"message": "Profile extraction started in background"}
 
 
-# ── Gmail debug ───────────────────────────────────────────────────────────────
-
+# Diagnostics deliberately contain no token, email, message, path or provider error body.
 @router.get("/gmail/debug")
 async def gmail_debug():
-    """Return token status and attempt a live IMAP ping. For debugging only."""
-    import time
-    import asyncio
-    from ...connectors.gmail import (
-        _load_client, _load_tokens, _get_valid_access_token,
-        TOKENS_PATH, CLIENT_PATH,
-    )
-    client = _load_client()
-    tokens = _load_tokens()
-    now = time.time()
-
-    info: dict = {
-        "tokens_path": str(TOKENS_PATH),
-        "client_path": str(CLIENT_PATH),
-        "client_loaded": bool(client),
-        "tokens_loaded": bool(tokens),
-        "token_expires_at": tokens.get("expires_at") if tokens else None,
-        "token_valid": bool(tokens and now < tokens.get("expires_at", 0)),
-        "email": tokens.get("email") if tokens else None,
-        "imap_test": None,
-        "imap_error": None,
-    }
-
-    access_token, email = _get_valid_access_token()
-    info["access_token_ok"] = bool(access_token)
-
-    if access_token:
-        try:
-            from ...connectors.gmail import _fetch_recent_via_api
-            live = await asyncio.get_event_loop().run_in_executor(
-                None, _fetch_recent_via_api, access_token, 3
-            )
-            info["fetch_test"] = f"OK — fetched {len(live)} messages"
-            info["sample"] = live
-        except Exception as exc:
-            info["fetch_test"] = "FAILED"
-            info["fetch_error"] = str(exc)  # Now shows the real error
-
-    return info
+    gmail = registry.get("gmail")
+    if not gmail:
+        raise HTTPException(404, "Gmail connector not registered")
+    return {"status": (await gmail.status()).value, "detail": gmail.detail, "access": "read-only"}
