@@ -69,7 +69,7 @@ class Client:
         # CI/user proxy settings must never receive this loopback bearer token.
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
-    def request(self, method: str, path: str, payload=None, *, expected=200, token=True):
+    def request(self, method: str, path: str, payload=None, *, expected=200, token=True, timeout=5):
         headers = {"Content-Type": "application/json"}
         if token:
             headers["Authorization"] = f"Bearer {self.token if token is True else token}"
@@ -80,7 +80,7 @@ class Client:
             method=method,
         )
         try:
-            response = self.opener.open(request, timeout=5)
+            response = self.opener.open(request, timeout=timeout)
         except urllib.error.HTTPError as error:
             response = error
         with response:
@@ -177,8 +177,25 @@ def smoke(binary: Path, timeout: float) -> None:
                 client.request("GET", "/health", expected=401, token=False)
                 client.request("GET", "/health", expected=401, token="different-launch")
                 connectors = client.request("GET", "/connectors")
-                require(bool(connectors) and all(row["status"] == "disconnected" for row in connectors),
+                require(bool(connectors) and all(row["status"] == "disconnected" or
+                        (os.name != "nt" and row["id"] == "gmail" and row["status"] == "locked") for row in connectors),
                         "A connector unexpectedly has access to an existing session")
+
+                voice = client.request("GET", "/voice/status")
+                require(not voice["stt_ready"] and bool(voice.get("disabled_reason")),
+                        "Voice beta gate unexpectedly enabled")
+                preview = client.request("GET", "/mcp/preview")
+                require(not preview["enabled"], "MCP unexpectedly enabled before approval")
+                client.request("POST", "/mcp/call", {"name": "read_fixture", "arguments": {"path": "sample.txt"}}, expected=400)
+                enabled = client.request("POST", "/mcp/enable", {"approval": preview["approval"]}, timeout=45)
+                require(enabled["enabled"], "Owned MCP server failed to initialize in the frozen runtime")
+                try:
+                    result = client.request("POST", "/mcp/call", {"name": "read_fixture", "arguments": {"path": "sample.txt"}})
+                    require(result.get("untrusted") is True and "No user files" in result.get("text", ""),
+                            "Unexpected owned tool result")
+                    client.request("POST", "/mcp/call", {"name": "read_fixture", "arguments": {"path": "../secret"}}, expected=400)
+                finally:
+                    require(not client.request("POST", "/mcp/stop", {}, timeout=25)["enabled"], "Owned MCP failed to stop")
 
                 conversation = client.request("POST", "/conversations", {"title": "Release smoke"})
                 conversation_id = conversation["id"]
@@ -218,6 +235,7 @@ def smoke(binary: Path, timeout: float) -> None:
             # Restart the actual executable: verify persistence and lock release,
             # rather than just reading from the first process's memory.
             with running_sidecar(binary, scratch, profile, timeout) as client:
+                require(not client.request("GET", "/mcp/preview")["enabled"], "MCP approval survived restart")
                 messages = client.request("GET", messages_url)["messages"]
                 require(messages[1]["sources"] == sources, "Sources were lost after restart")
                 require(messages[1]["thinking"] == "Saved reasoning", "Reasoning was lost")

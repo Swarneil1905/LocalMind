@@ -4,6 +4,8 @@ This feature is in the source tree after v0.7.1. The v0.7.1 installers do not in
 
 ## Use voice
 
+The beta gate currently disables voice by default. Human microphone/playback checks and ten multi-turn sessions are pending. No recording, synthesis, or install endpoint executes while disabled; text chat is unaffected. Developers must set `$env:LOCALMIND_VOICE_PILOT = "1"` before launching the app for further pilot testing. The previous ten-turn synthetic journey is one conversation, not ten multi-turn sessions, and is not sufficient to pass this gate.
+
 1. Open **Voice** in the sidebar. Install local transcription once. Setup downloads about 157 MB and shows progress; a failed or interrupted download can be retried.
 2. Open a conversation and expand **Voice** beneath the composer. Select an input. Device names may become available only after granting microphone access yourself.
 3. Optionally select a Windows voice and enable **Speak replies to voice messages**. This setting is off by default.
@@ -54,6 +56,7 @@ Use an isolated profile, not your everyday chat profile. Install the service's d
 ```powershell
 $env:LOCALMIND_DATA_DIR = "$PWD/artifacts/evaluation/voice/profile"
 $env:PYTHONPATH = "$PWD/services/ai"
+$env:LOCALMIND_VOICE_PILOT = "1"
 python -c "import asyncio; from app.voice import install; asyncio.run(install()); asyncio.run(install('small.en'))"
 python scripts/evaluation/voice_benchmark.py
 python scripts/evaluation/voice_journey.py --model qwen2.5:1.5b
@@ -70,7 +73,7 @@ Generated audio, run reports, and daily notes remain under ignored `artifacts/`;
 - [ ] Test actual microphone permission grant, denial, retry, and named/default input on the packaged Windows app.
 - [ ] Record at least 20 natural utterances across multiple speakers/accents and realistic room noise. Review recognition errors and compare against synthetic results.
 - [ ] Check stock voice pronunciation and volume, first audible latency, and whether code/math omission sounds understandable.
-- [ ] Complete ten spoken exchanges, correcting at least one draft and interrupting at least two replies. Reopen the conversation and check history.
+- [ ] Complete ten distinct sessions with at least two spoken turns each, covering follow-ups, draft correction, interruption and recovery. Reopen the conversations and check history. Measure end-of-speech to transcript and first audible reply; separate cold model load from warm operation.
 - [ ] Unplug the selected microphone while recording; reconnect and explicitly select it again. Confirm recovery without draft loss.
 - [ ] Sleep/wake while recording and while speaking, then close/reopen the app. Confirm the OS microphone indicator clears and capture resumes only after an explicit action.
 - [ ] Navigate with only the keyboard and a screen reader; inspect focus, status announcements, disabled controls, and narrow-window scrolling.

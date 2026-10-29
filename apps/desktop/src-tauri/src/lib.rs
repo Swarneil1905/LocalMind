@@ -1390,6 +1390,19 @@ async fn voice_request(
 }
 
 #[tauri::command]
+async fn mcp_request(
+    operation: String,
+    payload: Option<serde_json::Value>,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<serde_json::Value, String> {
+    if !matches!(operation.as_str(), "preview" | "enable" | "call" | "stop") {
+        return Err("Unknown local tool operation".into());
+    }
+    let body = if operation == "preview" { None } else { Some(payload.unwrap_or_else(|| serde_json::json!({}))) };
+    reviewed_request(&sidecar_state, &format!("/mcp/{operation}"), body).await
+}
+
+#[tauri::command]
 async fn list_task_actions(conversation_id: String, sidecar_state: tauri::State<'_, SidecarState>) -> Result<serde_json::Value, String> {
     let id = knowledge_id(&conversation_id).map_err(|_| "Invalid conversation ID")?;
     reviewed_request(&sidecar_state, &format!("/task-actions/conversation/{id}"), None).await
@@ -2039,6 +2052,7 @@ pub fn run() {
             review_task_action,
             project_graph,
             voice_request,
+            mcp_request,
             list_tasks,
             list_all_tasks,
             update_task,
