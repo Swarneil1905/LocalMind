@@ -15,6 +15,7 @@ export function VoiceControls({ voice, disabled }: { voice: ReturnType<typeof us
     {voice.phase === "listening" && <span className="voice-phase" aria-hidden="true">{voice.seconds}s / 30s</span>}
     {active && <button type="button" className="voice-toggle" onClick={() => voice.cancel()} aria-label="Interrupt voice turn"><Square size={14} />Stop voice</button>}
     {voice.open && <section className="voice-panel" aria-label="Local voice controls">
+      {voice.status?.disabled_reason && <p role="status">{voice.status.disabled_reason}</p>}
       <div className="voice-fields">
         <label>Microphone<select value={voice.preferences.device} disabled={active} onChange={event => voice.updatePreferences({ device: event.target.value })}>
           <option value="">System default (selected at start)</option>
@@ -30,11 +31,11 @@ export function VoiceControls({ voice, disabled }: { voice: ReturnType<typeof us
       <label className="voice-read"><input type="checkbox" checked={voice.preferences.readReplies} disabled={active}
         onChange={event => voice.updatePreferences({ readReplies: event.target.checked })} /><Volume2 size={16} />Speak replies to voice messages</label>
       <div className="voice-buttons">
-        <button type="button" className="page-button primary" disabled={disabled || (active && voice.phase !== "listening" && voice.phase !== "speaking" && voice.phase !== "responding")}
+        <button type="button" className="page-button primary" disabled={disabled || Boolean(voice.status?.disabled_reason) || (active && voice.phase !== "listening" && voice.phase !== "speaking" && voice.phase !== "responding")}
           onClick={() => voice.phase === "listening" ? void voice.finish() : void voice.start()}>
           {voice.phase === "listening" ? "Finish recording" : voice.phase === "speaking" || voice.phase === "responding" ? "Interrupt and record" : "Start recording"}
         </button>
-        <button type="button" className="page-button" disabled={disabled || (active && voice.phase !== "permission" && voice.phase !== "listening")}
+        <button type="button" className="page-button" disabled={disabled || Boolean(voice.status?.disabled_reason) || (active && voice.phase !== "permission" && voice.phase !== "listening")}
           onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture?.(event.pointerId); void voice.start(); }}
           onPointerUp={() => { if (voice.phase === "listening") void voice.finish(); else voice.cancel(); }} onPointerCancel={() => voice.cancel()}
           onKeyDown={event => { if ((event.key === " " || event.key === "Enter") && !event.repeat) { event.preventDefault(); void voice.start(); } }}

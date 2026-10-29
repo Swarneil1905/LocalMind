@@ -13,12 +13,14 @@ import {
   X,
 } from "lucide-react";
 import "./supporting-pages.css";
+import { McpPanel } from "./McpPanel";
 
 interface Connector {
   id: string;
   name: string;
   description: string;
-  status: "disconnected" | "connecting" | "connected" | "error" | "syncing";
+  status: "disconnected" | "connecting" | "connected" | "error" | "syncing" | "expired" | "offline" | "disabled" | "locked";
+  detail?: string;
   requires_browser: boolean;
   platform: string;
 }
@@ -46,6 +48,10 @@ const STATUS_LABEL = {
   connecting: "Connecting…",
   disconnected: "Not connected",
   error: "Needs attention",
+  expired: "Authorization expired",
+  offline: "Offline",
+  disabled: "Disconnected locally",
+  locked: "Credential store locked",
 };
 function listFromJson(value: string): string[] {
   try {
@@ -120,7 +126,7 @@ function ConnectorRow({
   onSync: () => void;
 }) {
   const connected =
-    connector.status === "connected" || connector.status === "syncing";
+    ["connected", "syncing", "expired", "offline", "disabled"].includes(connector.status);
   const isMac = /Macintosh|Mac OS X/i.test(navigator.userAgent);
   const unsupported = connector.platform === "macos" && !isMac;
   const pending =
@@ -149,9 +155,11 @@ function ConnectorRow({
             </span>
           </div>
           <p>{connector.description}</p>
+          {connector.detail && <p role="status">{connector.detail}</p>}
         </div>
         <div className="connector-actions">
-          {connected && (
+          {connector.status === "expired" && <button className="page-button" disabled={pending || blocked} onClick={onConnect}>Reconnect</button>}
+          {connected && connector.status !== "disabled" && (
             <button
               className="page-icon-button"
               aria-label={`Sync ${connector.name}`}
@@ -294,6 +302,12 @@ export function ConnectionsPage() {
         credentials: Object.keys(creds).length ? creds : null,
       });
       if (result.type === "oauth_url" && result.url) {
+        setCredentials((previous) => {
+          const next = { ...previous };
+          delete next[id];
+          return next;
+        });
+        setExpanded(null);
         const { openUrl } = await import("@tauri-apps/plugin-opener");
         await openUrl(result.url);
         setNotice({
@@ -462,6 +476,7 @@ export function ConnectionsPage() {
           </div>
         ) : tab === "sources" ? (
           <>
+            <McpPanel />
             {connectors.length ? (
               <div className="record-list">
                 {connectors.map((connector) => (
