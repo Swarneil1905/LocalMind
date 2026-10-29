@@ -106,6 +106,7 @@ export function useVoice(options: Options) {
       const available = await voiceRequest<VoiceStatus>("status");
       if (turn.current !== current) return;
       setStatus(available);
+      if (available?.disabled_reason) throw new Error(available.disabled_reason);
       if (!available?.stt_ready) throw new Error("Install local transcription from Voice in the sidebar first.");
       const inputs = await microphone.devices();
       if (turn.current !== current) return;

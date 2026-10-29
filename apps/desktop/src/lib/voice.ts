@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 export interface VoiceStatus {
   supported: boolean;
+  disabled_reason?: string;
   stt_ready: boolean;
   engine: string;
   voices: { id: string; name: string; language: string }[];
