@@ -5,6 +5,7 @@ lancedb==0.20.0
 pypdf==5.1.0
 
 # Connector dependencies
+keyring==25.7.0
 google-auth==2.38.0
 google-auth-oauthlib==1.2.1
 google-auth-httplib2==0.2.0

@@ -23,6 +23,7 @@ from app.api.routes import (
     task_actions,
     project_graph,
     voice,
+    mcp,
 )
 from app.connectors.registry import setup_registry
 from app.db.messages import init_db as init_messages_db
@@ -51,6 +52,12 @@ async def lifespan(app: FastAPI):
         try:
             yield
         finally:
+            from app.mcp_client import owned_mcp
+            await owned_mcp().stop()
+            from app.connectors.registry import registry
+            gmail = registry.get("gmail")
+            if gmail:
+                await gmail.close_auth()
             from app.voice import jobs
             await jobs().shutdown()
             await stop_background_sync()
@@ -80,3 +87,4 @@ app.include_router(connectors.router)
 app.include_router(task_actions.router)
 app.include_router(project_graph.router)
 app.include_router(voice.router)
+app.include_router(mcp.router)

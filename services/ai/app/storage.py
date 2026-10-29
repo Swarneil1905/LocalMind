@@ -102,7 +102,9 @@ def migrate_legacy_connectors() -> None:
             staging.replace(target)
         finally:
             staging.unlink(missing_ok=True)
-    for name in ("tokens", "wa_session"):
+    # Old Gmail tokens granted full mailbox access and lived in plaintext.
+    # Never copy them into a new profile; require read-only reauthorization.
+    for name in ("wa_session",):
         source, target = old_root / name, target_root / name
         if source.is_dir() and not target.exists():
             # Publish a complete directory so an interrupted copy is retryable.

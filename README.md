@@ -114,13 +114,21 @@ Task extraction uses [Ollama's structured output format](https://ollama.com/blog
 
 ## Local voice pilot (source build)
 
-The current source adds English voice input and spoken replies on **Windows x64**. This is newer than the published 0.7.1 release. Open **Voice** in the sidebar to download the verified whisper.cpp runtime and `base.en` weights (about 157 MB). Audio transcription runs on the CPU; spoken replies use an installed Windows stock voice. No paid speech API is needed.
+Voice is **disabled by default in the source beta** pending human microphone/playback checks and ten multi-turn sessions. The Voice page explains this state, and recording, synthesis and installation requests are blocked. Developers can explicitly set `LOCALMIND_VOICE_PILOT=1` before launching a source build to continue testing the Windows x64 English pilot. This does not mean the beta gate has passed.
+
+With that opt-in, open **Voice** in the sidebar to download the verified whisper.cpp runtime and `base.en` weights (about 157 MB). Audio transcription runs on the CPU; spoken replies use an installed Windows stock voice. No paid speech API is needed. These features are newer than the published 0.7.1 release.
 
 In chat, open **Voice**, choose your microphone and optionally a reply voice, then use **Start recording** or **Hold to talk**. Record up to 30 seconds, review and edit the transcript, and choose **Add to message**. It preserves existing draft text and does not send automatically. **Stop voice** interrupts generation and playback. Ctrl/⌘ + Shift + V starts or finishes recording; Escape stops voice.
 
 Raw audio stays on this device and temporary capture files are removed. Sent transcripts follow the normal chat settings, including any enabled web search or connectors. Mac/Linux voice, hands-free conversation, and broader language support are not implemented yet. See the [voice guide](docs/voice.md) for setup, architecture, benchmark commands, and the human microphone acceptance checklist.
 
 Developers can run `python scripts/evaluation/workspace_repair_gate.py` for ten isolated repair journeys. Its JSON evidence stays under ignored `artifacts/evaluation/`. The Windows Python CI job checks exclusive handles and real process interruptions; the full service suite also checks knowledge isolation and task creation.
+
+## Connections and local tools (source beta)
+
+Gmail now requests only **read-only Gmail access**, keeps tokens in the OS credential store, and syncs at most 100 snippets from the last 30 days per run. Existing Gmail connections need fresh authorization; old plaintext tokens are not reused or migrated. Locked credential storage, offline sync, expired authorization and incomplete revocation are shown in Connections. Disconnect stops future reads; previously synced data remains locally. This path has been validated with synthetic provider fixtures, not a consented live Gmail account.
+
+**Connections → Local tools** previews an owned MCP test server's executable, arguments, tools and scope. Explicitly enable it to read a built-in sample or test waiting/cancellation. It cannot read your files, write files, send mail or install other servers. Closing Connections or stopping the server ends its process; restart requires fresh approval. Chat does not invoke MCP tools automatically. See [connection and tool boundaries](docs/connections.md) for setup, limitations and test commands.
 
 ## Data and privacy
 

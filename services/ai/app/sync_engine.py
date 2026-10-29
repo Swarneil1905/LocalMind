@@ -21,7 +21,7 @@ async def _sync_all_connectors():
     for connector in registry.all():
         try:
             status = await connector.status()
-            if status != ConnectorStatus.CONNECTED:
+            if status not in (ConnectorStatus.CONNECTED, ConnectorStatus.EXPIRED, ConnectorStatus.OFFLINE):
                 continue
             logger.info(f"[Sync] Starting sync for {connector.meta.id}")
             result = await connector.sync()

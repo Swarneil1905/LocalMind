@@ -30,6 +30,10 @@ def _load_dotenv() -> None:
 
 
 def main() -> None:
+    if sys.argv[1:] == ["--owned-mcp"]:
+        from app.mcp_server import serve
+        serve()
+        return
     _load_dotenv()
     port_str = os.environ.get("LOCALMIND_PORT")
     token = os.environ.get("LOCALMIND_TOKEN")
