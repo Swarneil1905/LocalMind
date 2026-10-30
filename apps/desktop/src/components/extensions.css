@@ -1,0 +1,12 @@
+.extension-grid { display: grid; gap: 16px; margin: 24px 0; }
+.integration-card { padding: 22px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); min-width: 0; }
+.integration-card header { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
+.integration-card h2 { font-size: 17px; margin: 0; }
+.integration-card p, .integration-card li { font-size: 14px; line-height: 1.6; }
+.integration-card details { margin: 12px 0; overflow-wrap: anywhere; }
+.integration-card summary { cursor: pointer; font-size: 14px; }
+.extension-field { display: grid; gap: 8px; font-size: 14px; margin: 16px 0 10px; }
+.extension-field textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 10px; border: 1px solid var(--border); border-radius: 8px; color: inherit; background: var(--surface-2); font: inherit; }
+.extension-check { display: flex; align-items: center; gap: 8px; margin: 16px 0; font-size: 14px; }
+.integration-card .page-button { margin-right: 8px; margin-top: 6px; }
+.integration-card :focus-visible { outline: 2px solid var(--accent, #245e82); outline-offset: 3px; }

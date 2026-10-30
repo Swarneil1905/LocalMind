@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import "./extensions.css";
 
 interface Preview {
   executable: string;
@@ -42,9 +43,10 @@ export function McpPanel() {
       if (current === generation.current) { setPreview(state); setReviewed(false); }
     } finally { if (current === generation.current) setBusy(false); }
   }
-  return <section className="voice-card" aria-labelledby="local-tools-heading">
-    <h2 id="local-tools-heading">Local tools <span className="page-badge">MCP pilot</span></h2>
+  return <section className="integration-card" aria-labelledby="local-tools-heading">
+    <h2 id="local-tools-heading">Local tools <span className="page-badge">Local · MCP pilot</span></h2>
     <p>Try the owned read-only test server. This does not connect third-party tools or let chat run commands.</p>
+    <details><summary>Permissions and verification</summary><p>Read the built-in sample and test cancellation only. No personal files, credentials or network access. Verified with synthetic transport, timeout and process cleanup tests.</p></details>
     {preview && <>
       <p>{preview.scope}</p>
       <dl><dt>Executable</dt><dd><code style={{ overflowWrap: "anywhere" }}>{preview.executable}</code></dd>

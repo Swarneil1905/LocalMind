@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import "./supporting-pages.css";
 import { McpPanel } from "./McpPanel";
+import { ExtensionsPanel } from "./ExtensionsPanel";
 
 interface Connector {
   id: string;
@@ -21,6 +22,10 @@ interface Connector {
   description: string;
   status: "disconnected" | "connecting" | "connected" | "error" | "syncing" | "expired" | "offline" | "disabled" | "locked";
   detail?: string;
+  available?: boolean;
+  location?: "local" | "cloud";
+  evidence?: string;
+  capabilities?: { authorization: string; read: boolean; sync: boolean; actions: string[]; range_days?: number; max_items?: number };
   requires_browser: boolean;
   platform: string;
 }
@@ -128,7 +133,7 @@ function ConnectorRow({
   const connected =
     ["connected", "syncing", "expired", "offline", "disabled"].includes(connector.status);
   const isMac = /Macintosh|Mac OS X/i.test(navigator.userAgent);
-  const unsupported = connector.platform === "macos" && !isMac;
+  const unsupported = connector.available === false || (connector.platform === "macos" && !isMac);
   const pending =
     busy || connector.status === "connecting" || connector.status === "syncing";
   const Icon =
@@ -150,16 +155,21 @@ function ConnectorRow({
               className={`page-badge ${connector.status === "error" ? "error-text" : ""}`}
             >
               {unsupported
-                ? "macOS only"
+                ? connector.available === false ? "Disabled in beta" : "macOS only"
                 : (STATUS_LABEL[connector.status] ?? "Not connected")}
             </span>
           </div>
           <p>{connector.description}</p>
+          <span className="page-badge">{connector.location === "local" ? "Local" : "Cloud connection"}</span>
+          {connector.capabilities && <details><summary>Permissions and verification</summary>
+            <p>{connector.capabilities.read ? "Read access" : "No read access"}. {connector.capabilities.actions.length ? connector.capabilities.actions.join(", ") : "No write actions"}.
+              {connector.capabilities.range_days ? ` Last ${connector.capabilities.range_days} days, up to ${connector.capabilities.max_items} items per sync.` : ""}</p>
+            <p className="muted">{connector.evidence}</p></details>}
           {connector.detail && <p role="status">{connector.detail}</p>}
         </div>
         <div className="connector-actions">
           {connector.status === "expired" && <button className="page-button" disabled={pending || blocked} onClick={onConnect}>Reconnect</button>}
-          {connected && connector.status !== "disabled" && (
+          {connected && !unsupported && connector.status !== "disabled" && (
             <button
               className="page-icon-button"
               aria-label={`Sync ${connector.name}`}
@@ -198,7 +208,7 @@ function ConnectorRow({
             }
           >
             {busy && <LoaderCircle size={14} className="spin" />}
-            {connected
+            {unsupported ? "Unavailable" : connected
               ? "Disconnect"
               : pending
                 ? "Connecting…"
@@ -253,28 +263,32 @@ export function ConnectionsPage() {
   const [tab, setTab] = useState<"sources" | "people">("sources");
   const active = useRef(true);
   const fetching = useRef(false);
-  const refresh = useCallback(async () => {
-    if (fetching.current) return;
+  const requestVersion = useRef(0);
+  const refresh = useCallback(async (force = false) => {
+    if (fetching.current && !force) return;
+    const version = ++requestVersion.current;
     fetching.current = true;
     try {
       const [sourceResult, peopleResult] = await Promise.allSettled([
         invoke<Connector[]>("list_connectors"),
         invoke<Person[]>("list_people"),
       ]);
-      if (!active.current) return;
+      if (!active.current || version !== requestVersion.current) return;
       if (sourceResult.status === "fulfilled") {
         setConnectors(
           Array.isArray(sourceResult.value) ? sourceResult.value : [],
         );
         setLoadFailed(false);
-      } else setLoadFailed(true);
+      } else { setConnectors([]); setLoadFailed(true); }
       if (peopleResult.status === "fulfilled") {
         setPeople(Array.isArray(peopleResult.value) ? peopleResult.value : []);
         setPeopleFailed(false);
       } else setPeopleFailed(true);
     } finally {
-      fetching.current = false;
-      if (active.current) setInitialLoading(false);
+      if (version === requestVersion.current) {
+        fetching.current = false;
+        if (active.current) setInitialLoading(false);
+      }
     }
   }, []);
   useEffect(() => {
@@ -283,12 +297,16 @@ export function ConnectionsPage() {
     const timer = window.setInterval(() => void refresh(), 10000);
     return () => {
       active.current = false;
+      requestVersion.current += 1;
+      fetching.current = false;
       window.clearInterval(timer);
     };
   }, [refresh]);
   async function connect(id: string) {
     if (busy) return;
     setBusy(id);
+    requestVersion.current += 1;
+    fetching.current = false;
     setNotice(null);
     try {
       const creds = credentials[id] ?? {};
@@ -351,13 +369,13 @@ export function ConnectionsPage() {
               : "info",
         });
       }
-      await refresh();
     } catch {
       setNotice({
         text: "Couldn’t connect this app. Check your details and try again.",
         kind: "error",
       });
     } finally {
+      await refresh(true);
       setBusy(null);
     }
   }
@@ -370,10 +388,11 @@ export function ConnectionsPage() {
     )
       return;
     setBusy(connector.id);
+    requestVersion.current += 1;
+    fetching.current = false;
     setNotice(null);
     try {
       await invoke("disconnect_connector", { connectorId: connector.id });
-      await refresh();
       setNotice({ text: `${connector.name} disconnected.`, kind: "info" });
     } catch {
       setNotice({
@@ -381,12 +400,15 @@ export function ConnectionsPage() {
         kind: "error",
       });
     } finally {
+      await refresh(true);
       setBusy(null);
     }
   }
   async function sync(connector: Connector) {
     if (busy) return;
     setBusy(connector.id);
+    requestVersion.current += 1;
+    fetching.current = false;
     setNotice(null);
     try {
       await invoke("sync_connector", { connectorId: connector.id });
@@ -394,13 +416,13 @@ export function ConnectionsPage() {
         text: `Sync requested for ${connector.name}. Its status will update here.`,
         kind: "info",
       });
-      await refresh();
     } catch {
       setNotice({
         text: "Couldn’t sync this app. Please try again.",
         kind: "error",
       });
     } finally {
+      await refresh(true);
       setBusy(null);
     }
   }
@@ -477,6 +499,7 @@ export function ConnectionsPage() {
         ) : tab === "sources" ? (
           <>
             <McpPanel />
+            <ExtensionsPanel />
             {connectors.length ? (
               <div className="record-list">
                 {connectors.map((connector) => (
