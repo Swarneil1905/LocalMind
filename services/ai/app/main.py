@@ -24,6 +24,7 @@ from app.api.routes import (
     project_graph,
     voice,
     mcp,
+    extensions,
 )
 from app.connectors.registry import setup_registry
 from app.db.messages import init_db as init_messages_db
@@ -88,3 +89,4 @@ app.include_router(task_actions.router)
 app.include_router(project_graph.router)
 app.include_router(voice.router)
 app.include_router(mcp.router)
+app.include_router(extensions.router)

@@ -178,8 +178,21 @@ def smoke(binary: Path, timeout: float) -> None:
                 client.request("GET", "/health", expected=401, token="different-launch")
                 connectors = client.request("GET", "/connectors")
                 require(bool(connectors) and all(row["status"] == "disconnected" or
+                        (row["id"] in ("whatsapp_web", "imessage") and row["status"] == "disabled" and row["available"] is False) or
                         (os.name != "nt" and row["id"] == "gmail" and row["status"] == "locked") for row in connectors),
                         "A connector unexpectedly has access to an existing session")
+
+                extensions = client.request("GET", "/extensions/status")
+                require(not extensions["planner"]["enabled"] and not extensions["images"]["available"], "Extension unexpectedly enabled")
+                client.request("POST", "/extensions/planner-state", {"enabled": True})
+                plan = client.request("POST", "/extensions/planner-call", {"name": "plan_tasks", "arguments": {"tasks": [{"title": "Synthetic release check"}]}})
+                require(plan["saved"] is False, "Planner unexpectedly saved a task")
+                client.request("POST", "/extensions/planner-state", {"enabled": False})
+                client.request("POST", "/extensions/planner-call", {"name": "plan_tasks", "arguments": {"tasks": [{"title": "Blocked"}]}}, expected=400)
+                package = client.request("GET", "/extensions/recipe-export")["package"]
+                receipt = client.request("POST", "/extensions/recipe-import", {"package": package})
+                require(receipt["synthetic"] and all(receipt["checks"].values()), "Recipe checks failed")
+                client.request("POST", "/extensions/recipe-import", {"package": "{}"}, expected=400)
 
                 voice = client.request("GET", "/voice/status")
                 require(not voice["stt_ready"] and bool(voice.get("disabled_reason")),
@@ -236,6 +249,9 @@ def smoke(binary: Path, timeout: float) -> None:
             # rather than just reading from the first process's memory.
             with running_sidecar(binary, scratch, profile, timeout) as client:
                 require(not client.request("GET", "/mcp/preview")["enabled"], "MCP approval survived restart")
+                extensions = client.request("GET", "/extensions/status")
+                require(not extensions["planner"]["enabled"], "Disabled planner became enabled after restart")
+                require(extensions["recipe"]["registered"], "Synthetic recipe registration did not persist")
                 messages = client.request("GET", messages_url)["messages"]
                 require(messages[1]["sources"] == sources, "Sources were lost after restart")
                 require(messages[1]["thinking"] == "Saved reasoning", "Reasoning was lost")

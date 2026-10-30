@@ -1403,6 +1403,22 @@ async fn mcp_request(
 }
 
 #[tauri::command]
+async fn extension_request(
+    operation: String,
+    payload: Option<serde_json::Value>,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<serde_json::Value, String> {
+    if !matches!(operation.as_str(), "status" | "planner-state" | "planner-call" | "recipe-export" | "recipe-import") {
+        return Err("Unknown extension operation".into());
+    }
+    if payload.as_ref().is_some_and(|body| body.to_string().len() > 20_000) {
+        return Err("Extension request is too large".into());
+    }
+    let body = if matches!(operation.as_str(), "status" | "recipe-export") { None } else { Some(payload.unwrap_or_else(|| serde_json::json!({}))) };
+    reviewed_request(&sidecar_state, &format!("/extensions/{operation}"), body).await
+}
+
+#[tauri::command]
 async fn list_task_actions(conversation_id: String, sidecar_state: tauri::State<'_, SidecarState>) -> Result<serde_json::Value, String> {
     let id = knowledge_id(&conversation_id).map_err(|_| "Invalid conversation ID")?;
     reviewed_request(&sidecar_state, &format!("/task-actions/conversation/{id}"), None).await
@@ -2053,6 +2069,7 @@ pub fn run() {
             project_graph,
             voice_request,
             mcp_request,
+            extension_request,
             list_tasks,
             list_all_tasks,
             update_task,

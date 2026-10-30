@@ -94,3 +94,5 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m unittest discover -s services/ai/tests -p "test_mcp.py" -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s services/ai/tests -p "test_extensions.py" -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

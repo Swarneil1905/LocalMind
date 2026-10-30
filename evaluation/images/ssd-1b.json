@@ -1,0 +1,23 @@
+{
+  "model": "segmind/SSD-1B",
+  "revision": "60987f37e94cd59c36b1cba832b9f97b57395a10",
+  "declared_license": "Apache-2.0",
+  "license_source": "https://huggingface.co/segmind/SSD-1B/blob/60987f37e94cd59c36b1cba832b9f97b57395a10/README.md",
+  "notices": "Segmind SSD-1B, distilled from SDXL and other models. Keep the model card with local weights. The card declares Apache-2.0; this is a research trial, not a legal determination about training data or generated outputs. No model weights are redistributed with LocalMind.",
+  "weights_bytes": 4465653694,
+  "minimum_free_disk_gib": 20,
+  "configuration": {"width": 512, "height": 512, "steps": 20, "guidance_scale": 9.0, "batch_size": 1, "precision": "fp16", "offload": "model_cpu", "vae_tiling": true},
+  "gate": {"max_median_seconds": 60, "max_peak_vram_mib": 5632, "max_peak_rss_mib": 12288, "required_completions": 10, "min_subject_matches": 7, "human_visual_review_required": true},
+  "prompts": [
+    {"id": "mug", "seed": 101, "text": "A single red ceramic mug on a plain white table, product photograph, natural soft light."},
+    {"id": "landscape", "seed": 102, "text": "A quiet mountain lake at sunrise, pine trees reflected in still water, landscape photograph."},
+    {"id": "geometry", "seed": 103, "text": "Three geometric objects on a gray studio floor: a blue sphere on the left, a yellow cube in the middle, a red cone on the right."},
+    {"id": "interior", "seed": 104, "text": "A small reading room with one green armchair next to a tall bookshelf and a window, warm daylight."},
+    {"id": "food", "seed": 105, "text": "Top down photograph of a white bowl of strawberries on a wooden kitchen table."},
+    {"id": "animal", "seed": 106, "text": "A golden retriever sitting in a field of wildflowers, full body photograph, daylight."},
+    {"id": "composition", "seed": 107, "text": "A small sailboat in the lower left of a wide blue ocean, distant island on the right, clear sky."},
+    {"id": "text", "seed": 108, "text": "A simple shop sign with the exact readable words LOCAL MIND in white letters on dark blue, front view."},
+    {"id": "hands", "seed": 109, "text": "Close up photograph of two human hands carefully holding an orange, anatomically correct fingers, neutral background."},
+    {"id": "illustration", "seed": 110, "text": "A hand drawn watercolor illustration of a tiny observatory on a grassy hill under a starry sky."}
+  ]
+}

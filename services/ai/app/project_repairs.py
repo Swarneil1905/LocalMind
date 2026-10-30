@@ -68,6 +68,15 @@ def _markdown_check(text):
         raise ValueError('The candidate has an unclosed Markdown code fence.')
 
 
+def preview_text(before, old, new, markdown=True):
+    if not old or before.count(old) != 1:
+        raise ValueError('Expected exactly one occurrence of the old value.')
+    after = before.replace(old, new, 1)
+    if markdown:
+        _markdown_check(after)
+    return after
+
+
 def _candidate(conn, root, project_id, link, old, new):
     if old not in link['fact']:
         raise ValueError('This dependency quote does not contain the selected old value.')
@@ -79,7 +88,7 @@ def _candidate(conn, root, project_id, link, old, new):
         before = raw.decode('utf-8-sig')
         if before.count(old) != 1:
             raise ValueError('Expected exactly one occurrence of the old value. This file needs a manual edit or a narrower value.')
-        after = before.replace(old, new, 1)
+        after = preview_text(before, old, new, Path(link['target_id']).suffix.lower() in {'.md', '.markdown'})
         encoded = (b'\xef\xbb\xbf' if raw.startswith(b'\xef\xbb\xbf') else b'') + after.encode('utf-8')
         if len(encoded) > MAX_TEXT_BYTES or '\x00' in after:
             raise ValueError('The candidate exceeds the supported text-file limits.')

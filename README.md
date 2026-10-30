@@ -130,6 +130,10 @@ Gmail now requests only **read-only Gmail access**, keeps tokens in the OS crede
 
 **Connections → Local tools** previews an owned MCP test server's executable, arguments, tools and scope. Explicitly enable it to read a built-in sample or test waiting/cancellation. It cannot read your files, write files, send mail or install other servers. Closing Connections or stopping the server ends its process; restart requires fresh approval. Chat does not invoke MCP tools automatically. See [connection and tool boundaries](docs/connections.md) for setup, limitations and test commands.
 
+Connections also includes a **Local planner** that validates a short task list without saving it, and a **Repair recipe** you can export and import to test the existing repair logic on synthetic copies. These built-in extensions declare their permissions; arbitrary plugin code and third-party recipe imports are not supported. WhatsApp and iMessage remain disabled pending provider acceptance. Status and permission details explain these limits before enablement.
+
+Local image generation is being evaluated separately and is **not installed or enabled in the app**. The [image research guide](docs/image-research.md) describes the pinned model, ten fixed prompts, hardware limits and reproducible benchmark. Research dependencies and weights are excluded from the desktop installer.
+
 ## Data and privacy
 
 Model inference runs through Ollama on this computer. The AI service listens on loopback and requires a fresh token supplied by the desktop app for each launch.
@@ -144,7 +148,7 @@ Model inference runs through Ollama on this computer. The AI service listens on 
 | Model downloads | Ollama contacts the model registry |
 | Update checks and downloads | The updater contacts GitHub Releases |
 
-LocalMind has no built-in analytics or usage tracking. Local storage is protected by your OS account permissions, not by application-level encryption. Connector credentials are not stored in a native keychain. People using the same OS account share its default profile.
+LocalMind has no built-in analytics or usage tracking. Local workspace databases are protected by your OS account permissions, not by application-level encryption. The source beta stores new Gmail credentials in the native OS credential store; old plaintext credentials are not reused. People using the same OS account share its default profile.
 
 | Platform | Default profile directory |
 | --- | --- |
