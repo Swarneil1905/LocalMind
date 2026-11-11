@@ -1,6 +1,6 @@
 # Finding your way around LocalMind
 
-LocalMind runs as a desktop application on each user's computer. React renders the interface, Rust manages the desktop window and local processes, Python handles application services, and Ollama runs the language models. There is no shared hosted backend or team account system.
+LocalMind runs as a desktop application on each user's computer. React renders the interface, Rust manages the desktop window and local processes, Python handles application services, and Ollama runs local language models. Optional cloud chat and image API requests, off by default, use the user's own provider account. There is no shared hosted backend or team account system.
 
 For setup and contribution steps, start with [CONTRIBUTING.md](../CONTRIBUTING.md). This guide explains where behavior lives and which files to read when changing it.
 
@@ -11,7 +11,7 @@ For setup and contribution steps, start with [CONTRIBUTING.md](../CONTRIBUTING.m
 3. [App.tsx](../apps/desktop/src/App.tsx): how pages, settings and conversation hooks are connected.
 4. [useChat.ts](../apps/desktop/src/hooks/useChat.ts): how a turn starts, streams, stops and finishes.
 5. [Native commands](../apps/desktop/src-tauri/src/lib.rs): the bridge between the interface and local service.
-6. [Chat route](../services/ai/app/api/routes/chat.py): context collection, answer policy and the Ollama request.
+6. [Chat route](../services/ai/app/api/routes/chat.py): context collection, answer policy, the Ollama request and dispatch to an optional cloud provider.
 
 You do not need to read these files end to end before fixing a small bug. Follow the path for the behavior you are changing, then read its tests.
 
@@ -85,9 +85,10 @@ Paths in this table are relative to the repository root. The layer that displays
 | Project tasks and file repairs | `services/ai/app/task_actions.py`, `action_boundary.py`, `project_graph.py`, `project_repairs.py`, `repair_apply.py` | [test_task_actions.py](../services/ai/tests/test_task_actions.py), [test_repair_apply.py](../services/ai/tests/test_repair_apply.py) |
 | Startup, shutdown and console windows | `crates/localmind-core/src/sidecar.rs`, `process.rs`, `process/owned.rs`; native command state | Rust tests alongside implementation; [test_desktop_runtime.py](../services/ai/tests/test_desktop_runtime.py), [runtime guide](DESKTOP_RUNTIME.md) |
 | Mini chat | `apps/desktop/src/hooks/useMiniWindow.ts`, `apps/desktop/src-tauri/src/mini_window.rs` | [Frontend tests](../apps/desktop/src/__tests__), [chat interface guide](chat-interface.md) |
+| Cloud chat providers, approval and cost ledger | `services/ai/app/providers.py`, `provider_store.py`, `credentials.py`, `api/routes/providers.py`; preview and dispatch in `api/routes/chat.py` | [test_providers.py](../services/ai/tests/test_providers.py), [test_multimodal_chat.py](../services/ai/tests/test_multimodal_chat.py), [test_provider_live.py](../services/ai/tests/test_provider_live.py) (opt-in, paid), [cloud chat guide](cloud-chat.md) |
 | Connections, MCP and extensions | `services/ai/app/connectors`, `credentials.py`, `mcp_client.py`, `mcp_server.py`, `plugins.py`, `recipes.py` | [test_connections.py](../services/ai/tests/test_connections.py), [test_mcp.py](../services/ai/tests/test_mcp.py), [connections guide](connections.md) |
 | Voice | `services/ai/app/voice.py`, `api/routes/voice.py`; frontend voice hook and controls | [test_voice.py](../services/ai/tests/test_voice.py), [voice guide](voice.md) |
-| Images and video | `services/ai/app/media.py`, `media_store.py`, `media_files.py`, `api/routes/media.py`; `scripts/media` | [test_media.py](../services/ai/tests/test_media.py), [media guide](media.md) |
+| Images and video | `services/ai/app/media.py`, `media_store.py`, `media_files.py`, `cloud_images.py`, `api/routes/media.py`; `scripts/media` | [test_media.py](../services/ai/tests/test_media.py), [test_cloud_images.py](../services/ai/tests/test_cloud_images.py), [media guide](media.md) |
 
 ## Data and permission boundaries
 
@@ -95,7 +96,7 @@ Paths in this table are relative to the repository root. The layer that displays
 
 Project and conversation IDs determine which context a turn may use. Keep scope checks in the service even when the UI filters what it shows. A regression test for a scope change should include data from another project or conversation and verify it stays excluded.
 
-The sidecar token authenticates desktop-to-service requests. It is not a multi-user account system. [credentials.py](../services/ai/app/credentials.py) stores Gmail and Runway credentials in the native credential store, scoped by the profile path. Ordinary profile databases are not encrypted by LocalMind. Ollama model storage is separate from the profile.
+The sidecar token authenticates desktop-to-service requests. It is not a multi-user account system. [credentials.py](../services/ai/app/credentials.py) stores Gmail, Runway and cloud chat API keys (OpenAI, Anthropic and Google Gemini) in the native credential store, scoped by the profile path, and accepts only keys on its allow-list. [providers.py](../services/ai/app/providers.py) reads the chat keys, and [cloud_images.py](../services/ai/app/cloud_images.py) reuses the stored OpenAI key for image API requests. [provider_store.py](../services/ai/app/provider_store.py) keeps the local-only policy, the standing approvals per provider, model and data categories, and the estimated-cost ledger in the profile, never the keys. Ordinary profile databases are not encrypted by LocalMind. Ollama model storage is separate from the profile.
 
 Review requirements for actions live in service code such as [action_boundary.py](../services/ai/app/action_boundary.py), [task_actions.py](../services/ai/app/task_actions.py) and [repair_apply.py](../services/ai/app/repair_apply.py), alongside native capability restrictions. Preserve confirmation, scope validation and recovery behavior when changing an action. The placeholder permissions crate is not a substitute for those checks.
 
@@ -117,6 +118,6 @@ Use the [evaluation tools](../evaluation/README.md) to compare behavior. Unit te
 
 ## What is still experimental
 
-Code presence does not mean a feature has passed live acceptance. Voice is a Windows pilot, local images remain disabled after quality review, and Gmail and Runway still need live acceptance checks. MCP and plugins currently cover owned or built-in tools rather than arbitrary third-party execution. WhatsApp and iMessage are unavailable.
+Code presence does not mean a feature has passed live acceptance. Voice is a Windows pilot, local images remain disabled after quality review, and Gmail and Runway still need live acceptance checks. Cloud chat and image API tests use mocked provider responses: the paid chat smoke test in `test_provider_live.py` runs only on explicit opt-in, and live paid-image acceptance is still pending. The automated native credential-store check runs only on Windows. MCP and plugins currently cover owned or built-in tools rather than arbitrary third-party execution. WhatsApp and iMessage are unavailable.
 
 Check the [README feature status](../README.md#optional-and-experimental-features) and the relevant feature guide before changing defaults or describing a feature as available. For a first PR, choose one observable behavior, trace its owner and add the test that would have caught the problem.
