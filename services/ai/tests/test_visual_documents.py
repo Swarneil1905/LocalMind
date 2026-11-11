@@ -136,6 +136,28 @@ class VisualTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             visuals.validate(dict(schema_version=1, type='widget', title='Network', widget='backpropagation', parameters={'script': 1}))
 
+    def test_mermaid_arrows_are_accepted_but_html_and_links_stay_rejected(self):
+        accepted = [
+            'sequenceDiagram\n    Alice->>Bob: Hello\n    Bob-->>Alice: Hi',
+            'flowchart LR\nA-->B',
+            'flowchart LR\nA-.->B',
+            'flowchart LR\nA==>B',
+        ]
+        for source in accepted:
+            with self.subTest(source=source):
+                visuals.validate(dict(schema_version=1, type='mermaid', title='Diagram', source=source))
+        rejected = [
+            'sequenceDiagram\n    Alice->>Bob: <b>Hello</b>',
+            'sequenceDiagram\n    Alice->>Bob: see https://evil.test',
+            'sequenceDiagram\n    Alice->>Bob: Hello\n    click Alice href "x"',
+            'sequenceDiagram\n    %%{init:{}}%%\n    Alice-->>Bob: Hi',
+            'sequenceDiagram\n    Alice->>>Bob: Hello',
+            'sequenceDiagram\n    Alice>Bob: Hello',
+        ]
+        for source in rejected:
+            with self.subTest(source=source), self.assertRaises(ValueError):
+                visuals.validate(dict(schema_version=1, type='mermaid', title='Diagram', source=source))
+
     def test_chart_requires_provenance_and_synthetic_flag(self):
         chart = dict(schema_version=1, type='chart', title='Trend', chart='line', source='Example values', synthetic=True,
                      x_label='Days', y_label='Items', series=[dict(name='A', points=[[1, 4], [2, 7]])])
