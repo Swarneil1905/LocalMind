@@ -59,6 +59,11 @@ with 200 points each, and 100 revisions per visual. Mermaid uses strict renderin
 and SVG sanitization. Remote links, HTML, image directives and executable actions
 are rejected. PNG/SVG exports contain plain shapes and escaped text.
 
+Document extraction runs in a disposable process with a 20-second parent timeout,
+an 8 MiB input limit, and bounded page counts and excerpts. Linux also applies a
+768 MiB address-space limit. macOS and Windows do not have that process memory
+cap; the input and output limits do not bound a parser's peak memory use.
+
 Arbitrary generated HTML or JavaScript is not supported. The opt-in prototype
 in `scripts/evaluation/miniapp_probe.mjs` tests an opaque-origin iframe with a
 restrictive content policy in a disposable browser. Its probes cover parent
