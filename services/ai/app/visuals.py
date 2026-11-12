@@ -70,7 +70,7 @@ def validate(value):
         source = value['source'].lower()
         if any(token in source for token in ('%%{', '---', 'click ', 'href', '<', '>', 'https:', 'http:', 'javascript:', 'data:', 'style ', 'classdef ', 'linkstyle ', 'image', 'icon', '@{')):
             # Greater-than is used in arrows, so arrows are checked separately below.
-            cleaned = source.replace('-->', '').replace('-.->', '').replace('==>', '')
+            cleaned = source.replace('-->>', '').replace('->>', '').replace('-->', '').replace('-.->', '').replace('==>', '')
             if any(token in cleaned for token in ('%%{', '---', 'click ', 'href', '<', '>', 'https:', 'http:', 'javascript:', 'data:', 'style ', 'classdef ', 'linkstyle ', 'image', 'icon', '@{')):
                 raise ValueError('Use plain Mermaid nodes and edges without links, HTML, styling or directives.')
         if not source.lstrip().startswith(('flowchart ', 'graph ', 'sequencediagram')):
