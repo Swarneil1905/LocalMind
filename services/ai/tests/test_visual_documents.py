@@ -145,6 +145,11 @@ class VisualTests(unittest.TestCase):
             visuals.validate(chart)
 
 
+    def test_sequence_diagram_message_and_return_arrows(self):
+        source = 'sequenceDiagram\n    Alice->>Bob: Request\n    Bob-->>Alice: Response'
+        visuals.validate(dict(schema_version=1, type='mermaid', title='Sequence', source=source))
+
+
 class DocumentTests(unittest.TestCase):
     setUp = VisualTests.setUp
 
