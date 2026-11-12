@@ -148,6 +148,48 @@ class VisualTests(unittest.TestCase):
 class DocumentTests(unittest.TestCase):
     setUp = VisualTests.setUp
 
+    def test_worker_platform_limits_do_not_break_text_extraction(self):
+        from io import BytesIO, StringIO
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from app.document_attachments import worker
+
+        request = json.dumps({'data': base64.b64encode(b'Plain text').decode(), 'suffix': '.txt'}).encode()
+        for platform in ('darwin', 'win32', 'linux'):
+            with self.subTest(platform=platform):
+                resource = SimpleNamespace(RLIMIT_AS=9, setrlimit=Mock())
+                if platform != 'linux':
+                    resource.setrlimit.side_effect = ValueError('Unsupported address-space limit')
+                output = StringIO()
+                with patch('app.document_attachments.sys.platform', platform), \
+                        patch.dict('sys.modules', {'resource': resource}), \
+                        patch('sys.stdin', SimpleNamespace(buffer=BytesIO(request))), \
+                        patch('sys.stdout', output):
+                    worker()
+                payload = json.loads(output.getvalue())
+                self.assertNotIn('error', payload)
+                self.assertEqual(payload['result']['pages'][0]['text'], 'Plain text')
+                if platform == 'linux':
+                    resource.setrlimit.assert_called_once_with(9, (768*1024*1024, 768*1024*1024))
+                else:
+                    resource.setrlimit.assert_not_called()
+
+    def test_linux_limit_failure_does_not_continue_extraction(self):
+        from io import StringIO
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from app.document_attachments import worker
+
+        resource = SimpleNamespace(RLIMIT_AS=9, setrlimit=Mock(side_effect=OSError('Cannot set limit')))
+        output = StringIO()
+        with patch('app.document_attachments.sys.platform', 'linux'), \
+                patch.dict('sys.modules', {'resource': resource}), \
+                patch('app.document_attachments.extract') as extract_document, \
+                patch('sys.stdout', output):
+            worker()
+        self.assertIn('error', json.loads(output.getvalue()))
+        extract_document.assert_not_called()
+
     def test_text_worker_starts_without_server_dependencies(self):
         import subprocess
         import sys

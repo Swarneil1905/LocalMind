@@ -44,7 +44,10 @@ def extract(raw: bytes, suffix: str):
 
 def worker():
     try:
-        if sys.platform != 'win32':
+        # RLIMIT_AS is a Linux address-space limit, not a portable memory cap.
+        # Darwin can reject it before even a plain-text document is read.
+        # All platforms retain the parent timeout and input/excerpt bounds.
+        if sys.platform == 'linux':
             import resource
             resource.setrlimit(resource.RLIMIT_AS, (768*1024*1024, 768*1024*1024))
         request = json.loads(sys.stdin.buffer.read(MAX_BYTES*2))
