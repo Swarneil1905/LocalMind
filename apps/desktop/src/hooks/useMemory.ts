@@ -11,6 +11,8 @@ export interface Memory {
   id: string;
   content: string;
   created_at: string;
+  project_id?: string | null;
+  conversation_id?: string | null;
 }
 
 export interface MemoryLink {

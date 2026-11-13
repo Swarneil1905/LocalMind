@@ -62,6 +62,8 @@ export function parseThinkTags(raw: string) {
 }
 
 interface Turn {
+  startedAt: number;
+  firstVisible?: number;
   id: string;
   user: string;
   raw: string;
@@ -71,6 +73,18 @@ interface Turn {
   options: UseChatOptions;
   selection: SendSelection;
   finishing?: boolean;
+}
+
+function completedDiagnostics(turn: Turn, previous: ResponseDiagnostics | undefined, outcome: "completed" | "failed" | "cancelled"): ResponseDiagnostics {
+  return {
+    model: turn.selection.model || (turn.options.modelMode === "speed" ? turn.options.speedModel : turn.options.balancedModel),
+    context_window: null, response_tokens: null, history_dropped: 0, references_dropped: 0, references_shortened: 0,
+    total_seconds: null, first_token_seconds: null, input_tokens: null, output_tokens: null, tokens_per_second: null, stop_reason: "unknown",
+    ...previous,
+    client_first_answer_seconds: turn.firstVisible ?? null,
+    client_total_seconds: (performance.now() - turn.startedAt) / 1000,
+    outcome,
+  };
 }
 
 function restoreDraft(turn: Turn) {
@@ -99,6 +113,7 @@ export function useChat(options: UseChatOptions) {
   const saveInterrupted = useCallback((turn: Turn, error: string | null, cancelled: boolean) => {
     if (!turn.conversationId) return;
     const parsed = parseThinkTags(turn.raw);
+          if (parsed.content.trim() && turn.firstVisible === undefined) turn.firstVisible = (performance.now() - turn.startedAt) / 1000;
     persistence.current = persistence.current.catch(() => {}).then(async () => {
       await invoke("save_interrupted_turn", {
         conversationId: turn.conversationId, requestId: turn.id, userContent: turn.user,
@@ -117,6 +132,7 @@ export function useChat(options: UseChatOptions) {
       turn.finishing = true;
       setIsSearching(false);
       const parsed = parseThinkTags(turn.raw);
+      if (parsed.content.trim() && turn.firstVisible === undefined) turn.firstVisible = (performance.now() - turn.startedAt) / 1000;
       const failure =
         error ||
         (!parsed.content.trim()
@@ -132,6 +148,7 @@ export function useChat(options: UseChatOptions) {
                 thinking: turn.thinking || parsed.thinking,
                 isThinking: false,
                 error: !!failure,
+                diagnostics: completedDiagnostics(turn, m.diagnostics, failure ? "failed" : "completed"),
               }
             : m,
         ),
@@ -209,6 +226,7 @@ export function useChat(options: UseChatOptions) {
           turn.raw += p.content;
           turn.thinking += p.thinking || "";
           const parsed = parseThinkTags(turn.raw);
+          if (parsed.content.trim() && turn.firstVisible === undefined) turn.firstVisible = (performance.now() - turn.startedAt) / 1000;
           updateMessages((prev) =>
             prev.map((m) =>
               m.id === turn.id
@@ -234,7 +252,7 @@ export function useChat(options: UseChatOptions) {
         const turn = active.current;
         if (!turn || p.request_id !== turn.id) return;
         updateMessages(prev => prev.map(message => message.id === turn.id
-          ? { ...message, diagnostics: p.data } : message));
+          ? { ...message, diagnostics: { ...p.data, client_first_answer_seconds: turn.firstVisible ?? null } } : message));
       }),
       register<{ request_id: string; data: Message["usage"] }>("chat-usage", payload => {
         const turn = active.current;
@@ -278,7 +296,7 @@ export function useChat(options: UseChatOptions) {
     if (turn) {
       updateMessages((prev) =>
         prev.map((m) =>
-          m.id === turn.id ? { ...m, isThinking: false, cancelled: true } : m,
+          m.id === turn.id ? { ...m, isThinking: false, cancelled: true, diagnostics: completedDiagnostics(turn, m.diagnostics, "cancelled") } : m,
         ),
       );
       void invoke("cancel_chat", { requestId: turn.id }).catch(() => {});
@@ -294,6 +312,7 @@ export function useChat(options: UseChatOptions) {
       const user = text.trim();
       if (!user || active.current) return;
       const turn: Turn = {
+        startedAt: performance.now(),
         id: requestId || crypto.randomUUID(),
         user,
         raw: "",
