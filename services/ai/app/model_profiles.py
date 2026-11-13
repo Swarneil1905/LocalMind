@@ -1,11 +1,14 @@
 """Validated, per-installation model settings bound to an installed digest."""
 
 from contextlib import closing
+from collections import OrderedDict
+from copy import deepcopy
 from datetime import datetime, timezone
 import json
 import math
 import re
 import sqlite3
+import time
 
 import httpx
 
@@ -17,6 +20,10 @@ PRESETS = ("speed", "balanced", "boost")
 EDITABLE = {"context_window", "response_tokens", "temperature", "top_p", "top_k", "think"}
 MODEL_METADATA = ("model", "digest", "capabilities", "context_limit", "thinking_values")
 OLLAMA_BASE = "http://127.0.0.1:11434"
+METADATA_TTL_SECONDS = 30.0
+METADATA_CACHE_LIMIT = 32
+# Installation facts only. Saved settings and conversation data are never cached.
+_metadata_cache: OrderedDict[str, tuple[str, float, dict]] = OrderedDict()
 
 
 def minimum_input_budget() -> int:
@@ -73,16 +80,35 @@ def _persist(profile: dict) -> dict:
     return profile
 
 
-async def inspect_model(model: str) -> dict:
+def clear_metadata_cache() -> None:
+    _metadata_cache.clear()
+
+
+async def inspect_model(model: str, *, force_refresh: bool = False) -> dict:
     model = _name(model)
+    if force_refresh:
+        _metadata_cache.pop(model, None)
     async with httpx.AsyncClient(trust_env=False, timeout=10.0) as client:
-        tags = await client.get(f"{OLLAMA_BASE}/api/tags")
-        tags.raise_for_status()
+        try:
+            tags = await client.get(f"{OLLAMA_BASE}/api/tags")
+            tags.raise_for_status()
+        except httpx.HTTPError:
+            _metadata_cache.pop(model, None)
+            raise
         aliases = {model, model + ":latest"} if ":" not in model.rsplit("/", 1)[-1] else {model}
         installed = [row for row in tags.json().get("models", [])
                      if row.get("name") in aliases or row.get("model") in aliases]
         if len(installed) != 1 or not re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", installed[0].get("digest", "")):
+            _metadata_cache.pop(model, None)
             raise ValueError("This model is not installed with an identifiable digest.")
+        if any(installed[0].get(key) for key in ("remote_model", "remote_host")):
+            _metadata_cache.pop(model, None)
+            raise ValueError("Choose a local model for this profile.")
+        cached = _metadata_cache.get(model)
+        if cached and cached[0] == installed[0]["digest"] and time.monotonic() < cached[1]:
+            _metadata_cache.move_to_end(model)
+            return {**deepcopy(cached[2]), "minimum_input_budget": minimum_input_budget()}
+        _metadata_cache.pop(model, None)
         response = await client.post(f"{OLLAMA_BASE}/api/show", json={"model": model})
         response.raise_for_status()
         shown = response.json()
@@ -102,9 +128,13 @@ async def inspect_model(model: str) -> dict:
         values = []
     # Older Ollama versions list thinking capability without controls. Do not
     # guess boolean support for models that only accept named reasoning levels.
-    return {"model": model, "digest": installed[0]["digest"], "capabilities": capabilities,
-            "context_limit": min(max(context_lengths), 65536), "thinking_values": values,
-            "minimum_input_budget": minimum_input_budget()}
+    metadata = {"model": model, "digest": installed[0]["digest"], "capabilities": capabilities,
+                "context_limit": min(max(context_lengths), 65536), "thinking_values": values}
+    _metadata_cache[model] = (metadata["digest"], time.monotonic() + METADATA_TTL_SECONDS,
+                              deepcopy(metadata))
+    while len(_metadata_cache) > METADATA_CACHE_LIMIT:
+        _metadata_cache.popitem(last=False)
+    return {**metadata, "minimum_input_budget": minimum_input_budget()}
 
 
 def default_profile(metadata: dict, preset: str) -> dict:
@@ -149,10 +179,10 @@ def validate_profile(profile: dict, metadata: dict) -> dict:
             "minimum_input_budget": input_budget}
 
 
-async def resolve_profile(model: str, preset: str) -> dict:
+async def resolve_profile(model: str, preset: str, *, force_refresh: bool = False) -> dict:
     if preset not in PRESETS:
         raise ValueError("Unknown model preset.")
-    metadata = await inspect_model(model)
+    metadata = await inspect_model(model, force_refresh=True) if force_refresh else await inspect_model(model)
     saved = read_profile(model, preset)
     if saved and saved.get("digest") == metadata["digest"]:
         try:
@@ -171,7 +201,7 @@ async def resolve_profile(model: str, preset: str) -> dict:
 async def update_profile(model: str, preset: str, changes: dict) -> dict:
     if not isinstance(changes, dict) or not changes or set(changes) - EDITABLE:
         raise ValueError("Only supported generation settings can be changed.")
-    current = await resolve_profile(model, preset)
+    current = await resolve_profile(model, preset, force_refresh=True)
     updated = validate_profile({**current, **changes}, current)
     updated["saved_at"] = datetime.now(timezone.utc).isoformat()
     updated.pop("settings_notice", None)
@@ -181,7 +211,7 @@ async def update_profile(model: str, preset: str, changes: dict) -> dict:
 async def restore_profile(model: str, preset: str) -> dict:
     if preset not in PRESETS:
         raise ValueError("Unknown model preset.")
-    metadata = await inspect_model(model)
+    metadata = await inspect_model(model, force_refresh=True)
     with closing(_database()) as connection:
         row = connection.execute("SELECT body FROM profile_history WHERE model=? AND preset=? "
                                  "ORDER BY id DESC LIMIT 1", (model, preset)).fetchone()

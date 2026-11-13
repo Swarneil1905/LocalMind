@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import hashlib
+import re
 import secrets
 import sqlite3
 import time
@@ -422,9 +423,25 @@ class GmailConnector(BaseConnector):
                 self.detail = "The local message store could not save this sync. Check available disk space and retry."
                 return SyncResult("gmail", 0, cursor or "", error=self.detail)
 
+    def context_relevant(self, query: str) -> bool:
+        # Explicit mailbox references or requests about received mail. General
+        # writing/learning questions must not attach the user's inbox.
+        return bool(re.search(
+            r"\b(?:gmail|inbox|mailbox)\b|"
+            r"\b(?:my|our|recent|latest|unread|incoming|received)\s+(?:e-?mails?|mail)\b|"
+            r"\b(?:e-?mails?|mail)\s+(?:from|received)\b",
+            query, re.IGNORECASE,
+        ))
+
     async def context_for_buddy(self, query):
+        if not self.context_relevant(query):
+            return ""
         if await self.status() != ConnectorStatus.CONNECTED:
             return ""
+        # SQLite lock waits must not block the chat event loop or its deadline.
+        return await asyncio.to_thread(self._recent_context)
+
+    def _recent_context(self):
         messages.init_db()
         cutoff = datetime.fromtimestamp(self.clock() - RANGE_DAYS * 86400, timezone.utc).isoformat()
         rows = [row for row in messages.recent_messages("gmail", 10) if row["sent_at"] >= cutoff]
