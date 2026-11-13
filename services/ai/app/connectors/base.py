@@ -88,6 +88,10 @@ class BaseConnector(ABC):
         """Optional: connector-specific search (e.g. Gmail search syntax)."""
         return []
 
+    def context_relevant(self, query: str) -> bool:
+        """Opt in to chat context using a local check, without I/O or model calls."""
+        return False
+
     async def context_for_buddy(self, query: str) -> str:
         """
         Return a short text block Buddy can use as real-time context.

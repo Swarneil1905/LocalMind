@@ -48,6 +48,23 @@ Repair recipe export contains only a fixed declarative recipe and synthetic fixt
 
 Disabled adapters do not erase previously cached data or revoke older sessions with external services. Connections labels local/cloud access and exposes actual status, permission limits and verification evidence. Poll results started before an action cannot overwrite the state returned afterward. A failed sync refreshes the provider's offline/expired status instead of retaining a successful state.
 
+## Chat context
+
+Chat checks whether a connector is relevant before checking its connection or
+reading its context. Gmail is considered for explicit references to Gmail,
+inbox or mailbox, and questions about personal, recent, unread or received
+email. General questions and email-writing requests do not attach Gmail snippets.
+This is a conservative text rule, not semantic intent detection; mention the
+mailbox explicitly in a follow-up that needs it. Greetings skip all connectors.
+
+Relevant lookups run up to three at a time, with a two-second deadline per
+source and a five-second budget for the group. Completed references survive
+another source's failure. Chat cancellation cancels pending asynchronous work.
+SQLite reads run off the chat event loop; an already-running read can finish in
+its worker thread, but its result is discarded after cancellation or timeout.
+Lookups do not trigger a mailbox sync. References may therefore be incomplete
+or older than the provider's current data.
+
 ## Verification commands
 
 From the repository root, using the service dependencies:

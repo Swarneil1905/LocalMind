@@ -201,7 +201,7 @@ class ProfileInspectionTests(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(200, json=value)
         with patch.object(profiles.httpx, "AsyncClient",
                           side_effect=lambda **kw: real_client(transport=httpx.MockTransport(respond), **kw)):
-            return await profiles.inspect_model("fixture:4b")
+            return await profiles.inspect_model("fixture:4b", force_refresh=True)
 
     async def test_metadata_drives_controls_without_guessing(self):
         self.assertEqual((await self.inspect())["thinking_values"], [False, True])

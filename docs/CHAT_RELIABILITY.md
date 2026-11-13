@@ -72,6 +72,14 @@ models do not make chat ready. A failed inspection stays visible with a retry ac
 downloads only explicitly checked models and reuses installed weights; skipping setup keeps
 chat disabled until its model passes inspection.
 
+Successful model capability metadata is cached in memory for up to 30 seconds,
+with at most 32 entries. Every inspection still checks Ollama's installed-model
+list: removal, replacement or a reported remote model invalidates the cached
+entry immediately. Expired metadata is fetched again; failures never fall back
+to stale data. Saving or restoring generation settings forces a fresh capability
+check. The cache contains no prompts, credentials or saved response preferences.
+This removes repeated metadata requests, not model loading or generation time.
+
 Each generated response can show session-only **Response details**: model, fingerprint, preset,
 context and response limits, omitted history/references, first answer text timing, output token
 count and generation speed. The generation timer includes queue wait but excludes earlier search
