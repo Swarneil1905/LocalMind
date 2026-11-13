@@ -1,3 +1,4 @@
+import { conversationMessages } from "./lib/conversationMessages";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -360,13 +361,7 @@ export default function App() {
         const rows = await selectConversation(id);
         if (version === navigationVersion.current)
           loadMessages(
-            rows.map((m) => ({
-              ...m,
-              thinking: m.thinking ?? undefined,
-              isThinking: false,
-              errorMessage: m.error_message ?? undefined,
-              attachmentDraftId: m.attachment_draft_id,
-            })),
+            conversationMessages(rows),
           );
       } catch {
         if (version === navigationVersion.current) setChatLoadError(true);
@@ -820,6 +815,7 @@ export default function App() {
             />
           ) : activePage === "mind" ? (
             <MemoryPage
+              onOpenConversation={id => void selectChat(id)}
               memories={memories ?? []}
               links={links ?? []}
               onDelete={deleteMemory}

@@ -39,11 +39,19 @@ export interface Message {
 }
 
 export interface ResponseDiagnostics {
+  client_total_seconds?: number;
+  request_seconds?: number;
+  request_first_answer_seconds?: number | null;
+  client_first_answer_seconds?: number | null;
+  phase_seconds?: Record<string, number>;
+  model_load_seconds?: number | null;
+  prompt_eval_seconds?: number | null;
+  outcome?: "completed" | "failed" | "cancelled";
   model: string;
   digest?: string | null;
   preset?: string | null;
-  context_window: number;
-  response_tokens: number;
+  context_window: number | null;
+  response_tokens: number | null;
   history_dropped: number;
   references_dropped: number;
   references_shortened: number;

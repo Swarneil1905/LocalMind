@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "preferences": {
+    "length": "balanced",
+    "depth": "standard",
+    "tone": "neutral"
+  },
+  "messages": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "conversation_id": "00000000-0000-4000-8000-000000000002",
+      "role": "user",
+      "content": "Describe this fixture.",
+      "thinking": null,
+      "created_at": "2000-01-01T00:00:00+00:00",
+      "sources": [],
+      "status": "completed",
+      "partial": false,
+      "attachments": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "filename": "fixture.png",
+          "mime_type": "image/png",
+          "width": 2,
+          "height": 2,
+          "bytes": 76
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "conversation_id": "00000000-0000-4000-8000-000000000002",
+      "role": "assistant",
+      "content": "A white square.",
+      "thinking": null,
+      "created_at": "2000-01-01T00:00:00+00:00",
+      "sources": [],
+      "status": "completed",
+      "partial": false,
+      "attachments": []
+    },
+    {
+      "conversation_id": "00000000-0000-4000-8000-000000000002",
+      "request_id": "00000000-0000-4000-8000-000000000005",
+      "created_at": "2000-01-01T00:00:00+00:00",
+      "status": "interrupted",
+      "partial": true,
+      "sources": [],
+      "id": "00000000-0000-4000-8000-000000000005:user",
+      "role": "user",
+      "content": "Continue",
+      "thinking": null,
+      "attachment_draft_id": null,
+      "attachments": []
+    },
+    {
+      "conversation_id": "00000000-0000-4000-8000-000000000002",
+      "request_id": "00000000-0000-4000-8000-000000000005",
+      "created_at": "2000-01-01T00:00:00+00:00",
+      "status": "interrupted",
+      "partial": true,
+      "sources": [],
+      "id": "00000000-0000-4000-8000-000000000005",
+      "role": "assistant",
+      "content": "Partial response",
+      "thinking": null,
+      "error": false,
+      "error_message": null,
+      "cancelled": true,
+      "attachments": []
+    },
+    {
+      "conversation_id": "00000000-0000-4000-8000-000000000002",
+      "request_id": "00000000-0000-4000-8000-000000000006",
+      "created_at": "2000-01-01T00:00:00+00:00",
+      "status": "interrupted",
+      "partial": true,
+      "sources": [],
+      "id": "00000000-0000-4000-8000-000000000006:user",
+      "role": "user",
+      "content": "Try again",
+      "thinking": null,
+      "attachment_draft_id": null,
+      "attachments": []
+    },
+    {
+      "conversation_id": "00000000-0000-4000-8000-000000000002",
+      "request_id": "00000000-0000-4000-8000-000000000006",
+      "created_at": "2000-01-01T00:00:00+00:00",
+      "status": "interrupted",
+      "partial": true,
+      "sources": [],
+      "id": "00000000-0000-4000-8000-000000000006",
+      "role": "assistant",
+      "content": "Partial response",
+      "thinking": null,
+      "error": true,
+      "error_message": "Connection interrupted.",
+      "cancelled": false,
+      "attachments": []
+    }
+  ],
+  "memory": {
+    "id": "00000000-0000-4000-8000-000000000007",
+    "content": "You prefer concise explanations with one useful example.",
+    "created_at": "2000-01-01T00:00:00+00:00",
+    "project_id": null,
+    "conversation_id": "00000000-0000-4000-8000-000000000002"
+  }
+}

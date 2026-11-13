@@ -1,0 +1,226 @@
+{
+  "schema_version": 1,
+  "source": "Synthetic provider wire responses. Never recorded from user traffic.",
+  "providers": {
+    "openai": {
+      "success": [
+        {
+          "type": "response.output_text.delta",
+          "delta": "Hello"
+        },
+        {
+          "type": "response.completed",
+          "response": {
+            "usage": {
+              "input_tokens": 10,
+              "output_tokens": 3
+            }
+          }
+        }
+      ],
+      "refusal": [
+        {
+          "type": "response.refusal.delta",
+          "delta": "I cannot help with that request."
+        },
+        {
+          "type": "response.completed",
+          "response": {
+            "usage": {
+              "input_tokens": 10,
+              "output_tokens": 3
+            }
+          }
+        }
+      ],
+      "partial": [
+        {
+          "type": "response.output_text.delta",
+          "delta": "Hello"
+        }
+      ],
+      "vision_message": {
+        "role": "user",
+        "content": "Describe this synthetic image.",
+        "images": [
+          {
+            "mime_type": "image/png",
+            "data": "aW1hZ2U="
+          }
+        ]
+      },
+      "http_errors": [
+        401,
+        403,
+        429,
+        404,
+        503
+      ]
+    },
+    "anthropic": {
+      "success": [
+        {
+          "type": "message_start",
+          "message": {
+            "usage": {
+              "input_tokens": 10
+            }
+          }
+        },
+        {
+          "type": "content_block_delta",
+          "delta": {
+            "type": "text_delta",
+            "text": "Hello"
+          }
+        },
+        {
+          "type": "message_delta",
+          "usage": {
+            "output_tokens": 3
+          },
+          "delta": {
+            "stop_reason": "end_turn"
+          }
+        },
+        {
+          "type": "message_stop"
+        }
+      ],
+      "refusal": [
+        {
+          "type": "message_start",
+          "message": {
+            "usage": {
+              "input_tokens": 10
+            }
+          }
+        },
+        {
+          "type": "content_block_delta",
+          "delta": {
+            "type": "text_delta",
+            "text": "I cannot help with that request."
+          }
+        },
+        {
+          "type": "message_delta",
+          "usage": {
+            "output_tokens": 3
+          },
+          "delta": {
+            "stop_reason": "refusal"
+          }
+        },
+        {
+          "type": "message_stop"
+        }
+      ],
+      "partial": [
+        {
+          "type": "message_start",
+          "message": {
+            "usage": {
+              "input_tokens": 10
+            }
+          }
+        },
+        {
+          "type": "content_block_delta",
+          "delta": {
+            "type": "text_delta",
+            "text": "Hello"
+          }
+        },
+        {
+          "type": "message_delta",
+          "usage": {
+            "output_tokens": 3
+          },
+          "delta": {
+            "stop_reason": "end_turn"
+          }
+        }
+      ],
+      "vision_message": {
+        "role": "user",
+        "content": "Describe this synthetic image.",
+        "images": [
+          {
+            "mime_type": "image/png",
+            "data": "aW1hZ2U="
+          }
+        ]
+      },
+      "http_errors": [
+        401,
+        403,
+        429,
+        404,
+        503
+      ]
+    },
+    "gemini": {
+      "success": [
+        {
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "text": "Hello"
+                  }
+                ]
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 10,
+            "candidatesTokenCount": 2,
+            "thoughtsTokenCount": 1
+          }
+        }
+      ],
+      "refusal": [
+        {
+          "promptFeedback": {
+            "blockReason": "SAFETY"
+          }
+        }
+      ],
+      "partial": [
+        {
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "text": "Partial answer"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "vision_message": {
+        "role": "user",
+        "content": "Describe this synthetic image.",
+        "images": [
+          {
+            "mime_type": "image/png",
+            "data": "aW1hZ2U="
+          }
+        ]
+      },
+      "http_errors": [
+        401,
+        403,
+        429,
+        404,
+        503
+      ]
+    }
+  }
+}

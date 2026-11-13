@@ -130,6 +130,8 @@ pub struct MemoryEntry {
     pub id: String,
     pub content: String,
     pub created_at: String,
+    pub project_id: Option<String>,
+    pub conversation_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -571,11 +573,25 @@ mod stream_tests {
     }
 
     #[test]
+    fn shared_backend_contract_preserves_attachments_cancellation_and_errors() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!("../../../../contracts/app-v1.json")).unwrap();
+        assert_eq!(fixture["schema_version"], 1);
+        let rows: Vec<super::ConversationMessage> = serde_json::from_value(fixture["messages"].clone()).expect("Saved conversation contract drift");
+        assert_eq!(rows.len(), 6);
+        assert_eq!(rows[0].attachments[0]["filename"], "fixture.png");
+        assert!(rows[3].cancelled && rows[3].partial);
+        assert_eq!(rows[5].error_message.as_deref(), Some("Connection interrupted."));
+        let memory: super::MemoryEntry = serde_json::from_value(fixture["memory"].clone()).expect("Memory contract drift");
+        assert_eq!(memory.conversation_id.as_deref(), Some(rows[0].conversation_id.as_str()));
+    }
+
+    #[test]
     fn memory_context_preserves_facts_without_a_second_system_policy() {
         assert_eq!(super::build_memory_context(&[]), "");
         let memory = super::MemoryEntry {
             id: "memory-1".to_string(), content: "Prefers Python examples.".to_string(),
             created_at: "2026-10-19".to_string(),
+            project_id: None, conversation_id: None,
         };
         assert_eq!(
             super::build_memory_context(&[memory]),
@@ -1505,6 +1521,16 @@ async fn provider_request(method: String, path: String, body: Option<serde_json:
 }
 
 #[tauri::command]
+async fn quality_request(method: String, path: String, body: Option<serde_json::Value>, sidecar_state: tauri::State<'_, SidecarState>) -> Result<serde_json::Value, String> {
+    if !matches!((method.as_str(), path.as_str()),
+        ("GET" | "POST", "/quality/preferences" | "/quality/feedback") |
+        ("POST", "/quality/feedback/delete" | "/quality/feedback/export" | "/quality/memory/edit")) {
+        return Err("Unknown quality operation".into());
+    }
+    bounded_json_request(&sidecar_state, &method, &path, body, 2 * 1024 * 1024).await
+}
+
+#[tauri::command]
 async fn visual_request(operation: String, body: serde_json::Value, sidecar_state: tauri::State<'_, SidecarState>) -> Result<serde_json::Value, String> {
     let path = match operation.as_str() {
         "capture" => "/visuals/capture",
@@ -2311,6 +2337,7 @@ pub fn run() {
             voice_request,
             media_request,
             provider_request,
+            quality_request,
             attachment_request,
             visual_request,
             export_media,
