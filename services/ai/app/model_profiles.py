@@ -226,3 +226,14 @@ async def restore_profile(model: str, preset: str) -> dict:
 def generation_options(profile: dict) -> dict:
     return {"num_ctx": profile["context_window"], "num_predict": profile["response_tokens"],
             "temperature": profile["temperature"], "top_p": profile["top_p"], "top_k": profile["top_k"]}
+
+
+def generation_thinking(profile: dict, message: str):
+    """Respect explicit choices; automatic uses only advertised controls."""
+    if profile.get("think") is not None:
+        return profile["think"]
+    values = profile.get("thinking_values", [])
+    deliberate = bool(re.search(r"\b(?:think (?:hard|carefully|deeply)|reason carefully|prove|derive|analy[sz]e in depth)\b", message, re.I))
+    if deliberate:
+        return True if any(value is True for value in values) else None
+    return False if any(value is False for value in values) else None

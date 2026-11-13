@@ -19,6 +19,7 @@ Relation types:
 """
 
 import sqlite3
+from contextlib import closing
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,6 +62,8 @@ def _init_schema(conn: sqlite3.Connection) -> None:
         """
     )
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("CREATE TABLE IF NOT EXISTS memory_revision (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL)")
+    conn.execute("INSERT OR IGNORE INTO memory_revision VALUES (1, 0)")
     columns = {row[1] for row in conn.execute("PRAGMA table_info(memories)")}
     for field in ("project_id", "conversation_id"):
         if field not in columns:
@@ -88,7 +91,7 @@ def insert_memories(contents: list[str], *, project_id: str | None = None,
 
 
 def insert_memories_indexed(contents: list[str], *, project_id: str | None = None,
-                            conversation_id: str | None = None) -> list[dict | None]:
+                            conversation_id: str | None = None, expected_revision: int | None = None) -> list[dict | None]:
     """Return one row or None per input position, preserving extraction link indices.
 
     A memory is skipped if:
@@ -100,6 +103,12 @@ def insert_memories_indexed(contents: list[str], *, project_id: str | None = Non
     if not contents:
         return []
     conn = _ensure_schema()
+
+    conn.execute("BEGIN IMMEDIATE")
+    if expected_revision is not None and conn.execute("SELECT revision FROM memory_revision WHERE id=1").fetchone()[0] != expected_revision:
+        conn.rollback()
+        conn.close()
+        return [None] * len(contents)
 
     existing_lower = {
         row["content"].lower()
@@ -147,6 +156,7 @@ def delete_by_id(memory_id: str) -> bool:
     """Delete a memory by id. Returns True if a row was deleted."""
     conn = _ensure_schema()
     cursor = conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
+    conn.execute("UPDATE memory_revision SET revision=revision+1 WHERE id=1")
     conn.commit()
     deleted = cursor.rowcount > 0
     conn.close()
@@ -158,16 +168,39 @@ def delete_all() -> int:
     conn = _ensure_schema()
     cursor = conn.execute("DELETE FROM memories")
     count = cursor.rowcount
+    conn.execute("UPDATE memory_revision SET revision=revision+1 WHERE id=1")
     conn.commit()
     conn.close()
     return count
+
+
+def revision() -> int:
+    with closing(_ensure_schema()) as connection:
+        return connection.execute("SELECT revision FROM memory_revision WHERE id=1").fetchone()[0]
+
+
+def edit(memory_id: str, content: str, expected_content: str) -> dict:
+    content = content.strip()
+    if not content or len(content) > 2000:
+        raise ValueError("Use between 1 and 2,000 characters for this memory.")
+    with closing(_ensure_schema()) as connection, connection:
+        changed = connection.execute(
+            "UPDATE memories SET content=? WHERE id=? AND content=?",
+            (content, memory_id, expected_content),
+        )
+        if changed.rowcount != 1:
+            raise ValueError("This memory changed or was deleted. Refresh before editing it.")
+        # Old inferred relationships may no longer describe the corrected fact.
+        connection.execute("DELETE FROM memory_links WHERE from_id=? OR to_id=?", (memory_id, memory_id))
+        connection.execute("UPDATE memory_revision SET revision=revision+1 WHERE id=1")
+        return dict(connection.execute("SELECT * FROM memories WHERE id=?", (memory_id,)).fetchone())
 
 
 # ---------------------------------------------------------------------------
 # Memory links API
 # ---------------------------------------------------------------------------
 
-def create_link(from_id: str, to_id: str, relation: str = "related_to") -> dict | None:
+def create_link(from_id: str, to_id: str, relation: str = "related_to", *, expected_revision: int | None = None) -> dict | None:
     """
     Create a directed link between two memories.
 
@@ -180,6 +213,12 @@ def create_link(from_id: str, to_id: str, relation: str = "related_to") -> dict 
         return None
 
     conn = _ensure_schema()
+    conn.execute("BEGIN IMMEDIATE")
+    if expected_revision is not None and conn.execute("SELECT revision FROM memory_revision WHERE id=1").fetchone()[0] != expected_revision:
+        conn.rollback()
+        conn.close()
+        return None
+
     exists = conn.execute(
         "SELECT COUNT(*) FROM memories WHERE id IN (?, ?)", (from_id, to_id)
     ).fetchone()[0]

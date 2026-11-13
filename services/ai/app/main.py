@@ -29,6 +29,7 @@ from app.api.routes import (
     attachments,
     visuals,
     providers,
+    quality,
 )
 from app.connectors.registry import setup_registry
 from app.db.messages import init_db as init_messages_db
@@ -102,3 +103,4 @@ app.include_router(attachments.router)
 app.include_router(providers.router)
 
 app.include_router(visuals.router)
+app.include_router(quality.router)

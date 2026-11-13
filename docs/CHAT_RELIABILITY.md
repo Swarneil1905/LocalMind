@@ -82,8 +82,13 @@ This removes repeated metadata requests, not model loading or generation time.
 
 Each generated response can show session-only **Response details**: model, fingerprint, preset,
 context and response limits, omitted history/references, first answer text timing, output token
-count and generation speed. The generation timer includes queue wait but excludes earlier search
-and retrieval. Copying this metadata excludes prompts, answers and source labels. Unknown metrics
+count and generation speed. Full request timing includes preparation; individual phases cover
+connectors, web search, model inspection, retrieval and queue wait. Context preparation includes
+its model-inspection and retrieval phases, so these durations must not be added together.
+Ollama supplies model-load and prompt-evaluation durations when available. The separate generation
+timer includes queue wait but excludes earlier search and retrieval. The app measures the first
+answer content received after removing reasoning tags and retains elapsed time on cancellation.
+Copying this metadata excludes prompts, answers and source labels. Unknown metrics
 remain unavailable; a fast answer is not evidence of a correct answer. Reopened conversations
 do not yet restore these diagnostic details.
 
@@ -91,3 +96,52 @@ Empty and reasoning-only completions are errors. Truncated output remains a part
 with its stop reason visible. Diagnostics carry the original request ID, so stale events cannot
 overwrite another conversation or response. There is no automatic retry, paid fallback, or
 model switch in response to these signals.
+
+## Response controls and memory
+
+Settings → Responses stores explicit answer length, explanation depth and tone in this
+installation's `response_preferences.db`. Defaults add no instructions. Saved choices add
+a short style instruction to local and approved cloud requests; the current request takes
+precedence. They do not train the model, grant tool permissions or choose the conversation's
+topic. Reset preferences restores the defaults.
+
+Automatic reasoning uses only controls advertised by Ollama. Ordinary requests use `think=false`
+when supported. Explicit requests to think carefully, prove or derive use `true` when supported,
+or leave the provider default unchanged. A saved On, Off or named level takes precedence.
+Unknown controls are never guessed from a model's name. This can reduce reasoning latency;
+it does not remove model loading time or guarantee answer quality.
+
+Memory entries show their conversation/project identifiers and can open the source conversation
+when it still exists. Legacy entries without provenance are marked as such. Editing a fact checks
+its previous content to avoid overwriting another edit and removes links inferred from the old
+fact. Subsequent retrieval reads the correction from SQLite; deleting it removes it from retrieval
+and deletes its links. The original conversation is retained. To remove that text too, delete
+the conversation separately.
+
+Memory extraction waits for 750 ms of idle time. A foreground turn interrupts extraction and
+lets it retry after idle. Each attempt has a 15-second limit and a 512-token output limit;
+the entire wait is capped at 60 seconds. Continuous activity can defer that turn's extraction
+without saving a fact. This is best-effort memory, not a durable background job queue. An edit
+or deletion invalidates an extraction snapshot, with a transaction-level revision check before
+writing memories or inferred links. Interrupting the HTTP request does not guarantee that
+every Ollama version immediately stops its GPU work.
+
+## Optional answer feedback
+
+Completed answers offer **Give feedback**. Saving is explicit and local. Category counts in
+Settings → Responses help identify repeated problems; the list shows up to 500 recent notes.
+Deleting the conversation also deletes its feedback. Feedback is separate from evaluation
+fixtures and is never automatically uploaded or used for training.
+
+Export selects up to 200 records and includes only their categories and corrections. It omits
+conversation text and identifiers and redacts common email/key patterns. The user reviews and
+can edit the preview before downloading it. Automatic redaction is incomplete, so the preview
+must be checked before sharing.
+
+## Visual failures
+
+Visual validation errors retain the source and leave chat usable. A malformed visual offers
+one repair draft per card; the user reviews and sends it through the normal provider and consent
+flow. It does not trigger generation automatically. Renderer exceptions are contained within
+the visual workspace and offer one explicit retry. Unsupported formats and oversized graphs
+remain rejected by the backend validator.

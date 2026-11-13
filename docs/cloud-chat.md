@@ -99,6 +99,11 @@ The paid provider smoke test is opt-in. Read
 profile and account budget. Do not add keys or generated conversation reports to
 the repository.
 
+The smoke test also requires `LOCALMIND_PROVIDER_LIVE_BUDGET_USD` (greater than zero,
+at most 1), configured token prices and an estimate within that limit. It performs one
+short synthetic generation without automatic retries. See the [contract fixtures](../contracts/README.md)
+for the offline compatibility matrix and fixture update procedure.
+
 The comparison harness in `scripts/evaluation/compare_experience.py` prepares a
 blinded review from synthetic tasks. Run `--help` for the preparation, execution
 and scoring commands. Human reviews and model runs are separate steps; preparing

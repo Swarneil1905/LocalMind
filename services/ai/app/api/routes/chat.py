@@ -42,10 +42,14 @@ from app.chat_policy import DEFAULT_SYSTEM_PROMPT, answer_policy
 from app.context_budget import pack_context
 from app.context_retrieval import collect_context, resolve_history, resolve_project
 from app.inference_queue import inference_slot
-from app.model_profiles import generation_options, resolve_profile, inspect_model
+from app.model_profiles import generation_options, generation_thinking, resolve_profile, inspect_model
 from app import attachments
+from app import response_preferences
 from app import provider_store
 from app.response_diagnostics import response_diagnostics
+from app.chat_timing import ChatTiming
+from contextlib import nullcontext, aclosing
+from app.background_memory import foreground_activity
 from app.db import search_config as search_cfg_db
 from app.search.fetcher import fetch_evidence
 from app.search.planning import plan_query, needs_freshness, is_recent, search_opted_out, is_social_turn, current_information_reply, freshness_window_seconds
@@ -149,12 +153,13 @@ async def _search_for_request(query: str, fresh: bool):
     return await _run_web_search(query, fresh)
 
 
-async def _prepare_chat(request: ChatRequest, connector_context: str, extra_context: str, sources: list[dict], *, claim=True):
+async def _prepare_chat(request: ChatRequest, connector_context: str, extra_context: str, sources: list[dict], *, claim=True, timing=None):
     # Build message list
     system = answer_policy(
         datetime.now(timezone.utc).date().isoformat(),
         searched=bool(sources), web_allowed=request.web_search_enabled and not search_opted_out(request.message),
     )
+    system += response_preferences.instruction()
     supplied_context = {"desktop_context": request.context, "connected_apps": connector_context}
     if request.system_prompt and request.system_prompt != DEFAULT_SYSTEM_PROMPT:
         supplied_context["legacy_context"] = request.system_prompt
@@ -162,13 +167,15 @@ async def _prepare_chat(request: ChatRequest, connector_context: str, extra_cont
     references = [{"label": label, "content": content} for label, content in supplied_context.items()]
     if extra_context:
         references.append({"label": "Retrieved web evidence", "content": extra_context})
-    profile = await resolve_profile(request.model, request.profile) if request.profile and request.provider == "ollama" else None
-    references.extend(await collect_context(
-        request.message, request.history, project_id=request.project_id,
-        conversation_id=request.conversation_id, memory_enabled=request.memory_enabled,
-        knowledge_enabled=request.knowledge_enabled, embed_model=request.embed_model,
-        hyde_enabled=request.hyde_enabled,
-    ))
+    with timing.phase("model_inspection") if timing else nullcontext():
+        profile = await resolve_profile(request.model, request.profile) if request.profile and request.provider == "ollama" else None
+    with timing.phase("retrieval") if timing else nullcontext():
+        references.extend(await collect_context(
+            request.message, request.history, project_id=request.project_id,
+            conversation_id=request.conversation_id, memory_enabled=request.memory_enabled,
+            knowledge_enabled=request.knowledge_enabled, embed_model=request.embed_model,
+            hyde_enabled=request.hyde_enabled,
+        ))
     if request.knowledge_enabled:
         system += "\nCite supplied local file evidence using its exact [K1], [K2], etc. label. Never invent a local citation."
     references.extend(attachments.document_references(
@@ -210,6 +217,27 @@ async def _prepare_chat(request: ChatRequest, connector_context: str, extra_cont
 
 
 async def _stream_ollama(request: ChatRequest) -> AsyncIterator[str]:
+    timing = ChatTiming()
+    diagnostics = None
+    async with foreground_activity(), aclosing(_stream_response(request, timing)) as stream:
+        async for frame in stream:
+            event = json.loads(frame.removeprefix("data: "))
+            if event.get("type") == "diagnostics":
+                diagnostics = event["data"]
+                continue
+            if event.get("type") == "token" and event.get("content", "").strip() and timing.first_answer is None:
+                timing.first_answer = round(timing.elapsed(), 3)
+            if event.get("type") in ("done", "error"):
+                base = diagnostics or response_diagnostics(request.model, None, {
+                    "context_tokens": None, "response_reserve_tokens": None,
+                    "history_dropped": 0, "references_dropped": 0, "references_shortened": 0,
+                }, elapsed=None, first_token=None, terminal={})
+                base.update(timing.snapshot("completed" if event["type"] == "done" else "failed"))
+                yield f"data: {json.dumps({'type': 'diagnostics', 'data': base})}\n\n"
+            yield frame
+
+
+async def _stream_response(request: ChatRequest, timing: ChatTiming) -> AsyncIterator[str]:
     """Apply one context policy before dispatching to the selected provider."""
     try:
         if request.provider != "ollama":
@@ -243,7 +271,8 @@ async def _stream_ollama(request: ChatRequest) -> AsyncIterator[str]:
     # Gather connector context (Gmail, WhatsApp, People Profiles)
     connector_context = ""
     if request.connector_context_enabled and not is_social_turn(request.message):
-        connector_context = await _gather_connector_context(request.message)
+        with timing.phase("connectors"):
+            connector_context = await _gather_connector_context(request.message)
 
     query = None
     web_allowed = request.web_search_enabled and not search_opted_out(request.message)
@@ -259,7 +288,8 @@ async def _stream_ollama(request: ChatRequest) -> AsyncIterator[str]:
         if query:
             fresh = fresh or needs_freshness(query)
             yield f"data: {json.dumps({'type': 'status', 'phase': 'searching'})}\n\n"
-            extra_context, sources = await _search_for_request(query, fresh)
+            with timing.phase("web_search"):
+                extra_context, sources = await _search_for_request(query, fresh)
             if not sources:
                 # Fail closed: a model must not manufacture current news when retrieval fails.
                 answer = (
@@ -274,7 +304,8 @@ async def _stream_ollama(request: ChatRequest) -> AsyncIterator[str]:
                 return
 
     try:
-        profile, packed, image_count = await _prepare_chat(request, connector_context, extra_context, sources)
+        with timing.phase("context_preparation"):
+            profile, packed, image_count = await _prepare_chat(request, connector_context, extra_context, sources, timing=timing)
     except (ValueError, httpx.HTTPError) as exc:
         message = str(exc) if isinstance(exc, ValueError) else "Could not inspect the installed model. Check Ollama and retry."
         yield f"data: {json.dumps({'type': 'error', 'content': message})}\n\n"
@@ -288,14 +319,9 @@ async def _stream_ollama(request: ChatRequest) -> AsyncIterator[str]:
     }
     if profile:
         payload["options"] = generation_options(profile)
-        if profile["think"] is not None:
-            payload["think"] = profile["think"]
-        elif is_social_turn(request.message) and any(
-            value is False for value in profile.get("thinking_values", [])
-        ):
-            # A greeting does not need a reasoning preamble. Respect saved
-            # choices and only use controls advertised by this installation.
-            payload["think"] = False
+        thinking = generation_thinking(profile, request.message)
+        if thinking is not None:
+            payload["think"] = thinking
 
     yield f"data: {json.dumps({'type': 'context', 'budget': packed.report})}\n\n"
     # Emit sources event before streaming so the UI can populate the panel
@@ -321,6 +347,7 @@ async def _stream_ollama(request: ChatRequest) -> AsyncIterator[str]:
     has_answer = False
     try:
         async with inference_slot("foreground"), httpx.AsyncClient(trust_env=False, timeout=STREAM_TIMEOUT) as client:
+            timing.phases["queue_wait"] = round(time.monotonic() - started, 3)
             async with client.stream(
                 "POST",
                 f"{OLLAMA_BASE}/api/chat",

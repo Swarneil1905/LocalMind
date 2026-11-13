@@ -35,6 +35,7 @@ from pydantic import BaseModel
 from app.db import memories as mem_db
 from app.context_retrieval import resolve_project
 from app.inference_queue import inference_slot
+from app.background_memory import when_idle
 
 router = APIRouter(prefix="/memory")
 
@@ -157,6 +158,7 @@ async def extract_memories(request: ExtractRequest) -> dict:
         project_id = resolve_project(request.project_id, request.conversation_id)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    revision = mem_db.revision()
     # Build existing memories summary for the prompt (cap at 20 most recent)
     existing = [
         row for row in mem_db.list_all()
@@ -164,11 +166,11 @@ async def extract_memories(request: ExtractRequest) -> dict:
         and (project_id is not None or row.get("conversation_id") in (None, request.conversation_id))
     ][:20]
     existing_ids = {row["id"] for row in existing}
-    existing_str = "\n".join(f"{m['id']}: {m['content']}" for m in existing) or "(none)"
+    existing_str = "\n".join(f"{m['id']}: {m['content'][:300]}" for m in existing) or "(none)"
 
     prompt = EXTRACT_PROMPT.format(
-        user_message=request.user_message,
-        assistant_message=request.assistant_message,
+        user_message=request.user_message[:8000],
+        assistant_message=request.assistant_message[:8000],
         existing_memories=existing_str,
     )
 
@@ -176,22 +178,35 @@ async def extract_memories(request: ExtractRequest) -> dict:
         "model": request.speed_model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
+        "options": {"num_predict": 512, "num_ctx": 8192},
     }
 
     extracted_texts: list[str] = []
     proposed_links: list[dict] = []
-    try:
+    async def extract():
         async with inference_slot("background"), httpx.AsyncClient(trust_env=False, timeout=EXTRACT_TIMEOUT) as client:
             resp = await client.post(f"{OLLAMA_BASE}/api/chat", json=payload)
             resp.raise_for_status()
-            data = resp.json()
-            raw = data.get("message", {}).get("content", "")
-            extracted_texts, proposed_links = _parse_extract_response(raw)
+            raw = resp.json().get("message", {}).get("content", "")
+            if not isinstance(raw, str) or len(raw) > 64000:
+                return [], []
+            return _parse_extract_response(raw)
+
+    extraction_status = "completed"
+    try:
+        extracted_texts, proposed_links = await when_idle(extract)
+        # An edit/delete or moved/deleted conversation invalidates the snapshot.
+        if mem_db.revision() != revision or resolve_project(request.project_id, request.conversation_id) != project_id:
+            extracted_texts, proposed_links = [], []
+            extraction_status = "discarded"
+    except TimeoutError:
+        extraction_status = "deferred"
     except Exception:
-        pass  # Extraction failure is non-fatal
+        extracted_texts, proposed_links = [], []
+        extraction_status = "unavailable"
 
     indexed_rows = mem_db.insert_memories_indexed(extracted_texts, project_id=project_id,
-                                                conversation_id=request.conversation_id)
+                                                conversation_id=request.conversation_id, expected_revision=revision)
     new_rows = [row for row in indexed_rows if row is not None]
 
     # Create links proposed by the model (from_new index => existing memory id)
@@ -204,13 +219,14 @@ async def extract_memories(request: ExtractRequest) -> dict:
             source = indexed_rows[idx]
             if source is None:
                 continue
-            result = mem_db.create_link(source["id"], to_id, relation)
+            result = mem_db.create_link(source["id"], to_id, relation, expected_revision=revision)
             if result:
                 created_links.append(result)
 
     all_memories = mem_db.list_all()
 
     return {
+        "status": extraction_status,
         "extracted": new_rows,
         "memories": all_memories,
         "links_created": created_links,

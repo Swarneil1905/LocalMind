@@ -313,6 +313,8 @@ async def stream_chat(provider: str, model: str, messages: list[dict], *, scopes
                             output_tokens = _tokens((event.get("usage") or {}).get("output_tokens"))
                             received_usage = input_tokens is not None and output_tokens is not None
                             stop = event.get("delta", {}).get("stop_reason")
+                            if stop == "refusal":
+                                raise ProviderError("blocked", "The provider declined this request.")
                             if stop not in (None, "end_turn", "stop_sequence"):
                                 raise ProviderError("incomplete", "The provider stopped before finishing. Your partial answer is preserved.")
                         elif kind == "message_stop":
