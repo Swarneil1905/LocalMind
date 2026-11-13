@@ -4,6 +4,7 @@ import type { Message } from "../types";
 import { Brand } from "./Brand";
 import { AnswerContent, CopyButton, safeWebUrl } from "./AnswerContent";
 import { ResponseDetails } from "./ResponseDetails";
+import { ResponseFeedback } from "./ResponseFeedback";
 import { KnowledgeCitation } from "./KnowledgeCitation";
 import { SavedAttachments } from "./ChatAttachments";
 
@@ -167,6 +168,7 @@ const MessageRow = memo(function MessageRow({
       {(message.sources || []).some(source => source.kind === "document") && <details className="message-sources"><summary>Document excerpts sent with this response</summary>{message.sources?.filter(source => source.kind === "document").map(source => <section key={source.title}><h4>{source.title}</h4><pre style={{ whiteSpace: "pre-wrap" }}>{source.snippet}</pre></section>)}</details>}
       {message.cancelled && <p className="response-status">Response stopped</p>}
       {!user && message.diagnostics && <ResponseDetails data={message.diagnostics} />}
+      {!user && !streaming && !message.error && !message.cancelled && conversationId && message.content && <ResponseFeedback key={`${conversationId}:${message.id}`} conversationId={conversationId} content={message.content} />}
       {!user && message.usage && <p className="page-footnote">API usage: {message.usage.input_tokens ?? "unknown"} input tokens · {message.usage.output_tokens ?? "unknown"} output tokens · {message.usage.cost_usd == null ? "Cost unknown" : `Estimated $${message.usage.cost_usd.toFixed(4)}`}</p>}
       {(message.sources || []).some((source) => source.kind === "knowledge") && (
         <details className="message-sources">

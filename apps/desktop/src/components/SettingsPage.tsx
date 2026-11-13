@@ -13,6 +13,7 @@ import {
 import { OllamaStatus } from "../hooks/useOllama";
 import { ModelProfileSettings } from "./ModelProfileSettings";
 import { ProviderSettings } from "./ProviderSettings";
+import { ResponsePreferences } from "./ResponsePreferences";
 import "./supporting-pages.css";
 
 interface SettingsPageProps {
@@ -26,6 +27,7 @@ interface SettingsPageProps {
   onManageModels?: () => void;
 }
 const SECTIONS = [
+  { id: "responses", label: "Responses", icon: BookOpen },
   { id: "models", label: "Models", icon: Cpu },
   { id: "cloud", label: "Cloud models", icon: Globe },
   { id: "hardware", label: "Hardware", icon: HardDrive },
@@ -60,6 +62,7 @@ export function SettingsPage(props: SettingsPageProps) {
             ))}
           </nav>
           <div className="settings-content">
+            {section === "responses" && <ResponsePreferences />}
             {section === "models" && <ModelSettings {...props} />}
             {section === "cloud" && <ProviderSettings />}
             {section === "hardware" && (

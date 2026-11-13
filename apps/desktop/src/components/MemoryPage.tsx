@@ -3,6 +3,7 @@ import { Brain, Link, LoaderCircle, Search, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { Memory, MemoryLink } from "../hooks/useMemory";
 import "./supporting-pages.css";
+import { qualityRequest } from "../lib/quality";
 
 interface MemoryPageProps {
   memories: Memory[];
@@ -12,6 +13,7 @@ interface MemoryPageProps {
   loading?: boolean;
   loadError?: string | null;
   onRefresh?: () => void;
+  onOpenConversation?: (id: string) => void;
 }
 export function MemoryPage({
   memories,
@@ -21,6 +23,7 @@ export function MemoryPage({
   loading = false,
   loadError,
   onRefresh,
+  onOpenConversation,
 }: MemoryPageProps) {
   const [clearing, setClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -150,6 +153,9 @@ export function MemoryPage({
                         { month: "short", day: "numeric", year: "numeric" },
                       )}
                     </time>
+                    <p className="page-footnote">{memory.conversation_id ? `Source conversation: ${memory.conversation_id}` : "Legacy memory: source conversation unavailable"}{memory.project_id ? ` · Project: ${memory.project_id}` : ""}</p>
+                    {memory.conversation_id && onOpenConversation && <button className="page-button" onClick={() => onOpenConversation(memory.conversation_id!)}>Open source conversation</button>}
+                    <MemoryEditor key={`${memory.id}:${memory.content}`} memory={memory} onSaved={onRefresh} />
                   </div>
                   <button
                     className="page-icon-button"
@@ -190,4 +196,24 @@ export function MemoryPage({
       </div>
     </div>
   );
+}
+
+function MemoryEditor({ memory, onSaved }: { memory: Memory; onSaved?: () => void }) {
+  const [editing, setEditing] = useState(false), [busy, setBusy] = useState(false);
+  const [content, setContent] = useState(memory.content), [error, setError] = useState("");
+  async function save() {
+    setBusy(true); setError("");
+    try {
+      await qualityRequest("POST", "memory/edit", { id: memory.id, content, expected_content: memory.content });
+      setEditing(false); onSaved?.();
+    } catch { setError("Couldn't update this memory. It may have changed; refresh and try again."); }
+    finally { setBusy(false); }
+  }
+  return <div>{editing ? <form onSubmit={e => { e.preventDefault(); void save(); }}>
+    <label>Correct memory<textarea className="page-input" maxLength={2000} required disabled={busy} value={content} onChange={e => setContent(e.target.value)} /></label>
+    <p className="page-footnote">Saving removes inferred links to this fact. Its original conversation remains unchanged.</p>
+    <button className="page-button" disabled={busy || !content.trim()}>Save memory</button>{" "}<button className="page-button" type="button" disabled={busy} onClick={() => setEditing(false)}>Cancel edit</button>
+  </form> : <button className="page-button" onClick={() => setEditing(true)}>Edit memory</button>}
+    {error && <p role="alert">{error}</p>}
+  </div>;
 }
