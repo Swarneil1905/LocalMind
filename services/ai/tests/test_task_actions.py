@@ -105,7 +105,7 @@ class TaskActionTests(unittest.IsolatedAsyncioTestCase):
             client.return_value.__aenter__.return_value.post = AsyncMock(return_value=response)
             frames = [json.loads(frame.removeprefix('data: ')) async for frame in _stream_ollama(request)]
         search.assert_not_awaited()
-        self.assertEqual([frame['type'] for frame in frames], ['status', 'token', 'done'])
+        self.assertEqual([frame['type'] for frame in frames], ['status', 'token', 'diagnostics', 'done'])
         self.assertIn('Review', frames[1]['content'])
         self.assertEqual(projects.list_all_tasks(), [])
         self.assertEqual(actions.list_actions(self.chat['id'])[0]['state'], 'proposed')

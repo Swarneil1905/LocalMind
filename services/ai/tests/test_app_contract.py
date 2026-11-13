@@ -38,9 +38,10 @@ def _run_contract() -> None:
             patch("httpx.AsyncClient.send", side_effect=AssertionError("Unexpected live HTTP")) as network:
         with TestClient(app) as client:
             assert sync_engine._scheduler is not None and sync_engine._scheduler.running
-            for route in ("/health", "/conversations", "/projects", "/openapi.json"):
+            for route in ("/health", "/conversations", "/projects", "/openapi.json", "/quality/preferences", "/quality/feedback"):
                 assert client.get(route).status_code == 401, route
             assert client.get("/health", headers={"Authorization": "Bearer another-launch"}).status_code == 401
+            assert client.post("/quality/preferences", json={"length": "brief", "depth": "technical", "tone": "direct"}).status_code == 401
             client.headers.update(headers)
             assert client.get("/health").json() == {"status": "ok"}
 

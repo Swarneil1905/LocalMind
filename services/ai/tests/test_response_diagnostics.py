@@ -12,6 +12,18 @@ from app.api.routes.chat import _stream_ollama, ChatRequest
 
 
 class DiagnosticsTests(unittest.TestCase):
+    def test_provider_load_and_prompt_timings_convert_nanoseconds_and_reject_invalid_values(self):
+        budget = pack_context("system", "hello", [], []).report
+        result = response_diagnostics("fixture", None, budget, elapsed=3, first_token=2,
+            terminal={"load_duration": 1_500_000_000, "prompt_eval_duration": 200_000_000})
+        self.assertEqual(result["model_load_seconds"], 1.5)
+        self.assertEqual(result["prompt_eval_seconds"], 0.2)
+        for invalid in (True, -1, "100", 10**20):
+            result = response_diagnostics("fixture", None, budget, elapsed=3, first_token=None,
+                terminal={"load_duration": invalid, "prompt_eval_duration": invalid})
+            self.assertIsNone(result["model_load_seconds"])
+            self.assertIsNone(result["prompt_eval_seconds"])
+
     def test_metadata_does_not_include_prompts_answers_or_source_labels(self):
         packed = pack_context("private system", "private question", [], [{"label": "secret file", "content": "secret text"}])
         result = response_diagnostics("fixture", {"digest": "d", "preset": "speed"}, packed.report,

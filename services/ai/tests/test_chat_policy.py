@@ -58,7 +58,7 @@ class AnswerPolicyTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(self.payloads[0]["think"], expected)
         with patch.object(chat, "resolve_profile", AsyncMock(return_value=profile)):
             await self.stream("Hello, explain backpropagation with an example.", profile="balanced")
-        self.assertNotIn("think", self.payloads[0])
+        self.assertIs(self.payloads[0]["think"], False)
 
     async def test_direct_task_creation_never_reaches_model_search_or_connectors(self):
         request = chat.ChatRequest(message="Please save that as a task called 'Read one chapter' in my Study project.",
@@ -71,7 +71,7 @@ class AnswerPolicyTests(unittest.IsolatedAsyncioTestCase):
         connectors.assert_not_awaited()
         search.assert_not_awaited()
         model.assert_not_called()
-        self.assertEqual([frame["type"] for frame in frames], ["status", "token", "done"])
+        self.assertEqual([frame["type"] for frame in frames], ["status", "token", "diagnostics", "done"])
         self.assertIn("Tasks", frames[1]["content"])
         self.assertIn("Add task", frames[1]["content"])
 

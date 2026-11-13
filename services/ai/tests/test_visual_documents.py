@@ -58,6 +58,15 @@ class VisualTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             visuals.validate(dict(schema_version=1, type=[], title='Invalid'))
 
+    def test_bad_and_oversized_visuals_leave_saved_history_usable(self):
+        before = conversations.get_messages(self.cid)
+        for invalid in ([], {**SPEC, 'schema_version': 2}, {**SPEC, 'nodes': SPEC['nodes'] * 1000}):
+            with self.subTest(invalid_type=type(invalid).__name__), self.assertRaises(ValueError):
+                visuals.validate(invalid)
+            self.assertEqual(conversations.get_messages(self.cid), before)
+        conversations.save_turn(self.cid, 'Continue without a visual', 'A normal text answer.')
+        self.assertEqual(conversations.get_messages(self.cid)[-1]['content'], 'A normal text answer.')
+
     def test_image_reference_requires_a_saved_image_in_the_same_chat(self):
         from io import BytesIO
         from PIL import Image
