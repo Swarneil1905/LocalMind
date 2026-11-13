@@ -33,7 +33,7 @@ describe("model response settings", () => {
   it("loads the selected local model profile and saves the changed controls", async () => {
     const context = await openSettings();
     expect(screen.getByRole("option", { name: "Automatic" }).getAttribute("value")).toBe("null");
-    expect(screen.getByText(/Automatic skips thinking for greetings/)).toBeTruthy();
+    expect(screen.getByText(/Automatic turns thinking off for ordinary requests/)).toBeTruthy();
     fireEvent.change(context, { target: { value: "6144" } });
     fireEvent.change(screen.getByRole("combobox", { name: "Thinking" }), { target: { value: "false" } });
     fireEvent.click(screen.getByRole("button", { name: "Save response settings" }));

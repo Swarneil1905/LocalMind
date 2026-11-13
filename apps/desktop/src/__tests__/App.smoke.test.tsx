@@ -95,8 +95,8 @@ beforeEach(() => {
     if (command === "get_conversation_messages") {
       if (failLoad) throw new Error("Cannot load");
       return [
-        { id: "old-user", role: "user", content: "Previous question" },
-        { id: "old-answer", role: "assistant", content: "Previous answer" },
+        { id: "old-user", conversation_id: "saved", role: "user", content: "Previous question" },
+        { id: "old-answer", conversation_id: "saved", role: "assistant", content: "Previous answer" },
       ];
     }
     if (command.startsWith("list_") || command === "get_followup_questions")

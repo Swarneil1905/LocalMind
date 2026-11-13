@@ -96,11 +96,11 @@ describe("request lifecycle", () => {
     emit("chat-token", { request_id: id, content: "First answer" });
     emit("chat-diagnostics", { request_id: id, data });
     emit("chat-done", { request_id: id, error: null });
-    expect(result.current.messages[1].diagnostics).toEqual(data);
+    expect(result.current.messages[1].diagnostics).toMatchObject(data);
     await start(result, "Next question");
     emit("chat-diagnostics", { request_id: id, data: { model: "wrong" } });
     expect(result.current.messages[3].diagnostics).toBeUndefined();
-    expect(result.current.messages[1].diagnostics).toEqual(data);
+    expect(result.current.messages[1].diagnostics).toMatchObject(data);
   });
   it("uses the reviewed voice turn identity and saves the normal text conversation once", async () => {
     const { result } = renderHook(() => useChat(options));
@@ -289,4 +289,26 @@ it("buffers split reasoning delimiters", () => {
   expect(parseThinkTags("<thi").content).toBe("");
   expect(parseThinkTags("<think>working</thi").thinking).toBe("working");
   expect(parseThinkTags("<think>working</think>Answer").content).toBe("Answer");
+});
+
+it("measures answer arrival separately from reasoning and retains cancelled timing", async () => {
+  let now = 0;
+  const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+  try {
+    const { result, unmount } = renderHook(() => useChat(options));
+    const id = await start(result, "Explain this");
+    now = 200;
+    emit("chat-token", { request_id: id, content: "<think>working" });
+    now = 500;
+    emit("chat-token", { request_id: id, content: "</think>Answer" });
+    now = 1500;
+    act(() => result.current.stopStreaming());
+    expect(result.current.messages[1].diagnostics).toMatchObject({
+      client_first_answer_seconds: 0.5, client_total_seconds: 1.5, outcome: "cancelled",
+      total_seconds: null, context_window: null,
+    });
+    emit("chat-diagnostics", { request_id: id, data: { model: "late" } });
+    expect(result.current.messages[1].diagnostics?.outcome).toBe("cancelled");
+    unmount();
+  } finally { clock.mockRestore(); }
 });

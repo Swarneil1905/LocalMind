@@ -17,6 +17,6 @@ it("shows measured model details and warns when context was omitted", () => {
 });
 it("does not show unknown timings as zero", () => {
   render(<ResponseDetails data={{ ...data, total_seconds: null, first_token_seconds: null, tokens_per_second: null, output_tokens: null }} />);
-  expect(screen.getAllByText("Unavailable")).toHaveLength(4);
+  expect(screen.getAllByText("Unavailable")).toHaveLength(9);
   expect(screen.queryByText("0.00 s")).toBeNull();
 });
