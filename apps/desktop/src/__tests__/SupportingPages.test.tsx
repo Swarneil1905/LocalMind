@@ -7,6 +7,13 @@ import { FirstRunSetup } from "../components/FirstRunSetup";
 import { MemoryPage } from "../components/MemoryPage";
 import { SettingsPage } from "../components/SettingsPage";
 import { Project } from "../hooks/useProjects";
+import type { AppUpdater } from "../hooks/useAppUpdater";
+
+const updater: AppUpdater = {
+  version: "0.8.0", update: null, phase: "idle", error: null, confirming: false,
+  dismissed: false, check: vi.fn(), install: vi.fn(), requestInstall: vi.fn(),
+  cancelInstall: vi.fn(), dismiss: vi.fn(),
+};
 
 const project: Project = {
   id: "project-a",
@@ -61,6 +68,7 @@ describe("supporting page recovery", () => {
     });
     render(
       <SettingsPage
+        updater={updater}
         ollamaStatus={null}
         speedModel="speed"
         balancedModel="balanced"
@@ -153,6 +161,7 @@ describe("supporting page recovery", () => {
     });
     render(
       <SettingsPage
+        updater={updater}
         ollamaStatus={null}
         speedModel="speed"
         balancedModel="balanced"
