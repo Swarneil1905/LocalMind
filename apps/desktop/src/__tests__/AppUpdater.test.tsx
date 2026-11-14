@@ -21,7 +21,7 @@ it("shows the installed version and reports no newer release without needing the
   render(<Harness />);
   await screen.findByText("Installed version: 0.8.0");
   fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
-  await screen.findByText("You’re using the latest published version.");
+  await screen.findByText("No newer release is available.");
   expect(invoke).toHaveBeenCalledExactlyOnceWith("check_for_updates");
 });
 
@@ -34,7 +34,7 @@ it("checks automatically once in StrictMode and exposes an offline error and ret
   fireEvent.click(screen.getByRole("button", { name: "Dismiss update" }));
   fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
   await act(async () => {});
-  expect(screen.getByText("You’re using the latest published version.")).toBeTruthy();
+  expect(screen.getByText("No newer release is available.")).toBeTruthy();
   expect(invoke).toHaveBeenCalledTimes(2);
 });
 
