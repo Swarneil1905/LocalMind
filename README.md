@@ -57,6 +57,8 @@ The installer includes the Python AI service and Ollama runtime. You do not need
 
 Updater bundles are signed with LocalMind's update key. Windows installers are not Authenticode-signed and macOS apps are not Apple-notarized, so operating systems may display a security prompt. Release assets include `SHA256SUMS.txt`.
 
+**Updating:** v0.8.0 shows an update banner when a newer published version is available. The next release adds **Settings → Updates** with a manual check, installed version, release notes, and retry controls. It works independently of the local AI service. Before selecting **Install and restart**, finish active responses and save unsent drafts. If installation fails, use the installer on the release page. Pulling or pushing source code does not update an installed copy.
+
 ## Get started
 
 1. **Finish model setup.** Choose your chat model, then explicitly download its weights if needed. Setup verifies that the selected model supports local chat. Compact models use fewer resources but can miss instructions and corrections.

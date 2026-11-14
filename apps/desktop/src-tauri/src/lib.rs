@@ -2093,7 +2093,11 @@ async fn pull_ollama_model(app: tauri::AppHandle, name: String) -> Result<(), St
 #[tauri::command]
 async fn check_for_updates(app: tauri::AppHandle) -> Result<Option<serde_json::Value>, String> {
     use tauri_plugin_updater::UpdaterExt;
-    let updater = app.updater().map_err(|e| e.to_string())?;
+    let updater = app
+        .updater_builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
     match updater.check().await {
         Ok(Some(update)) => Ok(Some(serde_json::json!({
             "version": update.version,
@@ -2106,17 +2110,47 @@ async fn check_for_updates(app: tauri::AppHandle) -> Result<Option<serde_json::V
 }
 
 #[tauri::command]
-async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+async fn install_update(app: tauri::AppHandle, expected_version: String) -> Result<(), String> {
     use tauri_plugin_updater::UpdaterExt;
     let updater = app.updater().map_err(|e| e.to_string())?;
-    if let Some(update) = updater.check().await.map_err(|e| e.to_string())? {
+    let available = tokio::time::timeout(std::time::Duration::from_secs(30), updater.check())
+        .await
+        .map_err(|_| "Update check timed out. Please try again.".to_string())?
+        .map_err(|e| e.to_string())?;
+    validate_update_choice(
+        available.as_ref().map(|update| update.version.as_str()),
+        &expected_version,
+    )?;
+    if let Some(update) = available {
         update
             .download_and_install(|_downloaded, _total| {}, || {})
             .await
             .map_err(|e| e.to_string())?;
         app.restart();
     }
-    Ok(())
+    Err("This update is no longer available. Check for updates again.".into())
+}
+
+fn validate_update_choice(available: Option<&str>, expected: &str) -> Result<(), String> {
+    match available {
+        None => Err("This update is no longer available. Check for updates again.".into()),
+        Some(version) if version != expected => {
+            Err("The available release changed. Check for updates again.".into())
+        }
+        Some(_) => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod update_tests {
+    use super::validate_update_choice;
+
+    #[test]
+    fn installation_requires_the_release_the_user_confirmed() {
+        assert!(validate_update_choice(Some("0.8.1"), "0.8.1").is_ok());
+        assert!(validate_update_choice(Some("0.8.2"), "0.8.1").is_err());
+        assert!(validate_update_choice(None, "0.8.1").is_err());
+    }
 }
 
 // ---------------------------------------------------------------------------
