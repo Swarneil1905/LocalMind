@@ -135,6 +135,24 @@ class AnswerPolicyTests(unittest.IsolatedAsyncioTestCase):
         await self.stream("Explain recursion", context="I prefer Python examples.")
         self.assertEqual(self.payloads[0]["messages"][0], policy)
 
+    async def test_web_state_survives_an_earlier_assistant_denial(self):
+        history = [{"role": "assistant", "content": "I cannot access the internet."}]
+        for enabled in (True, False):
+            with self.subTest(enabled=enabled):
+                await self.stream("Is web search available?", history=history,
+                                  web_search_enabled=enabled)
+                system = self.payloads[0]["messages"][0]["content"]
+                if enabled:
+                    self.assertIn("Web is enabled", system)
+                    self.assertIn("No web search was performed", system)
+                    self.assertNotIn("Web search is off", system)
+                else:
+                    self.assertIn("Web search is off or declined", system)
+                    self.assertNotIn("Web is enabled", system)
+                self.assertIn("overrides earlier assistant claims", system)
+                self.assertIn("not your training cutoff", system)
+                self.assertEqual(self.payloads[0]["messages"][1], history[0])
+
     async def test_corrected_history_and_latest_question_remain_in_order(self):
         history = [{"role": "user", "content": "Deadline is Friday, review is Tuesday."},
                    {"role": "assistant", "content": "Plan for Friday."},

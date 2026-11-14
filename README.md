@@ -44,7 +44,7 @@ LocalMind supports **independent desktop installations**. Each person has their 
 
 ## Install
 
-**[Open the latest release](https://github.com/Swarneil1905/LocalMind/releases/latest)** and choose your installer. This branch targets **0.8.0**; the release page is the source of truth for published installers. Read the [0.8.0 release notes](docs/releases/v0.8.0.md).
+**[Open the latest release](https://github.com/Swarneil1905/LocalMind/releases/latest)** and choose your installer. The published version is **0.8.0**; this branch is preparing the **0.9.0 release candidate**. See the [published release notes](docs/releases/v0.8.0.md) and [candidate notes and limits](docs/releases/v0.9.0.md). The release page is the source of truth for available installers.
 
 | Platform | Download |
 | --- | --- |

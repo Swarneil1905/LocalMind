@@ -61,13 +61,18 @@ extraction has saved anything during this response.
 def answer_policy(today: str, *, searched: bool, web_allowed: bool) -> str:
     if searched:
         web_state = (
+            "LocalMind has a web search integration and it retrieved sources for this request. "
             "Web evidence for this request is supplied separately. Ground current claims in "
             "that evidence only. If it does not answer the question, say what is unverified."
         )
     elif web_allowed:
         web_state = (
+            "LocalMind has a web search integration and Web is enabled in this chat. "
             "No web search was performed for this request. Answer from the conversation and "
-            "general knowledge; do not claim to have searched or verified live information."
+            "general knowledge; do not claim to have searched or verified live information. "
+            "If asked whether you can search, explain that LocalMind can search when a question "
+            "needs it. An earlier search with no usable results does not mean search is disabled. "
+            "Availability does not guarantee the search provider is reachable or has useful results."
         )
     else:
         web_state = (
@@ -76,4 +81,10 @@ def answer_policy(today: str, *, searched: bool, web_allowed: bool) -> str:
             "When Web is off, offer to enable Web or read a source the user supplies. "
             "When the user explicitly declined search, respect that choice and do not ask again."
         )
-    return DEFAULT_SYSTEM_PROMPT + f"\nCurrent UTC date: {today}.\n{web_state}"
+    return DEFAULT_SYSTEM_PROMPT + (
+        f"\nCurrent UTC date: {today}. This is today's date, not your training cutoff; "
+        "do not infer or invent a training cutoff from it.\n"
+        f"{web_state}\n"
+        "This current application state overrides earlier assistant claims about web access. "
+        "The model does not browse by itself; LocalMind retrieves sources for it."
+    )

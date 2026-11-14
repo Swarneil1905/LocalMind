@@ -36,7 +36,7 @@ export function UpdateSettings({ updater }: { updater: AppUpdater }) {
         <p>Install published LocalMind releases. Checking for updates works even when the local AI service is unavailable.</p>
       </div>
       <p>Installed version: {updater.version ?? "Unavailable"}</p>
-      {updater.phase === "current" && <p role="status">You’re using the latest published version.</p>}
+      {updater.phase === "current" && <p role="status">No newer release is available.</p>}
       {updater.update && <p>Available version: {updater.update.version}</p>}
       {updater.error && <p role="alert">{updater.error}</p>}
       <UpdateActions updater={updater} />

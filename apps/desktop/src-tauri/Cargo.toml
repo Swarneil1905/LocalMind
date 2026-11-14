@@ -1,6 +1,6 @@
 [package]
 name = "localmind-app"
-version = "0.8.0"
+version = "0.9.0"
 description = "LocalMind desktop application"
 authors = ["Swarneil Pradhan"]
 edition = "2021"
