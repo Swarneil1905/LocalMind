@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="870" viewBox="0 0 1200 870" role="img" aria-labelledby="title description">
+  <title id="title">How LocalMind runs</title>
+  <desc id="description">Inside the user's computer, the React desktop workspace exchanges commands and events with Tauri and Rust. Rust connects to the Python FastAPI service over authenticated loopback HTTP and streams responses back. Python uses Ollama for local models and SQLite and LanceDB for profile data. Web and connected providers are outside the device boundary and are used only when enabled; cloud and paid media requests also require approval.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto-start-reverse"><path d="M1 1 L6 4 L1 7" fill="none" stroke="#376d51" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+    <marker id="online-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M1 1 L6 4 L1 7" fill="none" stroke="#815b2b" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  </defs>
+  <rect width="1200" height="870" rx="24" fill="#f9fbf8"/>
+  <g font-family="Segoe UI, Arial, sans-serif">
+    <text x="48" y="58" fill="#203c30" font-size="32" font-weight="650">How LocalMind runs</text>
+    <text x="48" y="92" fill="#4e6558" font-size="19">Follow a message through the desktop app and its local services.</text>
+    <rect x="32" y="128" width="1136" height="528" rx="20" fill="#edf4ee" stroke="#bdcfc2" stroke-width="1.5"/>
+    <circle cx="61" cy="162" r="5" fill="#376d51"/>
+    <text x="78" y="168" fill="#376d51" font-size="16" font-weight="700" letter-spacing="1.5">ON YOUR COMPUTER</text>
+    <text x="1136" y="168" text-anchor="end" fill="#4e6558" font-size="17">Local services · local storage</text>
+    <!-- Commands and streamed responses use the same native bridge. -->
+    <g fill="none" stroke="#376d51" stroke-width="2" marker-start="url(#arrow)" marker-end="url(#arrow)">
+      <path d="M374 284 H426"/>
+      <path d="M742 284 H794"/>
+      <path d="M952 364 V446"/>
+      <path d="M848 364 V400 H584 V446"/>
+    </g>
+    <text x="400" y="264" text-anchor="middle" fill="#4e6558" font-size="14">IPC</text>
+    <text x="768" y="264" text-anchor="middle" fill="#4e6558" font-size="14">HTTP</text>
+    <text x="970" y="408" fill="#4e6558" font-size="16">Local inference</text>
+    <text x="614" y="427" fill="#4e6558" font-size="16">Read and save context</text>
+    <g>
+      <rect x="64" y="206" width="304" height="152" rx="14" fill="#ffffff" stroke="#bdcfc2"/>
+      <text x="88" y="240" fill="#376d51" font-size="14" font-weight="700" letter-spacing="1.2">INTERFACE</text>
+      <text x="88" y="277" fill="#203c30" font-size="24" font-weight="650">Desktop workspace</text>
+      <text x="88" y="308" fill="#4e6558" font-size="18">React + TypeScript</text>
+      <text x="88" y="334" fill="#4e6558" font-size="17">Full window and mini chat</text>
+    </g>
+    <g>
+      <rect x="432" y="206" width="304" height="152" rx="14" fill="#ffffff" stroke="#bdcfc2"/>
+      <text x="456" y="240" fill="#376d51" font-size="14" font-weight="700" letter-spacing="1.2">NATIVE BRIDGE</text>
+      <text x="456" y="277" fill="#203c30" font-size="24" font-weight="650">Tauri + Rust</text>
+      <text x="456" y="308" fill="#4e6558" font-size="18">Window and process lifecycle</text>
+      <text x="456" y="334" fill="#4e6558" font-size="17">Authenticated local requests</text>
+    </g>
+    <g>
+      <rect x="800" y="206" width="304" height="152" rx="14" fill="#ffffff" stroke="#bdcfc2"/>
+      <text x="824" y="240" fill="#376d51" font-size="14" font-weight="700" letter-spacing="1.2">APPLICATION SERVICE</text>
+      <text x="824" y="277" fill="#203c30" font-size="24" font-weight="650">Python + FastAPI</text>
+      <text x="824" y="308" fill="#4e6558" font-size="18">Context and retrieval</text>
+      <text x="824" y="334" fill="#4e6558" font-size="17">Model routing and streaming</text>
+    </g>
+    <g>
+      <text x="64" y="478" fill="#203c30" font-size="21" font-weight="650">The reply returns here.</text>
+      <text x="64" y="511" fill="#4e6558" font-size="18">Python streams through Rust</text>
+      <text x="64" y="539" fill="#4e6558" font-size="18">to the active conversation.</text>
+      <path d="M64 568 H352" stroke="#bdcfc2" stroke-width="1"/>
+      <text x="64" y="598" fill="#4e6558" font-size="17">Local chat needs no cloud account.</text>
+    </g>
+    <g>
+      <rect x="432" y="452" width="304" height="152" rx="14" fill="#ffffff" stroke="#bdcfc2"/>
+      <text x="456" y="486" fill="#376d51" font-size="14" font-weight="700" letter-spacing="1.2">PROFILE DATA</text>
+      <text x="456" y="523" fill="#203c30" font-size="24" font-weight="650">SQLite + LanceDB</text>
+      <text x="456" y="554" fill="#4e6558" font-size="18">Chats, memory and projects</text>
+      <text x="456" y="580" fill="#4e6558" font-size="17">Document index and retrieval</text>
+    </g>
+    <g>
+      <rect x="800" y="452" width="304" height="152" rx="14" fill="#ffffff" stroke="#bdcfc2"/>
+      <text x="824" y="486" fill="#376d51" font-size="14" font-weight="700" letter-spacing="1.2">LOCAL MODELS</text>
+      <text x="824" y="523" fill="#203c30" font-size="24" font-weight="650">Ollama</text>
+      <text x="824" y="554" fill="#4e6558" font-size="18">Installed chat and vision models</text>
+      <text x="824" y="580" fill="#4e6558" font-size="17">Model weights stored separately</text>
+    </g>
+    <!-- Optional online requests leave the computer boundary on the right. -->
+    <path d="M1104 322 H1136 V750 H1110" fill="none" stroke="#815b2b" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#online-arrow)"/>
+    <text x="64" y="729" fill="#815b2b" font-size="16" font-weight="700" letter-spacing="1.2">OPTIONAL ONLINE</text>
+    <text x="64" y="760" fill="#4e6558" font-size="18">Used only when enabled</text>
+    <text x="64" y="788" fill="#4e6558" font-size="17">Relevant inputs leave the device.</text>
+    <rect x="432" y="702" width="672" height="104" rx="14" fill="#fbf4e9" stroke="#d8c6a8"/>
+    <text x="456" y="741" fill="#203c30" font-size="23" font-weight="650">Web search and connected providers</text>
+    <text x="456" y="775" fill="#4e6558" font-size="18">Cloud chat and paid media also require your approval.</text>
+    <text x="48" y="846" fill="#4e6558" font-size="16">Solid arrows: local requests and responses. Dashed arrow: optional external requests.</text>
+  </g>
+</svg>

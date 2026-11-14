@@ -20,6 +20,7 @@
   <a href="https://github.com/Swarneil1905/LocalMind/releases/latest"><img src="https://img.shields.io/github/v/release/Swarneil1905/LocalMind?color=3d6959&amp;label=release" alt="Latest published release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3d6959" alt="MIT license"></a>
   <a href="https://github.com/Swarneil1905/LocalMind/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22"><img src="https://img.shields.io/github/issues/Swarneil1905/LocalMind/good%20first%20issue?color=3d6959&amp;label=good%20first%20issues" alt="Open good first issues"></a>
+  <a href="https://hub.xerj.org/contributors/Swarneil1905"><img src="https://hub.xerj.org/contributors/Swarneil1905/badge.svg" alt="XERJ Corpus Hub contributor"></a>
 </p>
 
 [![LocalMind desktop workspace. Click to watch the captioned walkthrough.](docs/media/localmind-preview.jpg)](https://swarneil1905.github.io/LocalMind/)
@@ -100,14 +101,12 @@ AI-assisted contributions are welcome. [Disclose tools and scope](docs/AI_CONTRI
 
 The app uses **React + TypeScript**, **Tauri + Rust**, **Python + FastAPI**, **SQLite + LanceDB**, and **Ollama**. Each installation runs its own local service and profile. There is no hosted team backend or automatic device sync.
 
-```mermaid
-flowchart LR
-    UI[React workspace] --> Native[Tauri / Rust]
-    Native -->|Authenticated loopback| API[Python / FastAPI]
-    API --> Models[Local models / Ollama]
-    API <--> Data[Profile / SQLite + LanceDB]
-    API -. When enabled .-> External[Web / cloud providers]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/architecture-dark.svg">
+  <img src="docs/media/architecture-light.svg" alt="LocalMind architecture: React talks through Tauri and Rust to a local Python service, which uses Ollama and profile databases. Optional web and cloud requests cross the device boundary." width="1200">
+</picture>
+
+[View light diagram](docs/media/architecture-light.svg) · [View dark diagram](docs/media/architecture-dark.svg) · [Diagram source and editing notes](docs/media/architecture.md)
 
 **[Follow a chat message through the codebase →](docs/CODEBASE.md#follow-one-chat-message)**
 
@@ -159,6 +158,8 @@ The [user guide](docs/USER_GUIDE.md#troubleshooting) covers startup failures, sl
 **[Report a bug](https://github.com/Swarneil1905/LocalMind/issues/new/choose)** with the app version, OS, model, reproduction steps and relevant errors. For a bad answer, include the smallest conversation that reproduces it. Remove private content and credentials; report vulnerabilities through [SECURITY.md](SECURITY.md).
 
 ## People and license
+
+LocalMind's [chat diagnostics and model readiness work](https://github.com/Swarneil1905/LocalMind/commit/ed800461e34287d3d043daf43706b538ab28e23b) was selected for the **[XERJ Corpus Hub](https://hub.xerj.org/contributors/Swarneil1905)**. Its [reference corpus](https://hub.xerj.org/corpus/swarneil1905--localmind) indexes the repository at that pinned commit, with attribution to Swarneil Pradhan and LocalMind.
 
 Thanks to everyone who reports a bug, tests a build, improves the docs or contributes code. See the [contributors](https://github.com/Swarneil1905/LocalMind/graphs/contributors) and [merged PRs](https://github.com/Swarneil1905/LocalMind/pulls?q=is%3Apr%20is%3Amerged) for the people and changes behind LocalMind.
 
