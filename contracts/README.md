@@ -5,7 +5,11 @@ or model-training data.
 
 `app-v1.json` is produced by real backend storage APIs in a disposable profile. It covers image
 attachments, saved errors, cancelled partial responses, memory provenance and preference defaults.
-Only generated identifiers and timestamps are normalized. Python compares a fresh result with
+Generated identifiers and timestamps are normalized. The PNG attachment's byte count is checked
+against its actual stored data, then normalized to a representative value for the fixture:
+Pillow and zlib builds can encode identical pixels into different file sizes. Tests exercise
+different compression levels and reject incorrect size metadata before normalization.
+Python compares a fresh result with
 the committed fixture; Rust deserializes it into the desktop types; frontend tests use the same
 fixture through the saved-message decoder.
 

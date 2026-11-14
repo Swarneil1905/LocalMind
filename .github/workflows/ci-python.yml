@@ -101,6 +101,11 @@ jobs:
       - name: Install visual and document test dependencies
         run: python -m pip install Pillow==12.0.0 pypdf==5.1.0
 
+      - name: Verify portable application contract
+        env:
+          PYTHONPATH: services/ai
+        run: python -m unittest discover -s services/ai/tests -p "test_api_contracts.py" -v
+
       - name: Exercise visual revisions, attachment ownership and document workers
         env:
           PYTHONPATH: services/ai
