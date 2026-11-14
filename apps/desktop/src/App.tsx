@@ -30,6 +30,7 @@ import { Composer } from "./components/Composer";
 import { ConversationList } from "./components/ConversationList";
 import { FirstRunSetup } from "./components/FirstRunSetup";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { useAppUpdater } from "./hooks/useAppUpdater";
 import { MessageList } from "./components/MessageList";
 import { TaskActions } from "./components/TaskActions";
 import { MemoryPage } from "./components/MemoryPage";
@@ -86,6 +87,7 @@ interface PendingCloud {
 }
 
 export default function App() {
+  const updater = useAppUpdater();
   const mini = useMiniWindow();
   const { active: miniActive, setCompact } = mini;
   const miniSidebar = useRef(true);
@@ -704,7 +706,7 @@ export default function App() {
               </span>
             </div>
           </header>
-          {setupComplete && <UpdateBanner />}
+          {activePage !== "settings" && <UpdateBanner updater={updater} />}
           {mini.error && <div className="app-notice" role="alert">{mini.error}</div>}
           {notice && (
             <div className="app-notice" role="status">
@@ -838,6 +840,7 @@ export default function App() {
             <BuddyPage onNavigateToChat={() => navigate("chats")} />
           ) : (
             <SettingsPage
+              updater={updater}
               onManageModels={() => setModelSetupOpen(true)}
               ollamaStatus={ollama}
               speedModel={speedModel}
