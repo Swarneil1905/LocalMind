@@ -1261,3 +1261,8 @@
     transition: none;
   }
 }
+.update-release-notes { margin-block: 1rem; }
+.update-release-notes p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.update-notice { flex-wrap: wrap; }
+.update-notice > span { min-width: min(100%, 12rem); }
+.update-notice > div { flex-shrink: 1; }

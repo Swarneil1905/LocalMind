@@ -14,9 +14,12 @@ import { OllamaStatus } from "../hooks/useOllama";
 import { ModelProfileSettings } from "./ModelProfileSettings";
 import { ProviderSettings } from "./ProviderSettings";
 import { ResponsePreferences } from "./ResponsePreferences";
+import { UpdateSettings } from "./UpdateSettings";
+import type { AppUpdater } from "../hooks/useAppUpdater";
 import "./supporting-pages.css";
 
 interface SettingsPageProps {
+  updater: AppUpdater;
   ollamaStatus: OllamaStatus | null;
   speedModel: string;
   balancedModel: string;
@@ -34,6 +37,7 @@ const SECTIONS = [
   { id: "search", label: "Web search", icon: Globe },
   { id: "knowledge", label: "Knowledge", icon: BookOpen },
   { id: "privacy", label: "Data & privacy", icon: ShieldCheck },
+  { id: "updates", label: "Updates", icon: Download },
 ] as const;
 type Section = (typeof SECTIONS)[number]["id"];
 
@@ -62,6 +66,7 @@ export function SettingsPage(props: SettingsPageProps) {
             ))}
           </nav>
           <div className="settings-content">
+            {section === "updates" && <UpdateSettings updater={props.updater} />}
             {section === "responses" && <ResponsePreferences />}
             {section === "models" && <ModelSettings {...props} />}
             {section === "cloud" && <ProviderSettings />}
