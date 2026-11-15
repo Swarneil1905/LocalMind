@@ -148,21 +148,25 @@ const MessageRow = memo(function MessageRow({
         <AnswerContent conversationId={streaming ? undefined : conversationId} content={message.content} sources={message.sources} />
       ) : streaming ? (
         <p className="response-status">
-          {searching ? "Finding sources…" : message.isThinking ? "Thinking…" : "Preparing a response…"}
+          {searching ? "Searching the web…"
+            : sources.length ? `Read ${sources.length} ${sources.length === 1 ? "source" : "sources"} · writing…`
+            : message.isThinking ? "Thinking…" : "Preparing a response…"}
         </p>
       ) : null}
-      {sources.length > 0 && (
-        <details className="message-sources">
-          <summary>{sources.length} {sources.length === 1 ? "source" : "sources"}</summary>
-          <div>
+      {sources.length > 0 && !(streaming && !message.content) && (
+        <section className="source-cards" aria-label="Sources">
+          <h4>Sources</h4>
+          <ol>
             {sources.map((source) => (
-              <a key={`${source.index}-${source.url}`} href={source.safeUrl} target="_blank" rel="noopener noreferrer">
-                <span><span className="source-number">{source.index + 1}</span>{source.title}<ExternalLink size={12} aria-hidden="true" /></span>
-                <small>{sourceDomain(source.url)} · {publicationDate(source.published_at)}</small>
-              </a>
+              <li key={`${source.index}-${source.url}`}>
+                <a href={source.safeUrl} target="_blank" rel="noopener noreferrer">
+                  <span className="source-card-title"><span className="source-number">{source.index + 1}</span>{source.title}<ExternalLink size={12} aria-hidden="true" /></span>
+                  <small>{sourceLabel(source)} · {publicationDate(source.published_at)}</small>
+                </a>
+              </li>
             ))}
-          </div>
-        </details>
+          </ol>
+        </section>
       )}
       {message.errorMessage && <p className="response-status" role="note">{message.errorMessage}</p>}
       {(message.sources || []).some(source => source.kind === "document") && <details className="message-sources"><summary>Document excerpts sent with this response</summary>{message.sources?.filter(source => source.kind === "document").map(source => <section key={source.title}><h4>{source.title}</h4><pre style={{ whiteSpace: "pre-wrap" }}>{source.snippet}</pre></section>)}</details>}
@@ -193,6 +197,12 @@ const MessageRow = memo(function MessageRow({
 
 function sourceDomain(url: string) {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "Source"; }
+}
+
+// News-feed links all point at news.google.com; the publisher travels in the snippet.
+function sourceLabel(source: { url: string; snippet?: string }) {
+  const domain = sourceDomain(source.url);
+  return domain === "news.google.com" && source.snippet ? source.snippet : domain;
 }
 
 function publicationDate(value?: string | null) {

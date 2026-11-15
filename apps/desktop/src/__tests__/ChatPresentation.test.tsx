@@ -148,8 +148,15 @@ describe("transcript interactions", () => {
     ] })]} isStreaming={false} />);
     expect(screen.getByRole("link", { name: `Source 2: ${source.title}` })).toBeDefined();
     expect(screen.queryByText("Unsafe")).toBeNull();
-    fireEvent.click(screen.getByText("1 source"));
     expect(screen.getByText(/Published Oct 19, 2026/)).toBeDefined();
+  });
+
+  it("shows source cards without a click and names the publisher for news-feed links", () => {
+    render(<MessageList messages={[answer("Rates held [1].", { sources: [
+      { ...source, title: "Fed holds rates", url: "https://news.google.com/rss/articles/abc", snippet: "Reuters", published_at: "2026-11-13T12:00:00Z" },
+    ] })]} isStreaming={false} />);
+    expect(screen.getByRole("region", { name: "Sources" })).toBeDefined();
+    expect(screen.getByText(/Reuters · Published Nov 13, 2026/)).toBeDefined();
   });
 });
 

@@ -22,7 +22,7 @@ export function ProviderSettings() {
   if (!status) return <section><h2>Cloud models</h2><p role={error ? "alert" : "status"}>{error || "Loading cloud model settings…"}</p><button className="secondary-button" onClick={() => void refresh()}>Retry</button></section>;
   return <section className="provider-settings">
     <div className="settings-section-heading"><h2>Cloud models</h2>
-      <p>Use your own API account. API charges are separate from ChatGPT, Claude or Gemini subscriptions. Keys stay in this computer’s credential store.</p></div>
+      <p>Use your own API account. API charges are separate from ChatGPT, Claude, Gemini or DeepSeek subscriptions. Keys stay in this computer’s credential store.</p></div>
     <label className="provider-toggle"><input type="checkbox" checked={status.local_only} disabled={busy}
       onChange={event => void policy({ local_only: event.target.checked })} /> Keep chat on this device</label>
     <p className="page-footnote">When enabled, cloud chat, connection checks and model lookups are blocked. This setting does not disable separately enabled web search or connected apps.</p>
