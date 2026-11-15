@@ -22,6 +22,13 @@ from pathlib import Path
 from build_sidecar import TARGETS, binary_path, validate_target
 
 
+# CI disks can stall SQLite's first fsync while gigabytes of freshly extracted
+# installer payload are still being written back, so a single request may need
+# well over a few seconds there. Readiness polling keeps its own short timeout.
+REQUEST_TIMEOUT = 30
+READINESS_TIMEOUT = 5
+
+
 class SmokeFailure(RuntimeError):
     pass
 
@@ -69,7 +76,8 @@ class Client:
         # CI/user proxy settings must never receive this loopback bearer token.
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
-    def request(self, method: str, path: str, payload=None, *, expected=200, token=True, timeout=5):
+    def request(self, method: str, path: str, payload=None, *, expected=200, token=True,
+                timeout=REQUEST_TIMEOUT):
         headers = {"Content-Type": "application/json"}
         if token:
             headers["Authorization"] = f"Bearer {self.token if token is True else token}"
@@ -83,6 +91,9 @@ class Client:
             response = self.opener.open(request, timeout=timeout)
         except urllib.error.HTTPError as error:
             response = error
+        except TimeoutError as error:
+            # A bare "timed out" does not say which check stalled.
+            raise TimeoutError(f"{method} {path}: no response within {timeout:g} seconds") from error
         with response:
             body = response.read().decode("utf-8")
             require(response.status == expected,
@@ -143,7 +154,7 @@ def running_sidecar(binary: Path, scratch: Path, profile: Path, timeout: float):
                 require(process.poll() is None,
                         f"Frozen sidecar exited during startup ({process.returncode})")
                 try:
-                    response = client.request("GET", "/health")
+                    response = client.request("GET", "/health", timeout=READINESS_TIMEOUT)
                     require(response == {"status": "ok"}, "Unexpected health response")
                     break
                 except (urllib.error.URLError, TimeoutError, ConnectionError):
