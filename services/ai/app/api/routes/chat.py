@@ -52,7 +52,7 @@ from contextlib import nullcontext, aclosing
 from app.background_memory import foreground_activity
 from app.db import search_config as search_cfg_db
 from app.search.fetcher import fetch_evidence
-from app.search.planning import plan_query, needs_freshness, is_recent, search_opted_out, is_social_turn, current_information_reply, freshness_window_seconds
+from app.search.planning import plan_query, needs_freshness, is_recent, search_opted_out, is_social_turn, current_information_reply, freshness_window_seconds, rank_relevant
 from app.search.providers import SearchResult, search, search_news
 
 router = APIRouter(prefix="/chat")
@@ -121,6 +121,7 @@ async def _run_web_search(query: str, fresh: bool = False, *,
             headlines = await search_news(query)
         except Exception:
             headlines = []
+        headlines = rank_relevant(headlines, query)
         results = headlines + [r for r in results if r.url not in {h.url for h in headlines}]
 
     if not results:
