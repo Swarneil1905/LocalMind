@@ -193,6 +193,10 @@ def check_payload(
             raise BundleError(f"Linux installers must use the host NVIDIA driver, not bundle it: {drivers}")
     sidecar, runtime = find_services(payload, target, product_name)
     ollama = verify_runtime(runtime, DESTINATION, target, appimage=appimage)
+    if hasattr(os, "sync"):
+        # Flush the multi-gigabyte extracted payload before timing service
+        # requests, so its writeback cannot stall the sidecar's SQLite commits.
+        os.sync()
     print(f"Testing packaged sidecar: {sidecar}", flush=True)
     smoke_sidecar(sidecar, timeout)
     print(f"Testing packaged Ollama: {ollama}", flush=True)
