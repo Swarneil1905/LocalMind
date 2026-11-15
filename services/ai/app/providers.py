@@ -18,7 +18,10 @@ from app.provider_store import ProviderError
 
 BASES = {"openai": "https://api.openai.com/v1", "anthropic": "https://api.anthropic.com/v1",
          "gemini": "https://generativelanguage.googleapis.com/v1beta",
-         "deepseek": "https://api.deepseek.com"}
+         "deepseek": "https://api.deepseek.com", "openrouter": "https://openrouter.ai/api/v1",
+         "groq": "https://api.groq.com/openai/v1", "mistral": "https://api.mistral.ai/v1", "xai": "https://api.x.ai/v1"}
+# These speak the OpenAI Chat Completions protocol and list models at GET /models.
+COMPATIBLE = frozenset({"deepseek", "openrouter", "groq", "mistral", "xai"})
 TIMEOUT = httpx.Timeout(connect=10, read=90, write=30, pool=10)
 MAX_EVENT = 1_000_000
 
@@ -75,7 +78,10 @@ def _http_error(code):
         return ProviderError("auth", "The provider rejected this API key or its access permissions.")
     if code == 429:
         return ProviderError("quota", "The provider rate or credit limit was reached. Check your API account before retrying.")
-    if code in (400, 404, 422):
+    if code == 404:
+        # Providers list retired models that new accounts cannot call (e.g. older Gemini versions).
+        return ProviderError("model_unavailable", "The provider says this model isn't available to your account. Pick a newer model in Settings > Cloud models.")
+    if code in (400, 422):
         return ProviderError("unsupported", "The provider rejected this model or request format. Check the selected model and its capabilities.")
     return ProviderError("provider_unavailable", "The provider could not complete this request. Retry explicitly when it is available.")
 
@@ -134,8 +140,8 @@ async def list_models(provider):
 
 
 async def check_model(provider, model):
-    if provider == "deepseek":
-        # DeepSeek has no per-model metadata route, so confirm the id in the model list.
+    if provider in COMPATIBLE:
+        # These providers have no shared per-model route, so confirm the id in the model list.
         listed = await list_models(provider)
         store.model_id(model)
         if model not in {item["id"] for item in listed["models"]}:
@@ -202,7 +208,7 @@ def request_body(provider, model, messages, max_tokens):
             parts.extend({"type": "input_image", "image_url": f"data:{img['mime_type']};base64,{img['data']}"} for img in msg.get("images", []))
             rows.append({"role": msg["role"], "content": parts})
         return "/responses", {"model": model, "input": rows, "max_output_tokens": max_tokens, "stream": True, "store": False}
-    if provider == "deepseek":
+    if provider in COMPATIBLE:
         # OpenAI-compatible Chat Completions; image parts are sent only when the user marked the model as vision-capable.
         rows = []
         for msg in messages:
@@ -339,7 +345,7 @@ async def stream_chat(provider: str, model: str, messages: list[dict], *, scopes
                                 raise ProviderError("incomplete", "The provider stopped before finishing. Your partial answer is preserved.")
                         elif kind == "message_stop":
                             completed = True
-                    elif provider == "deepseek":
+                    elif provider in COMPATIBLE:
                         usage = event.get("usage") or {}
                         if usage:
                             input_tokens, output_tokens = _tokens(usage.get("prompt_tokens")), _tokens(usage.get("completion_tokens"))

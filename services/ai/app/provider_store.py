@@ -15,7 +15,8 @@ from uuid import uuid4
 
 from app.storage import data_path
 
-PROVIDERS = {"openai": "OpenAI", "anthropic": "Anthropic", "gemini": "Google Gemini", "deepseek": "DeepSeek"}
+PROVIDERS = {"openai": "OpenAI", "anthropic": "Anthropic", "gemini": "Google Gemini", "deepseek": "DeepSeek",
+             "openrouter": "OpenRouter", "groq": "Groq", "mistral": "Mistral", "xai": "xAI"}
 SCOPES = frozenset({"messages", "memory", "knowledge", "connectors", "attachments", "web"})
 
 

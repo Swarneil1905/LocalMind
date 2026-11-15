@@ -447,7 +447,7 @@ async def preview_cloud_context(request: ChatRequest) -> dict:
     Search and connected-app reads occur only when their switches are on. The
     preview itself never invokes a cloud chat model or reads a cloud API key.
     """
-    if request.provider not in ("openai", "anthropic", "gemini", "deepseek"):
+    if request.provider not in ("openai", "anthropic", "gemini", "deepseek", "openrouter", "groq", "mistral", "xai"):
         raise HTTPException(422, "Choose a supported cloud provider.")
     try:
         provider_store.ensure_remote_allowed()
