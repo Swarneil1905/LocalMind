@@ -195,7 +195,7 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_bad_key_quota_and_model_errors_are_redacted_and_not_retried(self):
         consent = self.setup_provider()
-        for code, expected in ((401, "auth"), (403, "auth"), (429, "quota"), (404, "unsupported"), (503, "provider_unavailable")):
+        for code, expected in ((401, "auth"), (403, "auth"), (429, "quota"), (404, "model_unavailable"), (422, "unsupported"), (503, "provider_unavailable")):
             self.request_id = str(uuid4())
             before = len(self.calls)
             with self.transport(lambda req: httpx.Response(code, text="secret-that-must-not-leak personal prompt")):

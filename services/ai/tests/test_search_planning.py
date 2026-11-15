@@ -7,6 +7,22 @@ from unittest.mock import patch
 from app.search.planning import needs_freshness, plan_query, search_opted_out
 
 
+class ChangingFactTests(unittest.TestCase):
+    def test_facts_that_memory_gets_wrong_trigger_search(self):
+        for message in ("who is the current president of France?", "who won the last cricket world cup?",
+                        "compare Apple and Microsoft earnings last quarter", "are you sure Nvidia stock is up?",
+                        "do I need a visa for Japan as an Indian citizen?", "who is leading in the AI chip market?"):
+            with self.subTest(message=message):
+                self.assertTrue(needs_freshness(message))
+                self.assertIsNotNone(plan_query(message, []))
+
+    def test_cooking_teaching_and_arithmetic_stay_local(self):
+        for message in ("use chicken stock for the soup", "explain how earnings per share are calculated",
+                        "what is 17*23?", "how do vaccines work?", "pay with my visa card"):
+            with self.subTest(message=message):
+                self.assertFalse(needs_freshness(message))
+
+
 class HeadlineRelevanceTests(unittest.TestCase):
     def test_unrelated_headlines_are_dropped_and_closer_ones_come_first(self):
         from app.search.planning import rank_relevant
