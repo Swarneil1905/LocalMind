@@ -7,6 +7,29 @@ from unittest.mock import patch
 from app.search.planning import needs_freshness, plan_query, search_opted_out
 
 
+class HeadlineRelevanceTests(unittest.TestCase):
+    def test_unrelated_headlines_are_dropped_and_closer_ones_come_first(self):
+        from app.search.planning import rank_relevant
+        from app.search.providers import SearchResult
+        titles = ["They Want to Be Doctors. Student Loan Caps Are Complicating Their Path",
+                  "Best CD rates today: earn up to 5%",
+                  "Fed holds interest rates steady as inflation cools",
+                  "Kevin Warsh wants to remake the Fed after rate cuts"]
+        ranked = rank_relevant([SearchResult(t, "https://news.example/" + str(i), "") for i, t in enumerate(titles)],
+                               "2026-11-15 latest Fed interest rate news")
+        self.assertEqual([r.title for r in ranked][0], titles[2])
+        self.assertNotIn(titles[0], [r.title for r in ranked])
+
+    def test_nothing_related_returns_nothing_and_a_bare_query_changes_nothing(self):
+        from app.search.planning import rank_relevant
+        from app.search.providers import SearchResult
+        items = [SearchResult("Cat videos", "https://news.example/a", "")]
+        self.assertEqual(rank_relevant(items, "nvidia stock"), [])
+        one_word = [SearchResult("Vulcan rocket fails on a mission", "https://news.example/b", "")]
+        self.assertEqual(rank_relevant(one_word, "latest on the Artemis moon missions"), [])
+        self.assertEqual(rank_relevant(items, "latest news today"), items)
+
+
 class SearchPlanningTests(unittest.TestCase):
     def test_social_turns_do_not_request_recent_sources(self):
         history = [{"role": "user", "content": "What is today's news?"},
