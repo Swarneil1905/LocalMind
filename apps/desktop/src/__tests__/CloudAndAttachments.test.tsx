@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
@@ -104,9 +104,21 @@ describe("cloud setup and permission", () => {
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("provider_request", { method: "PUT", path: "/providers/openai/credential", body: { key: "secret-test-key" } }));
     expect((key as HTMLInputElement).value).toBe(""); expect(localStorage.length).toBe(0);
   });
+  it("connects a new provider from its logo tile in one step", async () => {
+    const groq: CloudProvider = { id: "groq", label: "Groq", connected: false, model: "", vision: false,
+      input_price_per_million: null, output_price_per_million: null, approved_scopes: [] };
+    vi.mocked(invoke).mockResolvedValue({ ...status, providers: [cloud, groq] });
+    render(<ProviderSettings />);
+    fireEvent.click(await screen.findByRole("button", { name: "Connect Groq" }));
+    const dialog = screen.getByRole("dialog", { name: "Connect Groq" });
+    fireEvent.change(screen.getByLabelText("Groq API key"), { target: { value: "gsk-test" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save key" }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("provider_request", { method: "PUT", path: "/providers/groq/credential", body: { key: "gsk-test" } }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
   it("blocks remote checks and model listing in local-only mode", async () => {
     vi.mocked(invoke).mockResolvedValue(status); render(<ProviderSettings />);
-    await screen.findByText("OpenAI · Key saved");
+    await screen.findByText("Ready · test-vision");
     expect((screen.getByRole("button", { name: "Check connection" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "Load available models" }) as HTMLButtonElement).disabled).toBe(true);
   });

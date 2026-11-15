@@ -43,3 +43,19 @@ it("uses the expected version and surfaces save conflicts without closing the ed
   expect(screen.getByRole("dialog")).toBeTruthy();
   expect(invoke).toHaveBeenLastCalledWith("visual_request", { operation: "revise", body: { id: "document", conversation_id: "chat", expected_version: 1, parent: 1, spec } });
 });
+
+it("draws Mermaid diagrams inline and opens a full-screen view", async () => {
+  render(<VisualCard source={"flowchart TD\n  A --> B"} content="answer" conversationId="chat" mermaid />);
+  expect(await screen.findAllByText("Mermaid")).toHaveLength(1);
+  expect(invoke).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Expand" }));
+  expect(screen.getByRole("dialog", { name: "Diagram" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+it("removes styling lines and escaped newlines that break rendering", async () => {
+  const { cleanMermaid } = await import("../lib/visuals");
+  const cleaned = cleanMermaid("flowchart TD\n  A[One\\n two] --> B:::hot\n  style A fill:#f9f\n  classDef hot fill:#f00\n  class B hot\n  linkStyle 0 stroke:#000");
+  expect(cleaned).toBe("flowchart TD\n  A[One  two] --> B");
+});
