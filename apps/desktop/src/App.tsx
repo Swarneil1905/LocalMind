@@ -114,7 +114,8 @@ export default function App() {
   const [memoryEnabled, setMemoryEnabled] = useState(true);
   const [knowledgeEnabled, setKnowledgeEnabled] = useState(false);
   const [hydeEnabled, setHydeEnabled] = useState(false);
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  // The user's own choice is remembered; it was reset to off on every launch.
+  const [webSearchEnabled, setWebSearchEnabled] = useState(() => localStorage.getItem("lm-web-search") === "on");
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem("lm-theme");
     return saved === "dark" || saved === "light" ? saved : "system";
@@ -177,6 +178,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("lm-balanced-model", balancedModel);
   }, [balancedModel]);
+  useEffect(() => {
+    localStorage.setItem("lm-web-search", webSearchEnabled ? "on" : "off");
+  }, [webSearchEnabled]);
   useEffect(() => {
     const media = window.matchMedia("(max-width: 760px)");
     const resize = () => {

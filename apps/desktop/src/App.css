@@ -615,8 +615,10 @@
   line-height: 1.65;
 }
 .markdown-content {
-  font-size: var(--type-body);
-  line-height: 1.75;
+  /* Book-like reading text: serif on warm paper keeps long answers calm. Code keeps its own mono face. */
+  font-family: "Charter", "Iowan Old Style", "Georgia", serif;
+  font-size: 17px;
+  line-height: 1.7;
   overflow-wrap: anywhere;
 }
 .markdown-content p {
@@ -858,10 +860,8 @@
 }
 .source-cards h4 {
   margin: 0 0 8px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--text-3);
 }
 .source-cards ol {
