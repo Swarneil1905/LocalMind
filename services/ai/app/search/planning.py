@@ -41,7 +41,8 @@ _TIME_CUE = re.compile(
 _CHANGING_SUBJECT = re.compile(
     r"\b(?:news|headlines?|weather|forecasts?|traffic|prices?|pricing|"
     r"exchange rates?|stock|scores?|standings|versions?|releases?|updates?|"
-    r"service alerts?|schedules?|availability|developments?|research|state of)\b"
+    r"alerts?|schedules?|availability|developments?|research|state of|"
+    r"s&p(?:\s*500)?|nasdaq|dow jones|markets?|bitcoin|crypto|earnings|interest rates?)\b"
 )
 _OPT_OUT = re.compile(
     r"\b(?:do not|don't|dont|never|avoid|skip|stop)\s+(?:the\s+)?(?:web\s+)?"
@@ -143,7 +144,16 @@ def needs_freshness(message: str) -> bool:
             and not re.search(r"\b(?:was|were|history|historical|yesterday|last|"
                               r"(?:19|20)\d{2})\b", text)):
         return True
+    # "What's happening at X" and "any news" ask about the world right now.
+    if (re.search(r"\b(?:what(?:'?s|\s+is|\s+has|\s+was)?\s+(?:happening|going\s+on|happened)|any\s+news)\b", text)
+            and not (_TEACHING.search(text) or _TRANSFORM.search(text))):
+        return True
     if _TIME_CUE.search(text):
+        # "today", "tonight" and "this week" alone are plans or the calendar date,
+        # not a request for live facts ("what should I cook tonight", "today's date").
+        strong = re.search(r"\b(?:latest|newest|breaking|recent(?:ly)?|up[- ]to[- ]date|past\s+(?:seven|7)\s+days)\b", text)
+        if not strong and not _CHANGING_SUBJECT.search(text):
+            return False
         # "Write a study plan for today" schedules local work. A plan using
         # today's weather/news still needs those external facts.
         only_task_time = (

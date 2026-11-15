@@ -16,6 +16,7 @@ from fastapi import FastAPI
 from app import providers, provider_store as store
 from app.api.routes.providers import router
 from app.credentials import CredentialStore, CredentialUnavailable
+from app.provider_store import ProviderError
 
 Client = httpx.AsyncClient
 
@@ -283,6 +284,25 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
             checked = await providers.check_model("openai", "new-model")
         self.assertFalse(checked["generation_tested"])
         self.assertTrue(all(request.method == "GET" for request in self.calls))
+
+    async def test_deepseek_uses_chat_completions_hides_reasoning_and_checks_model_by_list(self):
+        consent = self.setup_provider("deepseek")
+        wire = sse({"choices": [{"delta": {"reasoning_content": "private thinking"}}]},
+                   {"choices": [{"delta": {"content": "Answer"}}]},
+                   {"choices": [{"delta": {}, "finish_reason": "stop"}]},
+                   {"choices": [], "usage": {"prompt_tokens": 5, "completion_tokens": 2}})
+        with self.transport(lambda req: httpx.Response(200, text=wire)):
+            events = await self.run_chat("deepseek", consent)
+        self.assertEqual([e["content"] for e in events if e["type"] == "token"], ["Answer"])
+        self.assertNotIn("private thinking", json.dumps(events))
+        call = self.calls[-1]
+        self.assertEqual(call.url.path, "/chat/completions")
+        self.assertEqual(call.headers["authorization"], "Bearer secret-that-must-not-leak")
+        self.assertEqual(json.loads(call.content)["stream_options"], {"include_usage": True})
+        with self.transport(lambda req: httpx.Response(200, json={"data": [{"id": "test-model"}]})):
+            self.assertTrue((await providers.check_model("deepseek", "test-model"))["ok"])
+            with self.assertRaises(ProviderError):
+                await providers.check_model("deepseek", "missing-model")
 
     def test_keys_are_profile_scoped_replaceable_and_never_written_to_database(self):
         self.setup_provider()

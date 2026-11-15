@@ -775,6 +775,7 @@
 .source-number {
   font-variant-numeric: tabular-nums;
   color: var(--text-3);
+  margin-right: 6px;
 }
 .message-actions {
   display: flex;
@@ -851,6 +852,57 @@
   display: block;
   margin-top: 4px;
   color: var(--text-3);
+}
+.source-cards {
+  margin: 14px 0 6px;
+}
+.source-cards h4 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.source-cards ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+.source-cards li {
+  min-width: 0;
+}
+.source-cards a {
+  display: block;
+  height: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+  text-decoration: none;
+  font-size: 12px;
+}
+.source-cards a:hover {
+  border-color: var(--link);
+}
+.source-card-title {
+  color: var(--text-1, inherit);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.source-cards small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .followups {
   padding: 8px 0 16px;

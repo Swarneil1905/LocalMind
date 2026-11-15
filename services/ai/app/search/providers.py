@@ -26,6 +26,7 @@ class SearchResult:
     title: str
     url: str
     snippet: str
+    published_at: str | None = None  # set only by providers that report a date (news RSS)
 
     def to_dict(self) -> dict:
         return {"title": self.title, "url": self.url, "snippet": self.snippet}
@@ -104,6 +105,32 @@ async def search_duckduckgo(query: str, max_results: int = 5) -> list[SearchResu
 # ---------------------------------------------------------------------------
 # Brave Search API
 # ---------------------------------------------------------------------------
+
+async def search_news(query: str, max_results: int = 6) -> list[SearchResult]:
+    """Dated headlines from Google News RSS. Gives fresh-news questions evidence with real dates."""
+    from email.utils import parsedate_to_datetime
+    from xml.etree import ElementTree
+
+    async with httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=False) as client:
+        resp = await client.get("https://news.google.com/rss/search",
+                                params={"q": _sanitize_query(query) + " when:7d", "hl": "en-US", "gl": "US", "ceid": "US:en"})
+        resp.raise_for_status()
+    results = []
+    for item in ElementTree.fromstring(resp.text).iter("item"):
+        title = unescape((item.findtext("title") or "").strip())
+        link = (item.findtext("link") or "").strip()
+        try:
+            published = parsedate_to_datetime(item.findtext("pubDate") or "").isoformat()
+        except (TypeError, ValueError):
+            continue
+        if not title or urlparse(link).scheme != "https":
+            continue
+        publisher = (item.findtext("source") or "").strip()
+        results.append(SearchResult(title, link, publisher, published))
+        if len(results) >= max_results:
+            break
+    return results
+
 
 async def search_brave(query: str, api_key: str, max_results: int = 5) -> list[SearchResult]:
     """Search via Brave Search API. Requires API key."""

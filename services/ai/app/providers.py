@@ -17,7 +17,8 @@ from app import provider_store as store
 from app.provider_store import ProviderError
 
 BASES = {"openai": "https://api.openai.com/v1", "anthropic": "https://api.anthropic.com/v1",
-         "gemini": "https://generativelanguage.googleapis.com/v1beta"}
+         "gemini": "https://generativelanguage.googleapis.com/v1beta",
+         "deepseek": "https://api.deepseek.com"}
 TIMEOUT = httpx.Timeout(connect=10, read=90, write=30, pool=10)
 MAX_EVENT = 1_000_000
 
@@ -133,6 +134,13 @@ async def list_models(provider):
 
 
 async def check_model(provider, model):
+    if provider == "deepseek":
+        # DeepSeek has no per-model metadata route, so confirm the id in the model list.
+        listed = await list_models(provider)
+        store.model_id(model)
+        if model not in {item["id"] for item in listed["models"]}:
+            raise ProviderError("model", "The provider did not confirm access to the selected model.")
+        return {"ok": True, "model": model, "vision": None, "generation_tested": False}
     body = await _metadata(provider, model)
     returned = str(body.get("name", "")).removeprefix("models/") if provider == "gemini" else body.get("id")
     if returned != model:
@@ -194,6 +202,18 @@ def request_body(provider, model, messages, max_tokens):
             parts.extend({"type": "input_image", "image_url": f"data:{img['mime_type']};base64,{img['data']}"} for img in msg.get("images", []))
             rows.append({"role": msg["role"], "content": parts})
         return "/responses", {"model": model, "input": rows, "max_output_tokens": max_tokens, "stream": True, "store": False}
+    if provider == "deepseek":
+        # OpenAI-compatible Chat Completions; image parts are sent only when the user marked the model as vision-capable.
+        rows = []
+        for msg in messages:
+            if not msg.get("images"):
+                rows.append({"role": msg["role"], "content": msg["content"]})
+                continue
+            parts = [{"type": "text", "text": msg["content"]}]
+            parts.extend({"type": "image_url", "image_url": {"url": f"data:{img['mime_type']};base64,{img['data']}"}} for img in msg["images"])
+            rows.append({"role": msg["role"], "content": parts})
+        return "/chat/completions", {"model": model, "messages": rows, "max_tokens": max_tokens, "stream": True,
+                                     "stream_options": {"include_usage": True}}
     system = "\n\n".join(msg["content"] for msg in messages if msg["role"] == "system")
     if provider == "anthropic":
         rows = []
@@ -319,6 +339,22 @@ async def stream_chat(provider: str, model: str, messages: list[dict], *, scopes
                                 raise ProviderError("incomplete", "The provider stopped before finishing. Your partial answer is preserved.")
                         elif kind == "message_stop":
                             completed = True
+                    elif provider == "deepseek":
+                        usage = event.get("usage") or {}
+                        if usage:
+                            input_tokens, output_tokens = _tokens(usage.get("prompt_tokens")), _tokens(usage.get("completion_tokens"))
+                            received_usage = input_tokens is not None and output_tokens is not None
+                        for choice in (event.get("choices") or [])[:1]:
+                            text = (choice.get("delta") or {}).get("content")
+                            if isinstance(text, str) and text:  # reasoning_content is deliberately not shown
+                                answer_chars += len(text.strip())
+                                yield {"type": "token", "content": text}
+                            stop = choice.get("finish_reason")
+                            if stop == "content_filter":
+                                raise ProviderError("blocked", "The provider declined this request.")
+                            if stop and stop != "stop":
+                                raise ProviderError("incomplete", "The provider stopped before finishing. Your partial answer is preserved.")
+                            completed = completed or stop == "stop"
                     else:
                         if event.get("promptFeedback", {}).get("blockReason"):
                             raise ProviderError("blocked", "The provider declined this request.")

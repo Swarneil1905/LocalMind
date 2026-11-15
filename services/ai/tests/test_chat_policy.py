@@ -21,6 +21,12 @@ REAL_CLIENT = httpx.AsyncClient
 
 
 class AnswerPolicyTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        # No test may reach the real news feed.
+        patcher = patch.object(chat, "search_news", AsyncMock(return_value=[]))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     async def test_greeting_with_today_reaches_model_without_search_or_connectors(self):
         for message in ("hello, how are you doing today?", "thats fine, i asked how are you?"):
             with self.subTest(message=message), \

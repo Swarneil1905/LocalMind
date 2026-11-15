@@ -1473,7 +1473,7 @@ fn provider_path_allowed(method: &str, path: &str) -> bool {
     }
     let parts: Vec<_> = path.split('/').collect();
     if parts.len() != 4 || !parts[0].is_empty() || parts[1] != "providers"
-        || !matches!(parts[2], "openai" | "anthropic" | "gemini") { return false; }
+        || !matches!(parts[2], "openai" | "anthropic" | "gemini" | "deepseek") { return false; }
     matches!((method, parts[3]), ("GET", "models") | ("POST", "check")
         | ("PUT", "credential") | ("DELETE", "credential") | ("PATCH", "config")
         | ("PUT", "consent") | ("DELETE", "consent"))
@@ -1554,6 +1554,7 @@ mod cloud_bridge_tests {
     #[test]
     fn only_known_provider_actions_are_forwarded() {
         assert!(provider_path_allowed("PUT", "/providers/openai/credential"));
+        assert!(provider_path_allowed("PUT", "/providers/deepseek/credential"));
         assert!(provider_path_allowed("POST", "/chat/preview"));
         for path in ["https://example.com", "/providers/../memory", "/providers/openai/credential?x=1", "/providers/other/models", "/providers/openai/credential/"] {
             assert!(!provider_path_allowed("PUT", path));

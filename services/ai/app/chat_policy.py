@@ -63,7 +63,10 @@ def answer_policy(today: str, *, searched: bool, web_allowed: bool) -> str:
         web_state = (
             "LocalMind has a web search integration and it retrieved sources for this request. "
             "Web evidence for this request is supplied separately. Ground current claims in "
-            "that evidence only. If it does not answer the question, say what is unverified."
+            "that evidence only. If it does not answer the question, say what is unverified. "
+            "After each claim taken from a web source, cite it inline with that record's \"cite\" "
+            "value, for example [1] or [2][3]. Never cite a number that was not supplied, and do not "
+            "add a separate source list or invent links."
         )
     elif web_allowed:
         web_state = (

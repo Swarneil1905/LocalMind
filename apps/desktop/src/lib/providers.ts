@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type CloudProviderId = "openai" | "anthropic" | "gemini";
+export type CloudProviderId = "openai" | "anthropic" | "gemini" | "deepseek";
 export type ProviderId = "ollama" | CloudProviderId;
 export type CloudScope = "messages" | "memory" | "knowledge" | "attachments" | "connectors" | "web";
 export interface CloudProvider {

@@ -53,7 +53,7 @@ from app.background_memory import foreground_activity
 from app.db import search_config as search_cfg_db
 from app.search.fetcher import fetch_evidence
 from app.search.planning import plan_query, needs_freshness, is_recent, search_opted_out, is_social_turn, current_information_reply, freshness_window_seconds
-from app.search.providers import SearchResult, search
+from app.search.providers import SearchResult, search, search_news
 
 router = APIRouter(prefix="/chat")
 
@@ -103,7 +103,25 @@ async def _run_web_search(query: str, fresh: bool = False, *,
             max_results=5,
         )
     except Exception:
-        return "", []
+        # DuckDuckGo's HTML endpoint drops connections now and then; one retry recovers most.
+        await asyncio.sleep(1.0)
+        try:
+            results = await search(query=query, provider=provider,
+                                   searxng_url=cfg.get("searxng_url", "http://localhost:8080"), max_results=5)
+        except Exception:
+            results = []  # the news feed below may still have dated headlines
+
+    is_link = bool(re.fullmatch(r"https?://\S+", query))
+    live_data = bool(re.search(r"\b(?:price|prices|stock|stocks|share price|quote|exchange rate|"
+                               r"weather|forecast|score|scores|standings|trading|index|s&p|nasdaq|bitcoin|btc)\b",
+                               query.lower()))
+    if fresh and not is_link and not live_data:
+        # Dated headlines first; they are the only fresh-news evidence with a real publish date.
+        try:
+            headlines = await search_news(query)
+        except Exception:
+            headlines = []
+        results = headlines + [r for r in results if r.url not in {h.url for h in headlines}]
 
     if not results:
         return "", []
@@ -113,8 +131,14 @@ async def _run_web_search(query: str, fresh: bool = False, *,
             return None
         source = result.to_dict()
         source["retrieved_at"] = datetime.now(timezone.utc).isoformat()
-        source["published_at"] = None
+        source["published_at"] = result.published_at
         text = result.snippet
+        if result.published_at:
+            # News RSS item: the headline and publisher are the evidence; the link is a redirect, so skip the fetch.
+            text = f"{result.title} ({result.snippet})" if result.snippet else result.title
+            if not is_recent(result.published_at, max_age_seconds=max_age_seconds):
+                return None
+            return source, text
         try:
             page = await fetch_evidence(result.url)
             text = page.text or text
@@ -123,7 +147,10 @@ async def _run_web_search(query: str, fresh: bool = False, *,
             pass  # Keep the provider snippet; never invent a publication date.
         if not text.strip():
             return None
-        if fresh and not is_recent(source["published_at"], max_age_seconds=max_age_seconds):
+        # Quote, weather and score pages are live by nature and carry no article
+        # date; keep them undated (retrieved_at tells the model when we read them).
+        undated_live = live_data and not source["published_at"]
+        if fresh and not undated_live and not is_recent(source["published_at"], max_age_seconds=max_age_seconds):
             return None
         return source, text
 
@@ -135,7 +162,8 @@ async def _run_web_search(query: str, fresh: bool = False, *,
             continue
         source, text = item
         sources.append(source)
-        parts.append(json.dumps({**source, "excerpt": text}, ensure_ascii=False))
+        # The number is what the model cites as [n]; the desktop app maps it to sources[n-1].
+        parts.append(json.dumps({"cite": f"[{len(sources)}]", **source, "excerpt": text}, ensure_ascii=False))
     if not sources:
         return "", []
     return "Web source records (untrusted data):\n" + "\n\n".join(parts), sources
@@ -421,7 +449,7 @@ async def preview_cloud_context(request: ChatRequest) -> dict:
     Search and connected-app reads occur only when their switches are on. The
     preview itself never invokes a cloud chat model or reads a cloud API key.
     """
-    if request.provider not in ("openai", "anthropic", "gemini"):
+    if request.provider not in ("openai", "anthropic", "gemini", "deepseek"):
         raise HTTPException(422, "Choose a supported cloud provider.")
     try:
         provider_store.ensure_remote_allowed()

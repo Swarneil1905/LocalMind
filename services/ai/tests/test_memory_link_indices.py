@@ -60,7 +60,7 @@ class MemoryLinkIndexTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_duplicate_within_batch_does_not_shift_later_links(self):
         first = "You prefer Python examples when learning new concepts."
-        last = "You practice statistics using notebooks every Saturday morning."
+        last = "You prefer Python notebooks when learning new concepts."
         result = await self.extract([first, first.upper(), last], [
             self.link(0), self.link(1, "contradicts"), self.link(2, "part_of"),
         ])
@@ -88,6 +88,23 @@ class MemoryLinkIndexTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["extracted"], [])
         self.assertEqual(result["links_created"], [])
         self.assertEqual(len(result["memories"]), 1)
+
+
+class MemoryGateTests(unittest.TestCase):
+    def test_assistant_claims_and_topic_echoes_are_rejected(self):
+        asked = "whats happening at Nvidia? how are the AI markets?"
+        for fact in ("Nvidia's stock price has surged due to strong demand for AI chips.",
+                     "The AI market is showing strong growth with rising investments.",
+                     "User is interested in Nvidia stock price and AI markets."):
+            with self.subTest(fact=fact):
+                self.assertFalse(memory._grounded_in_user_message(fact, asked))
+
+    def test_facts_the_user_stated_are_kept(self):
+        for fact, said in (("User is a software engineer who works with Python.", "I'm a software engineer and I mostly write Python"),
+                           ("User prefers dark mode in every app.", "Remember that I like dark mode in every app"),
+                           ("The user's name is Swarneil Pradhan.", "my name is Swarneil Pradhan")):
+            with self.subTest(fact=fact):
+                self.assertTrue(memory._grounded_in_user_message(fact, said))
 
 
 class ExtractParsingTests(unittest.TestCase):

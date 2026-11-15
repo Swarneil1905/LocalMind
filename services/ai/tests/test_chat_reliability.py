@@ -3,7 +3,7 @@ import json
 import os
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 # Imports initialize the configuration DB; isolate it from the user's data.
@@ -53,10 +53,52 @@ class RetrievalPolicyTests(unittest.TestCase):
 
 
 class ChatStreamTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        # No test may reach the real news feed.
+        patcher = patch("app.api.routes.chat.search_news", AsyncMock(return_value=[]))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def test_dated_headlines_reach_the_model_and_old_ones_do_not(self):
+        now = datetime.now(timezone.utc)
+        headlines = [SearchResult("Fed holds rates", "https://news.google.com/a", "Reuters", (now - timedelta(days=1)).isoformat()),
+                     SearchResult("Old story", "https://news.google.com/b", "AP", (now - timedelta(days=30)).isoformat())]
+        with patch("app.api.routes.chat.search_news", AsyncMock(return_value=headlines)), patch("app.api.routes.chat.search", AsyncMock(return_value=[])):
+            context, sources = await _run_web_search("latest fed news", fresh=True)
+        self.assertEqual([s["title"] for s in sources], ["Fed holds rates"])
+        self.assertIn("Reuters", context)
+        self.assertIn('"cite": "[1]"', context)
+
+    async def test_headlines_survive_a_failed_web_search(self):
+        now = datetime.now(timezone.utc)
+        headline = SearchResult("Fed holds rates", "https://news.google.com/a", "Reuters", (now - timedelta(days=1)).isoformat())
+        with patch("app.api.routes.chat.search_news", AsyncMock(return_value=[headline])), patch("app.api.routes.chat.search", AsyncMock(side_effect=ConnectionError("down"))):
+            context, sources = await _run_web_search("latest fed news", fresh=True)
+        self.assertEqual(len(sources), 1)
+
     async def test_latest_news_rejects_undated_results(self):
         with patch("app.api.routes.chat.search", AsyncMock(return_value=[SearchResult("Old story", "https://example.com/story", "snippet")])), patch("app.api.routes.chat.fetch_evidence", AsyncMock(return_value=PageEvidence("old story"))):
             context, sources = await _run_web_search("latest news", fresh=True)
             self.assertEqual((context, sources), ("", []))
+
+    async def test_live_quote_pages_are_kept_without_a_publish_date(self):
+        with patch("app.api.routes.chat.search", AsyncMock(return_value=[SearchResult("NVDA", "https://example.com/quote/NVDA", "")])), patch("app.api.routes.chat.fetch_evidence", AsyncMock(return_value=PageEvidence("NVDA 201.30 +1.2%"))):
+            context, sources = await _run_web_search("nvidia stock price today", fresh=True)
+        self.assertEqual(len(sources), 1)
+        self.assertIsNone(sources[0]["published_at"])
+        self.assertIn("201.30", context)
+
+    async def test_search_retries_once_after_a_dropped_connection(self):
+        flaky = AsyncMock(side_effect=[ConnectionError("dropped"), [SearchResult("Doc", "https://example.com/d", "snippet text")]])
+        with patch("app.api.routes.chat.search", flaky), patch("app.api.routes.chat.fetch_evidence", AsyncMock(return_value=PageEvidence("Doc body"))):
+            context, sources = await _run_web_search("python decorators", fresh=False)
+        self.assertEqual(flaky.await_count, 2)
+        self.assertEqual(len(sources), 1)
+
+    def test_publish_date_is_read_from_time_tag_and_json_ld_list(self):
+        self.assertEqual(extract_article('<main><time datetime="2026-11-14T09:00:00Z">Nov 14</time><p>Story</p></main>').published_at, "2026-11-14T09:00:00Z")
+        ld = '<script type="application/ld+json">[{"@type":["NewsArticle"],"datePublished":"2026-11-13T08:00:00Z"}]</script><p>x</p>'
+        self.assertEqual(extract_article(ld).published_at, "2026-11-13T08:00:00Z")
 
     async def test_search_failure_does_not_call_model_to_invent_news(self):
         request = ChatRequest(message="latest San Antonio news", model="test", web_search_enabled=True, connector_context_enabled=False)

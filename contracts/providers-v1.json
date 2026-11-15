@@ -221,6 +221,74 @@
         404,
         503
       ]
+    },
+    "deepseek": {
+      "success": [
+        {
+          "choices": [
+            {
+              "delta": {
+                "content": "Hello"
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "delta": {},
+              "finish_reason": "stop"
+            }
+          ]
+        },
+        {
+          "choices": [],
+          "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 3
+          }
+        }
+      ],
+      "refusal": [
+        {
+          "choices": [
+            {
+              "delta": {
+                "content": "I cannot help with that request."
+              },
+              "finish_reason": "content_filter"
+            }
+          ]
+        }
+      ],
+      "partial": [
+        {
+          "choices": [
+            {
+              "delta": {
+                "content": "Partial answer"
+              }
+            }
+          ]
+        }
+      ],
+      "vision_message": {
+        "role": "user",
+        "content": "Describe this synthetic image.",
+        "images": [
+          {
+            "mime_type": "image/png",
+            "data": "aW1hZ2U="
+          }
+        ]
+      },
+      "http_errors": [
+        401,
+        403,
+        429,
+        404,
+        503
+      ]
     }
   }
 }

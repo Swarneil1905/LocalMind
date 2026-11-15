@@ -152,6 +152,23 @@ def _parse_extract_response(text: str) -> tuple[list[str], list[dict]]:
     return _parse_json_array(text), []
 
 
+_USER_CUE = re.compile(r"\b(?:user|users|user's|you|your|yours|i|i'm|i've|my|me|mine)\b", re.I)
+_GENERIC = {"user", "users", "this", "that", "with", "they", "have", "their", "from", "about", "prefers",
+            "likes", "wants", "uses", "works", "working", "enjoys", "interested", "needs", "says", "said"}
+
+
+def _grounded_in_user_message(fact: str, user_message: str) -> bool:
+    """A small model often saves what the assistant said. Keep only facts that name the user
+    and whose content words mostly come from the user's own message."""
+    if not _USER_CUE.search(fact):
+        return False
+    words = [w for w in re.findall(r"[a-z0-9]{4,}", fact.lower()) if w not in _GENERIC]
+    if not words:
+        return False
+    said = user_message.lower()
+    return sum(w[:5] in said for w in words) * 2 > len(words)
+
+
 @router.post("/extract")
 async def extract_memories(request: ExtractRequest) -> dict:
     try:
@@ -205,6 +222,8 @@ async def extract_memories(request: ExtractRequest) -> dict:
         extracted_texts, proposed_links = [], []
         extraction_status = "unavailable"
 
+    # Rejected facts become "" so link indices keep their positions; persistence skips them.
+    extracted_texts = [f if _grounded_in_user_message(f, request.user_message) else "" for f in extracted_texts]
     indexed_rows = mem_db.insert_memories_indexed(extracted_texts, project_id=project_id,
                                                 conversation_id=request.conversation_id, expected_revision=revision)
     new_rows = [row for row in indexed_rows if row is not None]

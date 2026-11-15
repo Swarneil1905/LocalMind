@@ -145,10 +145,14 @@ class ArticleParser(HTMLParser):
             self.skip += 1
         if tag in ("article", "main"):
             self.article_depth += 1
-        if tag == "meta" and attrs.get("property", attrs.get("name", "")).lower() in (
-            "article:published_time", "datepublished", "pubdate", "date", "parsely-pub-date"
+        if tag == "meta" and (attrs.get("property") or attrs.get("name") or attrs.get("itemprop") or "").lower() in (
+            "article:published_time", "og:article:published_time", "datepublished", "pubdate", "date",
+            "parsely-pub-date", "dc.date", "dc.date.issued", "dcterms.created", "sailthru.date",
+            "article:modified_time", "og:updated_time", "datemodified",
         ):
-            self.published_at = attrs.get("content") or self.published_at
+            self.published_at = self.published_at or attrs.get("content")
+        if tag == "time" and attrs.get("datetime") and not self.published_at:
+            self.published_at = attrs["datetime"]
 
     def handle_endtag(self, tag):
         if tag == "script" and self.structured_data:
@@ -176,8 +180,11 @@ class ArticleParser(HTMLParser):
                 self._read_dates(item)
         elif isinstance(value, dict):
             kind = value.get("@type", "")
-            if kind in ("NewsArticle", "Article", "BlogPosting") and isinstance(value.get("datePublished"), str):
-                self.published_at = self.published_at or value["datePublished"]
+            kinds = kind if isinstance(kind, list) else [kind]
+            if any(k in ("NewsArticle", "Article", "BlogPosting", "ReportageNewsArticle", "LiveBlogPosting", "WebPage") for k in kinds):
+                date = value.get("datePublished") or value.get("dateModified")
+                if isinstance(date, str):
+                    self.published_at = self.published_at or date
             if "@graph" in value:
                 self._read_dates(value["@graph"])
 
