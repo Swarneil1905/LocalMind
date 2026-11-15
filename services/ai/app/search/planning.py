@@ -44,6 +44,13 @@ _CHANGING_SUBJECT = re.compile(
     r"alerts?|schedules?|availability|developments?|research|state of|"
     r"s&p(?:\s*500)?|nasdaq|dow jones|markets?|bitcoin|crypto|earnings|interest rates?)\b"
 )
+_CHANGING_FACT = re.compile(
+    r"\bwho\s+(?:is|are)\s+(?:the\s+)?(?:current|leading|top|richest)\b|"
+    r"\bwho\s+won\s+(?:the\s+)?(?:last|latest|recent)\b|"
+    r"\bcurrent\s+(?:president|prime minister|ceo|champion|leader|mayor)\b|"
+    r"\b(?:last|this)\s+quarter\b|\bearnings\b|\bstocks\b|\bstock\s+(?:price|market|is\s+(?:up|down))\b|"
+    r"\bvisa\s+(?:requirements?|for)\b|\bneed\s+a\s+visa\b"
+)
 _OPT_OUT = re.compile(
     r"\b(?:do not|don't|dont|never|avoid|skip|stop)\s+(?:the\s+)?(?:web\s+)?"
     r"(?:search(?:ing)?|brows(?:e|ing))\b|"
@@ -147,6 +154,9 @@ def needs_freshness(message: str) -> bool:
     # "What's happening at X" and "any news" ask about the world right now.
     if (re.search(r"\b(?:what(?:'?s|\s+is|\s+has|\s+was)?\s+(?:happening|going\s+on|happened)|any\s+news)\b", text)
             and not (_TEACHING.search(text) or _TRANSFORM.search(text))):
+        return True
+    # Facts a model's memory gets wrong: office holders, winners, rankings, company results, entry rules.
+    if _CHANGING_FACT.search(text) and not (_TEACHING.search(text) or _TRANSFORM.search(text)):
         return True
     if _TIME_CUE.search(text):
         # "today", "tonight" and "this week" alone are plans or the calendar date,
