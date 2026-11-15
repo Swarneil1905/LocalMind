@@ -20,6 +20,17 @@ export function parseVisual(source: string): VisualSpec {
   if (!value || value.schema_version !== 1 || !["diagram", "mermaid", "chart", "widget", "image"].includes(value.type) || typeof value.title !== "string" || value.title.length > 200) throw new Error("Unsupported visual format.");
   return value as VisualSpec; // Detailed validation occurs in the local service before rendering.
 }
+/** Models often add colour and layout lines that only restyle a diagram. Drop them so the
+ * diagram still renders (and passes the service's no-styling rule) instead of failing. */
+export function cleanMermaid(source: string): string {
+  const flowchart = /^\s*(flowchart|graph)\b/i.test(source);
+  return source.split("\n")
+    .filter(line => !/^\s*(style|classDef|linkStyle|click)\b/i.test(line) && !/^\s*%%/.test(line)
+      && !(flowchart && /^\s*class\s/i.test(line)))
+    .map(line => line.replace(/\\n/g, " ").replace(/:::\w+/g, ""))
+    .join("\n").trim();
+}
+
 export function tinyNetwork(input: number, weight: number, target: number) {
   // Two scalar layers: tanh(w*x), then a fixed output weight of 2.
   const hidden = Math.tanh(input * weight), output = 2 * hidden;
