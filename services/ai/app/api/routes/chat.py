@@ -38,7 +38,7 @@ from pydantic import BaseModel, Field
 
 from app.action_boundary import unsupported_task_response
 from app.task_actions import propose_from_chat
-from app.chat_policy import DEFAULT_SYSTEM_PROMPT, answer_policy
+from app.chat_policy import DEFAULT_SYSTEM_PROMPT, NO_SOURCES_NOTICE, answer_policy
 from app.context_budget import pack_context
 from app.context_retrieval import collect_context, resolve_history, resolve_project
 from app.inference_queue import inference_slot
@@ -182,11 +182,12 @@ async def _search_for_request(query: str, fresh: bool):
     return await _run_web_search(query, fresh)
 
 
-async def _prepare_chat(request: ChatRequest, connector_context: str, extra_context: str, sources: list[dict], *, claim=True, timing=None):
+async def _prepare_chat(request: ChatRequest, connector_context: str, extra_context: str, sources: list[dict], *, claim=True, timing=None, search_failed=False):
     # Build message list
     system = answer_policy(
         datetime.now(timezone.utc).date().isoformat(),
         searched=bool(sources), web_allowed=request.web_search_enabled and not search_opted_out(request.message),
+        search_failed=search_failed,
     )
     system += response_preferences.instruction()
     supplied_context = {"desktop_context": request.context, "connected_apps": connector_context}
@@ -304,6 +305,7 @@ async def _stream_response(request: ChatRequest, timing: ChatTiming) -> AsyncIte
             connector_context = await _gather_connector_context(request.message)
 
     query = None
+    search_failed = False
     web_allowed = request.web_search_enabled and not search_opted_out(request.message)
     fresh = needs_freshness(request.message)
     unavailable = current_information_reply(request.message, web_allowed=web_allowed,
@@ -320,21 +322,16 @@ async def _stream_response(request: ChatRequest, timing: ChatTiming) -> AsyncIte
             with timing.phase("web_search"):
                 extra_context, sources = await _search_for_request(query, fresh)
             if not sources:
-                # Fail closed: a model must not manufacture current news when retrieval fails.
-                answer = (
-                    "I couldn't verify current information from sufficiently recent, dated sources. Try a more specific question or a direct source link."
-                    if fresh else
-                    "I couldn't retrieve reliable web sources for that question. Try a more specific query or an article link."
-                )
+                # The notice is fixed text written here, never by the model. The model then answers
+                # under a policy that forbids stating current facts (see answer_policy).
+                search_failed = True
                 yield f"data: {json.dumps({'type': 'sources', 'sources': []})}\n\n"
                 yield f"data: {json.dumps({'type': 'status', 'phase': 'answering'})}\n\n"
-                yield f"data: {json.dumps({'type': 'token', 'content': answer})}\n\n"
-                yield f"data: {json.dumps({'type': 'done'})}\n\n"
-                return
+                yield f"data: {json.dumps({'type': 'token', 'content': NO_SOURCES_NOTICE + chr(10) + chr(10)})}\n\n"
 
     try:
         with timing.phase("context_preparation"):
-            profile, packed, image_count = await _prepare_chat(request, connector_context, extra_context, sources, timing=timing)
+            profile, packed, image_count = await _prepare_chat(request, connector_context, extra_context, sources, timing=timing, search_failed=search_failed)
     except (ValueError, httpx.HTTPError) as exc:
         message = str(exc) if isinstance(exc, ValueError) else "Could not inspect the installed model. Check Ollama and retry."
         yield f"data: {json.dumps({'type': 'error', 'content': message})}\n\n"

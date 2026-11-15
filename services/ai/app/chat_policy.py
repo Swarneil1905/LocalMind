@@ -58,8 +58,20 @@ extraction has saved anything during this response.
 """
 
 
-def answer_policy(today: str, *, searched: bool, web_allowed: bool) -> str:
-    if searched:
+NO_SOURCES_NOTICE = ("No current sources were found for this question, so the answer below comes from the "
+                     "model's own knowledge and may be out of date. Use Try again to search once more.")
+
+
+def answer_policy(today: str, *, searched: bool, web_allowed: bool, search_failed: bool = False) -> str:
+    if search_failed:
+        web_state = (
+            "A web search was attempted for this request and returned no usable, sufficiently recent sources. "
+            "The user has already been told this. Give only stable background knowledge that helps answer. "
+            "Do not state current events, prices, scores, dates or figures as fact, do not call anything the latest, "
+            "recent or upcoming, do not say \"as of\" any date, and do not cite sources. "
+            "If the question is only about current events, say you have nothing verified and suggest what to search for."
+        )
+    elif searched:
         web_state = (
             "LocalMind has a web search integration and it retrieved sources for this request. "
             "Web evidence for this request is supplied separately. Ground current claims in "
