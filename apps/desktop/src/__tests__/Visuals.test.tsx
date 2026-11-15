@@ -3,8 +3,38 @@ import { afterEach, describe, expect, it } from "vitest";
 import { descent, diagramSvg, parseVisual, tinyNetwork } from "../lib/visuals";
 import { AttachmentPreview } from "../components/ChatAttachments";
 import { Chart } from "../components/VisualRenderers";
+import userEvent from "@testing-library/user-event";
 
 afterEach(cleanup);
+it.each(["line", "scatter", "bar"] as const)("distinguishes eight %s series and preserves their legend styles when toggled", async chart => {
+  const user = userEvent.setup();
+  const series = Array.from({ length: 8 }, (_, index) => ({ name: `Series ${index + 1}`, points: [[1, index + 1], [2, index + 2]] as [number, number][] }));
+  render(<Chart spec={{ schema_version: 1, type: "chart", title: "Eight series", chart, source: "Fixture", synthetic: true, x_label: "Day", y_label: "Count", series }} />);
+  const plot = screen.getByRole("img", { name: "Eight series" });
+  const groups = () => Array.from(plot.children).filter(element => element.tagName.toLowerCase() === "g");
+  const styles = () => groups().map(group => ({ color: group.getAttribute("fill"), line: group.querySelector("polyline")?.getAttribute("stroke-dasharray"), point: group.querySelector("path")?.getAttribute("d") }));
+  const original = styles();
+  expect(original).toHaveLength(8);
+  expect(new Set(original.map(style => style.color)).size).toBe(8);
+  if (chart !== "bar") expect(new Set(original.map(style => style.point)).size).toBe(8);
+  const keys = series.map(({ name }) => screen.getByRole("checkbox", { name }).closest("label")!.querySelector("svg")!);
+  keys.forEach((key, index) => {
+    expect(key).not.toBeNull();
+    expect(key.getAttribute("aria-hidden")).toBe("true");
+    expect(key.getAttribute("fill")).toBe(original[index].color);
+    if (chart === "line") expect(key.querySelector("line")?.getAttribute("stroke-dasharray")).toBe(original[index].line);
+    if (chart !== "bar") expect(key.querySelector("path")?.getAttribute("d")).toBe(original[index].point);
+  });
+  const first = screen.getByRole("checkbox", { name: "Series 1" });
+  first.focus();
+  await user.keyboard(" ");
+  expect((first as HTMLInputElement).checked).toBe(false);
+  expect(styles()).toEqual(original.slice(1));
+  expect(screen.getAllByRole("row")).toHaveLength(17);
+  await user.keyboard(" ");
+  expect((first as HTMLInputElement).checked).toBe(true);
+  expect(styles()).toEqual(original);
+});
 it("keeps a chart series color when another series is hidden", () => {
   render(<Chart spec={{ schema_version: 1, type: "chart", title: "Trend", chart: "line", source: "Fixture", synthetic: true, x_label: "Day", y_label: "Count", series: [{ name: "First", points: [[1, 2]] }, { name: "Second", points: [[1, 3]] }] }} />);
   const point = screen.getByText("Second: 1, 3").parentElement!;
