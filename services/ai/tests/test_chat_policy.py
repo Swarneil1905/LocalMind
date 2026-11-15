@@ -90,6 +90,17 @@ class AnswerPolicyTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(len(self.payloads), 1)
                 self.assertEqual(self.payloads[0]["messages"][-1]["content"], message)
 
+    def assert_unverified_fallback(self, frames):
+        """No sources: a fixed notice comes first, then the model answers under the no-current-facts policy."""
+        from app.chat_policy import NO_SOURCES_NOTICE
+        self.assertEqual(next(f["sources"] for f in frames if f["type"] == "sources"), [])
+        tokens = [f["content"] for f in frames if f["type"] == "token"]
+        self.assertTrue(tokens[0].startswith(NO_SOURCES_NOTICE))
+        self.assertEqual(tokens[-1], "Fixture answer")
+        self.assertEqual(len(self.payloads), 1)
+        self.assertIn("returned no usable", self.payloads[0]["messages"][0]["content"])
+        self.assertIn("Do not state current events", self.payloads[0]["messages"][0]["content"])
+
     async def stream(self, message, **changes):
         self.payloads = []
 
@@ -203,8 +214,7 @@ class AnswerPolicyTests(unittest.IsolatedAsyncioTestCase):
             frames = await self.stream("Please check this", web_search_enabled=True,
                                        web_search_query="latest transit news")
         search.assert_awaited_once_with("latest transit news", True)
-        self.assertEqual(self.payloads, [])
-        self.assertIn("couldn't verify", next(f["content"] for f in frames if f["type"] == "token"))
+        self.assert_unverified_fallback(frames)
 
     async def test_current_sources_are_linked_data_not_system_instructions(self):
         url = "https://city.invalid/transit"
@@ -232,16 +242,14 @@ class AnswerPolicyTests(unittest.IsolatedAsyncioTestCase):
                     patch.object(chat, "search", AsyncMock(return_value=[SearchResult("Transit", "https://city.invalid/a", "snippet")])), \
                     patch.object(chat, "fetch_evidence", AsyncMock(return_value=PageEvidence("A route opened.", published))):
                 frames = await self.stream("What is this week’s transit news?", web_search_enabled=True)
-                self.assertEqual(self.payloads, [])
-                self.assertEqual(next(f["sources"] for f in frames if f["type"] == "sources"), [])
-                self.assertIn("couldn't verify", next(f["content"] for f in frames if f["type"] == "token"))
+                self.assert_unverified_fallback(frames)
+                self.assertNotIn("A route opened.", json.dumps(self.payloads))
                 self.assertEqual(frames[-1]["type"], "done")
 
     async def test_missing_search_results_return_an_honest_failure(self):
         with patch.object(chat, "search", AsyncMock(return_value=[])):
             frames = await self.stream("Find the latest local news", web_search_enabled=True)
-        self.assertEqual(self.payloads, [])
-        self.assertIn("couldn't verify", next(f["content"] for f in frames if f["type"] == "token"))
+        self.assert_unverified_fallback(frames)
 
     async def test_historical_date_followup_can_use_dated_older_evidence(self):
         history = [{"role": "user", "content": "What is the latest city news?"},

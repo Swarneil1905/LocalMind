@@ -100,13 +100,12 @@ class ChatStreamTests(unittest.IsolatedAsyncioTestCase):
         ld = '<script type="application/ld+json">[{"@type":["NewsArticle"],"datePublished":"2026-11-13T08:00:00Z"}]</script><p>x</p>'
         self.assertEqual(extract_article(ld).published_at, "2026-11-13T08:00:00Z")
 
-    async def test_search_failure_does_not_call_model_to_invent_news(self):
-        request = ChatRequest(message="latest San Antonio news", model="test", web_search_enabled=True, connector_context_enabled=False)
-        with patch("app.api.routes.chat._run_web_search", AsyncMock(return_value=("", []))), patch("app.api.routes.chat.httpx.AsyncClient") as client:
-            frames = [json.loads(frame.removeprefix("data: ")) async for frame in _stream_ollama(request)]
-        client.assert_not_called()
-        self.assertEqual(frames[-1]["type"], "done")
-        self.assertIn("couldn't verify", next(f["content"] for f in frames if f["type"] == "token"))
+    def test_failed_search_policy_forbids_current_facts_and_citations(self):
+        from app.chat_policy import answer_policy
+        text = answer_policy("2026-11-15", searched=False, web_allowed=True, search_failed=True)
+        self.assertIn("returned no usable", text)
+        self.assertIn("Do not state current events", text)
+        self.assertNotIn("cite it inline", text)
 
     async def test_greeting_skips_search_and_streams_native_reasoning(self):
         class Response:
