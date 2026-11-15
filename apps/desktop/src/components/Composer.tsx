@@ -103,7 +103,7 @@ export function Composer(props: ComposerProps) {
             <Icon size={12} aria-hidden="true" />{name}
           </span>)}
         </div>}
-        {props.onAttachmentModeChange && <details className="page-footnote"><summary>Attachment reading</summary><label>Images <select value={props.attachmentMode || "vision"} onChange={event => props.onAttachmentModeChange?.(event.target.value as "vision" | "ocr")}><option value="vision">Vision model</option><option value="ocr">OCR text only (requires Tesseract)</option></select></label><p>OCR reads text, not charts or visual meaning. This choice applies to the next images you attach.</p></details>}
+        {props.onAttachmentModeChange && !!props.attachments?.length && <details className="page-footnote"><summary>Attachment reading</summary><label>Images <select value={props.attachmentMode || "vision"} onChange={event => props.onAttachmentModeChange?.(event.target.value as "vision" | "ocr")}><option value="vision">Vision model</option><option value="ocr">OCR text only (requires Tesseract)</option></select></label><p>OCR reads text, not charts or visual meaning. This choice applies to the next images you attach.</p></details>}
         {!!props.attachments?.length && <DraftAttachments items={props.attachments} onRemove={props.onRemoveAttachment || (() => {})} onRetry={props.onRetryAttachment || (() => {})} />}
         {props.attachmentNotice && <p role="alert" className="page-footnote">{props.attachmentNotice}</p>}
         {!!props.attachments?.some(item => item.mime_type?.startsWith("image/")) && props.imageInput === false && <p role="note" className="page-footnote">This model cannot read images. Choose an image-capable model or remove the attachment. Your draft stays here.</p>}
