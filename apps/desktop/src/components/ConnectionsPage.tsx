@@ -5,8 +5,6 @@ import {
   ChevronDown,
   ChevronUp,
   LoaderCircle,
-  Mail,
-  MessageSquare,
   Plug,
   RefreshCw,
   Users,
@@ -14,6 +12,7 @@ import {
 } from "lucide-react";
 import "./supporting-pages.css";
 import { McpPanel } from "./McpPanel";
+import { BrandLogo } from "./BrandLogo";
 import { ExtensionsPanel } from "./ExtensionsPanel";
 
 interface Connector {
@@ -136,17 +135,11 @@ function ConnectorRow({
   const unsupported = connector.available === false || (connector.platform === "macos" && !isMac);
   const pending =
     busy || connector.status === "connecting" || connector.status === "syncing";
-  const Icon =
-    connector.id === "gmail"
-      ? Mail
-      : connector.id === "whatsapp_web" || connector.id === "imessage"
-        ? MessageSquare
-        : Plug;
   return (
     <article className="connector-row">
       <div className="connector-main">
         <div className="connector-icon">
-          <Icon size={22} strokeWidth={1.5} />
+          <BrandLogo id={connector.id} label={connector.name} size={26} />
         </div>
         <div className="record-copy">
           <div className="connector-title">
@@ -160,7 +153,7 @@ function ConnectorRow({
             </span>
           </div>
           <p>{connector.description}</p>
-          <span className="page-badge">{connector.location === "local" ? "Local" : "Cloud connection"}</span>
+          <p className="connector-where">{connector.location === "local" ? "Stays on this device" : "Signs in to an online account"}</p>
           {connector.capabilities && <details><summary>Permissions and verification</summary>
             <p>{connector.capabilities.read ? "Read access" : "No read access"}. {connector.capabilities.actions.length ? connector.capabilities.actions.join(", ") : "No write actions"}.
               {connector.capabilities.range_days ? ` Last ${connector.capabilities.range_days} days, up to ${connector.capabilities.max_items} items per sync.` : ""}</p>
@@ -498,8 +491,6 @@ export function ConnectionsPage() {
           </div>
         ) : tab === "sources" ? (
           <>
-            <McpPanel />
-            <ExtensionsPanel />
             {connectors.length ? (
               <div className="record-list">
                 {connectors.map((connector) => (
@@ -539,9 +530,14 @@ export function ConnectionsPage() {
               </div>
             )}
             <p className="page-footnote">
-              Connecting an app allows LocalMind to retrieve data from that
-              service. You can disconnect it here at any time.
+              Connecting an app lets LocalMind read data from it. You can disconnect at any time.
             </p>
+            <details className="lab-section">
+              <summary>Experimental tools</summary>
+              <p className="muted">Built-in tools for testing and research. Most people never need these.</p>
+              <McpPanel />
+              <ExtensionsPanel />
+            </details>
           </>
         ) : peopleFailed ? (
           <div className="page-empty-state">

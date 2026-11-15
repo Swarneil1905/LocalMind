@@ -45,14 +45,16 @@ export function McpPanel() {
   }
   return <section className="integration-card" aria-labelledby="local-tools-heading">
     <h2 id="local-tools-heading">Local tools <span className="page-badge">Local · MCP pilot</span></h2>
-    <p>Try the owned read-only test server. This does not connect third-party tools or let chat run commands.</p>
+    <p>A built-in test server that can only read a sample file. It can’t reach third-party tools or run commands from chat.</p>
     <details><summary>Permissions and verification</summary><p>Read the built-in sample and test cancellation only. No personal files, credentials or network access. Verified with synthetic transport, timeout and process cleanup tests.</p></details>
     {preview && <>
       <p>{preview.scope}</p>
-      <dl><dt>Executable</dt><dd><code style={{ overflowWrap: "anywhere" }}>{preview.executable}</code></dd>
-        <dt>Arguments</dt><dd><code>{JSON.stringify(preview.arguments)}</code></dd></dl>
-      <ul>{preview.tools.map(tool => <li key={tool.name}><strong>{tool.name}</strong>: {tool.description}
-        <details><summary>Input schema</summary><pre style={{ whiteSpace: "pre-wrap" }}>{JSON.stringify(tool.inputSchema, null, 2)}</pre></details></li>)}</ul>
+      <details><summary>Technical details</summary>
+        <dl><dt>Executable</dt><dd><code style={{ overflowWrap: "anywhere" }}>{preview.executable}</code></dd>
+          <dt>Arguments</dt><dd><code>{JSON.stringify(preview.arguments)}</code></dd></dl>
+        <ul>{preview.tools.map(tool => <li key={tool.name}><strong>{tool.name}</strong>: {tool.description}
+          <details><summary>Input schema</summary><pre style={{ whiteSpace: "pre-wrap" }}>{JSON.stringify(tool.inputSchema, null, 2)}</pre></details></li>)}</ul>
+      </details>
       <p role="status">{preview.enabled ? "Enabled for this Connections session" : preview.running ? "Tool access is disabled. Process cleanup is pending; retry Stop." : "Disabled. No server is running."}</p>
       {!preview.enabled && !preview.running && <><label><input type="checkbox" checked={reviewed} disabled={busy} onChange={event => setReviewed(event.target.checked)} /> I reviewed the executable and read-only scope.</label>
         <button className="page-button" disabled={!reviewed || busy} onClick={() => void run("enable", { approval: preview.approval })}>Enable test server</button></>}

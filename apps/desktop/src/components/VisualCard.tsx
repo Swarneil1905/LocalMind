@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { diagramSvg, downloadBlob, parseVisual, type VisualDocument, type VisualSpec } from "../lib/visuals";
+import { cleanMermaid, diagramSvg, downloadBlob, parseVisual, type VisualDocument, type VisualSpec } from "../lib/visuals";
 import "./visuals.css";
 import { attachmentRequest, type ChatAttachment } from "../lib/attachments";
 import { VisualBoundary } from "./VisualBoundary";
@@ -11,7 +11,42 @@ const MermaidView = lazy(() => import("./VisualRenderers").then(module => ({ def
 const LearningWidget = lazy(() => import("./VisualRenderers").then(module => ({ default: module.LearningWidget })));
 const request = <T,>(operation: string, body: unknown) => invoke<T>("visual_request", { operation, body });
 
-export function VisualCard({ source, content, conversationId, mermaid = false, attachmentId }: { source: string; content: string; conversationId?: string; mermaid?: boolean; attachmentId?: string }) {
+export function VisualCard(props: { source: string; content: string; conversationId?: string; mermaid?: boolean; attachmentId?: string }) {
+  if (props.mermaid && !props.attachmentId) return <InlineDiagram {...props} source={cleanMermaid(props.source)} />;
+  return <WorkspaceCard {...props} />;
+}
+
+/** Diagrams render in the answer itself, like any other content. The workspace is only for editing. */
+function InlineDiagram({ source, content, conversationId }: { source: string; content: string; conversationId?: string }) {
+  const [expanded, setExpanded] = useState(false), [zoom, setZoom] = useState(1);
+  const [copied, setCopied] = useState(false);
+  return <figure className="inline-diagram">
+    <Suspense fallback={<p className="visual-loading" role="status">Drawing diagram…</p>}>
+      <button type="button" className="inline-diagram-canvas" aria-label="Expand diagram" onClick={() => setExpanded(true)}>
+        <MermaidView source={source} showSource={false} />
+      </button>
+    </Suspense>
+    <figcaption className="inline-diagram-actions">
+      <button type="button" onClick={() => setExpanded(true)}>Expand</button>
+      <button type="button" onClick={() => { void navigator.clipboard.writeText(source).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }).catch(() => {}); }}>{copied ? "Copied" : "Copy source"}</button>
+      {conversationId && <WorkspaceCard source={source} content={content} conversationId={conversationId} mermaid compact />}
+    </figcaption>
+    {expanded && <div className="diagram-lightbox" role="dialog" aria-modal="true" aria-label="Diagram" onKeyDown={event => { if (event.key === "Escape") setExpanded(false); }}
+      onClick={event => { if (event.target === event.currentTarget) setExpanded(false); }}>
+      <div className="diagram-lightbox-bar">
+        <button type="button" onClick={() => setZoom(value => Math.max(0.5, value - 0.25))} aria-label="Zoom out">−</button>
+        <span>{Math.round(zoom * 100)}%</span>
+        <button type="button" onClick={() => setZoom(value => Math.min(3, value + 0.25))} aria-label="Zoom in">+</button>
+        <button type="button" onClick={() => setZoom(1)}>Fit</button>
+        <button type="button" autoFocus onClick={() => setExpanded(false)}>Close</button>
+      </div>
+      <div className="diagram-lightbox-stage"><div style={{ transform: `scale(${zoom})`, transformOrigin: "top center" }}>
+        <Suspense fallback={null}><MermaidView source={source} showSource={false} /></Suspense></div></div>
+    </div>}
+  </figure>;
+}
+
+function WorkspaceCard({ source, content, conversationId, mermaid = false, attachmentId, compact = false }: { source: string; content: string; conversationId?: string; mermaid?: boolean; attachmentId?: string; compact?: boolean }) {
   const [document, setDocument] = useState<VisualDocument | null>(null), [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [repairOffered, setRepairOffered] = useState(false);
@@ -29,6 +64,11 @@ export function VisualCard({ source, content, conversationId, mermaid = false, a
     } catch (cause) { setError(typeof cause === "string" ? cause : cause instanceof Error ? cause.message : "Could not open this visual."); }
     finally { setBusy(false); }
   };
+  if (compact) return <>
+    <button ref={opener} type="button" disabled={busy} onClick={() => void open()}>{busy ? "Opening…" : "Edit"}</button>
+    {error && <span role="alert" className="inline-diagram-error">{error}</span>}
+    {document && <VisualBoundary key={document.id} onClose={() => { setDocument(null); opener.current?.focus(); }}><VisualPanel initial={document} onClose={() => { setDocument(null); opener.current?.focus(); }} /></VisualBoundary>}
+  </>;
   return <section className="visual-card"><button ref={opener} disabled={!conversationId || busy} onClick={() => void open()}>{busy ? "Opening…" : attachmentId ? "Open image workspace" : "Open visual workspace"}</button>
     <small>Editable visuals · saved with this conversation</small>{error && <p role="alert">{error}</p>}
     {error && !attachmentId && !repairOffered && <button onClick={() => {
@@ -89,7 +129,6 @@ function VisualPanel({ initial, onClose }: { initial: VisualDocument; onClose: (
   }}>
     <header><h2>{spec.title}</h2><button disabled={busy} onClick={() => void persist()}>{busy ? "Saving…" : "Save revision"}</button><button autoFocus onClick={onClose}>Close</button></header>
     <div className="visual-toolbar"><button onClick={() => setExpanded(!expanded)}>{expanded ? "Side panel" : "Expand"}</button>
-      <label>Panel width <input aria-label="Panel width" type="range" min={360} max={1100} defaultValue={680} onChange={event => panel.current?.style.setProperty("--panel-width", `${event.target.value}px`)} /></label>
       <button disabled={!past.length} onClick={() => { setFuture([spec, ...future]); setSpec(past[past.length - 1]); setPast(past.slice(0, -1)); }}>Undo</button>
       <button disabled={!future.length} onClick={() => { setPast([...past, spec]); setSpec(future[0]); setFuture(future.slice(1)); }}>Redo</button>
       </div>

@@ -1266,3 +1266,6 @@
 .update-notice { flex-wrap: wrap; }
 .update-notice > span { min-width: min(100%, 12rem); }
 .update-notice > div { flex-shrink: 1; }
+.connector-icon { background: var(--surface); border-color: var(--border-subtle); border-radius: 12px; width: 48px; height: 48px; }
+.connector-where { margin: 4px 0 0; font-size: 12px; color: var(--text-3); }
+.record-list .connector-row + .connector-row { border-top: 1px solid var(--border-subtle); }

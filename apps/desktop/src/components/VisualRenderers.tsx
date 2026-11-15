@@ -22,19 +22,27 @@ export function Diagram({ spec, onChange, highlighted }: { spec: VisualSpec; onC
     <details><summary>Text equivalent</summary><ul>{spec.nodes?.map(node => <li key={node.id}>{node.label}</li>)}</ul><ul>{edges.map(edge => <li key={edge.id}>{spec.nodes?.find(node => node.id === edge.source)?.label} → {spec.nodes?.find(node => node.id === edge.target)?.label}</li>)}</ul></details></>;
 }
 
-export function MermaidView({ source }: { source: string }) {
+// Mermaid measures label widths with this font; the CSS must draw with the same one or text spills out of boxes.
+const DIAGRAM_FONT = '"DM Sans", "Segoe UI", system-ui, sans-serif';
+
+export function MermaidView({ source, showSource = true }: { source: string; showSource?: boolean }) {
   const id = useId().replace(/[^a-z0-9]/gi, ""), [result, setResult] = useState({ svg: "", error: "" });
   useEffect(() => {
     let active = true;
     void import("mermaid").then(async ({ default: mermaid }) => {
-      mermaid.initialize({ startOnLoad: false, securityLevel: "strict", maxTextSize: 12000, maxEdges: 160, suppressErrorRendering: true, htmlLabels: false, flowchart: { htmlLabels: false } });
+      mermaid.initialize({ startOnLoad: false, securityLevel: "strict", maxTextSize: 12000, maxEdges: 160, suppressErrorRendering: true, htmlLabels: false,
+        theme: "base", fontFamily: DIAGRAM_FONT, themeVariables: { fontFamily: DIAGRAM_FONT, fontSize: "14px" },
+        flowchart: { htmlLabels: false, curve: "basis", padding: 14, nodeSpacing: 36, rankSpacing: 44, useMaxWidth: true },
+        sequence: { useMaxWidth: true } });
       const rendered = await mermaid.render(`visual${id}`, source);
       const svg = DOMPurify.sanitize(rendered.svg, { USE_PROFILES: { svg: true }, FORBID_TAGS: ["foreignObject", "a", "image", "script", "style"], FORBID_ATTR: ["href", "xlink:href", "style"] });
       if (active) setResult({ svg, error: "" });
     }).catch(() => { if (active) setResult({ svg: "", error: "This Mermaid source could not be rendered. Edit the source or ask for a corrected diagram." }); });
     return () => { active = false; };
   }, [id, source]);
-  return <>{result.error ? <p role="alert">{result.error}</p> : <div className="mermaid-visual" role="img" aria-label="Mermaid diagram" dangerouslySetInnerHTML={{ __html: result.svg }} />}<details><summary>Diagram source</summary><pre>{source}</pre></details></>;
+  return <>{result.error ? <p role="alert">{result.error}</p> : !result.svg ? <p className="visual-loading" role="status">Drawing diagram…</p>
+    : <div className="mermaid-visual" role="img" aria-label="Diagram" dangerouslySetInnerHTML={{ __html: result.svg }} />}
+    {showSource && <details><summary>Diagram source</summary><pre>{source}</pre></details>}</>;
 }
 
 // Use the original series index for both the plot and legend, even when a series is hidden.

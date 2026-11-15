@@ -1,11 +1,72 @@
-.provider-settings { display: grid; gap: 18px; }
-.provider-account, .provider-budget { border: 1px solid var(--border); border-radius: 12px; padding: 18px; display: grid; gap: 12px; min-width: 0; }
-.provider-account legend { font-weight: 600; padding: 0 6px; }
-.provider-account label, .provider-budget label { display: grid; gap: 6px; font-size: 13px; }
-.provider-account input:not([type=checkbox]), .provider-budget input, .provider-account select { width: 100%; min-width: 0; background: var(--surface); color: inherit; border: 1px solid var(--border); border-radius: 7px; padding: 9px; font: inherit; }
-.provider-toggle { display: flex !important; align-items: center; gap: 9px; }
-.provider-buttons, .provider-prices { display: flex; gap: 9px; flex-wrap: wrap; }
-.provider-prices label { flex: 1; min-width: 160px; }
+/* Settings > Cloud models: rows for global choices, one collapsed card per provider. */
+.provider-settings { display: grid; gap: 16px; }
+.provider-settings .muted, .provider-card .muted { color: var(--text-3); font-size: 13px; margin: 0; }
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 0; border-bottom: 1px solid var(--border-subtle); }
+.setting-row strong { font-weight: 500; font-size: 15px; }
+.setting-row p { margin: 4px 0 0; color: var(--text-3); font-size: 13px; max-width: 52ch; }
+.inline-field { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.inline-field input { flex: 1 1 180px; min-width: 0; }
+.setting-row .inline-field { flex: 0 0 auto; }
+.setting-row .inline-field input { width: 140px; flex: 0 0 auto; }
+.provider-settings input:not([type=checkbox]), .provider-settings select { background: var(--surface); color: inherit; border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; font: inherit; font-size: 14px; }
+.provider-settings input:focus-visible, .provider-settings select:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+.provider-list { display: grid; gap: 8px; }
+.provider-card { border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--surface); }
+.provider-card[open] { border-color: var(--border); }
+.provider-card > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; cursor: pointer; list-style: none; }
+.provider-card > summary::-webkit-details-marker { display: none; }
+.provider-name { font-weight: 500; }
+.provider-state { font-size: 13px; color: var(--text-3); }
+.provider-state.is-ready { color: var(--success); }
+.provider-card fieldset { border: 0; padding: 0 16px 16px; display: grid; gap: 18px; min-width: 0; }
+.provider-step { display: grid; gap: 8px; }
+.provider-step h4 { margin: 0; font-size: 13px; font-weight: 500; color: var(--text-2); }
+.provider-advanced > summary { cursor: pointer; font-size: 13px; color: var(--text-2); padding: 4px 0; }
+.provider-advanced { display: grid; gap: 8px; }
+.provider-prices { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+.provider-prices label { flex: 1; min-width: 180px; display: grid; gap: 6px; font-size: 13px; color: var(--text-2); }
+.provider-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.provider-message { font-size: 13px; color: var(--text-2); margin: 0; }
+.primary-button { background: var(--accent); color: var(--on-accent); border: 1px solid var(--accent); border-radius: 8px; padding: 9px 16px; font: inherit; font-size: 14px; cursor: pointer; }
+.primary-button:hover:not(:disabled) { background: var(--accent-hover); }
+.primary-button:disabled { opacity: .45; cursor: default; }
+/* Switch: replaces the browser's blue checkbox. */
+.switch { position: relative; display: inline-block; width: 40px; height: 24px; flex: 0 0 auto; }
+.switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
+.switch span { position: absolute; inset: 0; border-radius: 12px; background: var(--surface-3); transition: background-color 160ms ease; }
+.switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px #0003; transition: transform 160ms ease; }
+.switch input:checked + span { background: var(--accent); }
+.switch input:checked + span::after { transform: translateX(16px); }
+.switch input:focus-visible + span { outline: 2px solid var(--link); outline-offset: 2px; }
+.switch input:disabled { cursor: default; }
+.switch input:disabled + span { opacity: .5; }
+.switch-line { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+@media (max-width: 640px) { .setting-row { flex-direction: column; align-items: stretch; } .setting-row .inline-field input { flex: 1; width: auto; } }
+@media (prefers-reduced-motion: reduce) { .switch span, .switch span::after { transition: none; } }
+.provider-group { display: grid; gap: 8px; margin-top: 8px; }
+.provider-group > h3 { margin: 0; font-size: 13px; font-weight: 500; color: var(--text-2); }
+.provider-group > .muted { margin: -4px 0 4px; }
+.provider-name { display: inline-flex; align-items: center; gap: 12px; }
+.provider-name small { color: var(--text-3); font-size: 13px; font-weight: 400; }
+.provider-static .provider-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; }
+.brand-logo { display: inline-block; flex: none; mask-size: contain; -webkit-mask-size: contain; mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat; mask-position: center; -webkit-mask-position: center; object-fit: contain; }
+.brand-fallback { display: inline-grid; place-items: center; border-radius: 6px; background: var(--surface-3); color: var(--text-2); font-size: 12px; font-weight: 500; }
+.provider-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.provider-tile { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--surface); color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color 160ms ease, background-color 160ms ease; min-width: 0; }
+.provider-tile:hover { border-color: var(--border); background: var(--surface-2); }
+.provider-tile:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.provider-tile > span:nth-child(2) { display: grid; min-width: 0; flex: 1; }
+.provider-tile strong { font-weight: 500; font-size: 14px; }
+.provider-tile small { color: var(--text-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.provider-tile-add { color: var(--text-3); font-size: 18px; line-height: 1; }
+.connect-overlay { position: fixed; inset: 0; z-index: 120; background: #0006; display: grid; place-items: center; padding: 16px; }
+.connect-dialog { width: min(440px, 100%); background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 16px; padding: 24px; display: grid; gap: 16px; box-shadow: var(--shadow-lg); }
+.connect-head { display: flex; gap: 12px; align-items: center; }
+.connect-head h3 { margin: 0; font-size: 17px; font-weight: 500; }
+.connect-head .muted { margin: 2px 0 0; }
+.connect-field { display: grid; gap: 6px; font-size: 13px; color: var(--text-2); }
+.connect-field input { background: var(--bg); color: inherit; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 14px; }
+.connect-actions { justify-content: flex-end; }
 .cloud-model-select { max-width: 220px; border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: var(--surface); color: inherit; font: inherit; font-size: 12px; }
 .attachment-list { display: flex; gap: 10px; flex-wrap: wrap; padding: 8px; }
 .attachment-item { display: grid; grid-template-columns: 56px minmax(0,1fr) auto; gap: 8px; align-items: center; border: 1px solid var(--border); border-radius: 8px; padding: 8px; max-width: 100%; font-size: 12px; }
@@ -20,3 +81,4 @@
 .attachment-item button { background: transparent; color: inherit; border: 0; cursor: pointer; }
 .message-attachments { padding-block: 8px; }
 .message-attachments button { color: inherit; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
+.provider-blocked { margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--surface-2); color: var(--text-2); font-size: 13px; }

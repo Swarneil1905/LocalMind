@@ -1,30 +1,59 @@
-.visual-card { border:1px solid var(--border,#bfcfc7); border-radius:12px; padding:16px; margin:16px 0; }
-.visual-card small { display:block; margin-top:8px; }
-.visual-panel { --panel-width:680px; position:fixed; z-index:65; top:32px; bottom:0; right:0; width:min(var(--panel-width),100vw); overflow:auto; padding:24px; background:var(--bg,#f6f8f5); color:var(--text,#243c33); box-shadow:-4px 0 22px #0002; border-left:1px solid var(--border,#bfcfc7); }
-.visual-panel.visual-expanded { width:100vw; }
-.visual-panel header,.visual-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:12px 0; }
-.visual-panel header h2 { flex:1; font-size:20px; }
-.visual-panel > header { position:sticky; top:-24px; z-index:5; background:var(--bg); padding:12px 0; }
-.visual-panel button,.visual-panel select,.visual-card>button { border:1px solid var(--border,#a9c5b8); border-radius:8px; padding:7px 12px; background:var(--surface,#fff); color:inherit; }
-.visual-panel button:disabled { opacity:.45; }
-.visual-panel label { display:block; margin:8px 0; }
-.visual-panel input:not([type=checkbox]),.visual-panel textarea { display:block; max-width:100%; }
-.visual-panel textarea { width:100%; min-height:160px; font-family:monospace; }
-.visual-panel [hidden] { display:none!important; }
-.mermaid-visual { background:#f8faf8; border-radius:8px; padding:12px; color:#243c33; }
-.mermaid-visual rect,.mermaid-visual polygon,.mermaid-visual circle { fill:#e6f0e9; stroke:#34695e; }
-.mermaid-visual text,.mermaid-visual tspan { fill:#243c33; }
-.mermaid-visual path,.mermaid-visual line { stroke:#34695e; }
+/* Visuals: diagrams render inline in the answer; the side workspace is only for editing. */
+.visual-card { border:1px solid var(--border-subtle); border-radius:12px; padding:16px; margin:16px 0; background:var(--surface); font-family:"DM Sans","Segoe UI",system-ui,sans-serif; font-size:14px; }
+.visual-card small { display:block; margin-top:8px; color:var(--text-3); }
+.visual-card>button { border:1px solid var(--border); border-radius:8px; padding:7px 12px; background:var(--surface); color:inherit; font:inherit; cursor:pointer; }
+
+.inline-diagram { margin:20px 0; border:1px solid var(--border-subtle); border-radius:14px; background:var(--surface); overflow:hidden; }
+.inline-diagram-canvas { display:block; width:100%; padding:20px; border:0; background:transparent; cursor:zoom-in; text-align:center; color:inherit; font:inherit; }
+.inline-diagram-canvas:focus-visible { outline:2px solid var(--link); outline-offset:-4px; border-radius:14px; }
+.inline-diagram .mermaid-visual svg { max-height:480px; }
+.inline-diagram-actions { display:flex; gap:4px; align-items:center; flex-wrap:wrap; padding:8px 12px; border-top:1px solid var(--border-subtle); background:var(--bg); font-family:"DM Sans","Segoe UI",system-ui,sans-serif; }
+.inline-diagram-actions button { border:0; background:transparent; color:var(--text-2); font:inherit; font-size:13px; padding:6px 10px; border-radius:8px; cursor:pointer; transition:background-color 160ms ease, color 160ms ease; }
+.inline-diagram-actions button:hover:not(:disabled) { background:var(--surface-2); color:var(--text); }
+.inline-diagram-error { color:var(--error); font-size:13px; }
+.visual-loading { color:var(--text-3); font-size:13px; font-family:"DM Sans","Segoe UI",system-ui,sans-serif; margin:12px 0; }
+
+/* Calm diagram theme that follows light and dark mode. Same font Mermaid measured with. */
+.mermaid-visual { display:flex; justify-content:center; color:var(--text); }
+.mermaid-visual svg { max-width:100%; height:auto; font-family:"DM Sans","Segoe UI",system-ui,sans-serif; }
+.mermaid-visual text,.mermaid-visual tspan { fill:var(--text); font-family:"DM Sans","Segoe UI",system-ui,sans-serif; font-size:14px; }
+.mermaid-visual rect,.mermaid-visual polygon,.mermaid-visual circle,.mermaid-visual ellipse { fill:var(--surface-2); stroke:var(--border); stroke-width:1px; }
+.mermaid-visual .node rect { rx:10px; ry:10px; }
+/* Mermaid centres labels with an inline style that our sanitizer removes, so centre them here. */
+.mermaid-visual .node text,.mermaid-visual .edgeLabel text,.mermaid-visual .cluster-label text,.mermaid-visual .label text { text-anchor:middle; }
+.mermaid-visual .edgeLabel rect,.mermaid-visual .labelBkg { fill:var(--surface); stroke:none; }
+.mermaid-visual path,.mermaid-visual line { stroke:var(--text-3); stroke-width:1.5px; }
 .mermaid-visual .flowchart-link { fill:none; }
-.visual-graph { height:360px; min-width:260px; background:var(--surface-2); border:1px solid var(--border); }
+.mermaid-visual marker path,.mermaid-visual .arrowheadPath { fill:var(--text-3); stroke:var(--text-3); }
+
+.diagram-lightbox { position:fixed; inset:0; z-index:130; background:var(--bg); display:grid; grid-template-rows:auto 1fr; }
+.diagram-lightbox-bar { display:flex; justify-content:flex-end; align-items:center; gap:8px; padding:12px 16px; border-bottom:1px solid var(--border-subtle); font-family:"DM Sans","Segoe UI",system-ui,sans-serif; font-size:13px; color:var(--text-2); }
+.diagram-lightbox-bar button { border:1px solid var(--border-subtle); border-radius:8px; background:var(--surface); color:var(--text); padding:6px 12px; font:inherit; cursor:pointer; min-width:34px; }
+.diagram-lightbox-bar span { min-width:44px; text-align:center; font-variant-numeric:tabular-nums; }
+.diagram-lightbox-stage { overflow:auto; padding:32px; }
+.diagram-lightbox-stage .mermaid-visual svg { max-width:none; width:min(1100px,100%); }
+
+.visual-panel { position:fixed; z-index:65; top:32px; bottom:0; right:0; width:min(640px,100vw); overflow:auto; padding:24px; background:var(--bg); color:var(--text); box-shadow:-8px 0 24px #0000001a; border-left:1px solid var(--border-subtle); font-family:"DM Sans","Segoe UI",system-ui,sans-serif; font-size:14px; }
+.visual-panel.visual-expanded { width:100vw; }
+.visual-panel header,.visual-toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:12px 0; }
+.visual-panel header h2 { flex:1; font-size:18px; font-weight:500; }
+.visual-panel > header { position:sticky; top:-24px; z-index:5; background:var(--bg); padding:12px 0; }
+.visual-panel button,.visual-panel select { border:1px solid var(--border-subtle); border-radius:8px; padding:7px 12px; background:var(--surface); color:inherit; font:inherit; cursor:pointer; }
+.visual-panel button:disabled { opacity:.45; cursor:default; }
+.visual-panel label { display:block; margin:8px 0; color:var(--text-2); }
+.visual-panel input:not([type=checkbox]),.visual-panel textarea { display:block; max-width:100%; }
+.visual-panel textarea { width:100%; min-height:160px; font-family:"Cascadia Code",Consolas,monospace; font-size:13px; padding:12px; border:1px solid var(--border-subtle); border-radius:8px; background:var(--surface); color:var(--text); }
+.visual-panel [hidden] { display:none!important; }
+.visual-panel .mermaid-visual { background:var(--surface); border:1px solid var(--border-subtle); border-radius:12px; padding:16px; }
+.visual-graph { height:360px; min-width:260px; background:var(--surface-2); border:1px solid var(--border-subtle); border-radius:12px; overflow:hidden; }
 .visual-graph .react-flow__edge-path { stroke:var(--text-2); }
 .visual-graph .react-flow__controls-button { background:var(--surface); color:var(--text); border-color:var(--border); padding:0; border-radius:0; width:30px; height:30px; }
 .visual-graph .react-flow__controls-button svg { fill:currentColor; }
 .visual-panel pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:400px; overflow:auto; }
-.mermaid-visual svg,.visual-chart { max-width:100%; }
+.visual-chart { max-width:100%; }
 .visual-graph .react-flow { --xy-node-background-color:var(--surface); --xy-node-color:var(--text); --xy-edge-stroke:var(--text-2); --xy-controls-button-background-color:var(--surface); --xy-controls-button-color:var(--text); }
-.visual-provenance { font-size:12px; opacity:.75; overflow-wrap:anywhere; }
+.visual-provenance { font-size:12px; color:var(--text-3); overflow-wrap:anywhere; }
 .visual-comparison { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
 .visual-panel table { width:100%; border-collapse:collapse; }
-.visual-panel td,.visual-panel th { border-bottom:1px solid #bacdc0; text-align:left; padding:6px; }
-@media(prefers-reduced-motion:reduce) { .visual-panel * { animation:none!important; transition:none!important; } }
+.visual-panel td,.visual-panel th { border-bottom:1px solid var(--border-subtle); text-align:left; padding:6px; }
+@media(prefers-reduced-motion:reduce) { .visual-panel *, .inline-diagram * { animation:none!important; transition:none!important; } }
