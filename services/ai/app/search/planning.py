@@ -282,6 +282,40 @@ def plan_query(message: str, history: list[dict]) -> str | None:
     return " ".join(text.split())[:500]
 
 
+_QUERY_STOP = _FILLER | set(
+    "today tonight now current currently recent recently week this these those how are the of in on for and to with "
+    "whats what's happening give numbers number any new at is by or as up do be my i latest news".split())
+
+
+def _terms(text: str) -> list[str]:
+    text = re.sub(r"^\d{4}-\d{2}-\d{2}\s+", "", text.lower())
+    return [t for t in dict.fromkeys(re.findall(r"[a-z0-9&]+", text)) if t not in _QUERY_STOP]
+
+
+def rank_relevant(results: list, query: str) -> list:
+    """Order headlines by how many of the question's key words they contain and drop the rest.
+
+    Fresh-news feeds return loosely related stories ("Fed rates" also finds CD offers and student loans).
+    A headline must share a key word with the question; once some headlines share more, those that share
+    fewer than half as many are dropped too.
+    """
+    terms = _terms(query)
+    if not terms:
+        return list(results)
+
+    def score(item) -> int:
+        words = re.findall(r"[a-z0-9&]+", item.title.lower())
+        return sum(any(w == t or (len(t) >= 4 and w.startswith(t[:5])) for w in words) for t in terms)
+
+    scored = [(score(item), item) for item in results]
+    best = max((s for s, _ in scored), default=0)
+    # One shared common word ("mission", "rates") is not evidence for a multi-word question.
+    if best < min(2, len(terms)):
+        return []
+    keep = [(s, item) for s, item in scored if s >= max(1, -(-best // 2))]
+    return [item for _, item in sorted(keep, key=lambda pair: -pair[0])]  # sorted() is stable: feed order breaks ties
+
+
 def is_recent(published_at: str | None, now: datetime | None = None, *,
               max_age_seconds: int = 7 * 86400) -> bool:
     if not published_at:
