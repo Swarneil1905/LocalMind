@@ -37,19 +37,40 @@ export function MermaidView({ source }: { source: string }) {
   return <>{result.error ? <p role="alert">{result.error}</p> : <div className="mermaid-visual" role="img" aria-label="Mermaid diagram" dangerouslySetInnerHTML={{ __html: result.svg }} />}<details><summary>Diagram source</summary><pre>{source}</pre></details></>;
 }
 
+// Use the original series index for both the plot and legend, even when a series is hidden.
+const chartStyles = [
+  { color: "#368477", dash: "none", point: "M-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0" },
+  { color: "#a5762b", dash: "8 4", point: "M-4-4H4V4H-4Z" },
+  { color: "#6785b9", dash: "2 3", point: "M0-5L5 4H-5Z" },
+  { color: "#bd6378", dash: "8 3 2 3", point: "M0-5L5 0 0 5-5 0Z" },
+  { color: "#9273b4", dash: "12 4", point: "M-2-5H2V-2H5V2H2V5H-2V2H-5V-2H-2Z" },
+  { color: "#748531", dash: "4 3", point: "M0 5L5-4H-5Z" },
+  { color: "#b76c38", dash: "12 3 2 3 2 3", point: "M-5-3L-3-5 0-2 3-5 5-3 2 0 5 3 3 5 0 2-3 5-5 3-2 0Z" },
+  { color: "#738392", dash: "4 3 2 3", point: "M-5 0L-2.5-4.3H2.5L5 0 2.5 4.3H-2.5Z" },
+];
+
 export function Chart({ spec }: { spec: VisualSpec }) {
   const [hidden, setHidden] = useState<string[]>([]);
   const series = spec.series || [], visible = series.map((entry, index) => ({ entry, index })).filter(({ index }) => !hidden.includes(String(index)));
   const points = series.flatMap(entry => entry.points), xs = points.map(p => p[0]), ys = points.map(p => p[1]);
   const minX = Math.min(0, ...xs), maxX = Math.max(1, ...xs), minY = Math.min(0, ...ys), maxY = Math.max(1, ...ys);
   const x = (n: number) => 50 + (n-minX) / (maxX-minX) * 500, y = (n: number) => 330 - (n-minY) / (maxY-minY) * 280;
-  const colors = ["#216b62", "#9c5f15", "#4d66ae", "#ab435a"];
   return <><p>{spec.synthetic ? "Illustrative data" : "Supplied data (model interpretation)"} · {spec.source}</p>
-    <div className="visual-toolbar">{series.map((entry, index) => <label key={index}><input type="checkbox" checked={!hidden.includes(String(index))} onChange={event => setHidden(event.target.checked ? hidden.filter(item => item !== String(index)) : [...hidden, String(index)])} />{entry.name}</label>)}</div>
+    <div className="visual-toolbar">{series.map((entry, index) => {
+      const style = chartStyles[index % chartStyles.length];
+      return <label key={index}><input type="checkbox" checked={!hidden.includes(String(index))} onChange={event => setHidden(event.target.checked ? hidden.filter(item => item !== String(index)) : [...hidden, String(index)])} />
+        <svg width="32" height="16" viewBox="0 0 32 16" fill={style.color} aria-hidden="true" focusable="false" style={{ display: "inline-block", verticalAlign: "middle", margin: "0 4px" }}>
+          {spec.chart === "line" && <line x1="0" y1="8" x2="32" y2="8" stroke={style.color} strokeWidth={2} strokeDasharray={style.dash} />}
+          {spec.chart === "bar" ? <rect x="12" y="2" width="8" height="12" /> : <path d={style.point} transform="translate(16 8)" />}
+        </svg>{entry.name}</label>;
+    })}</div>
     <svg className="visual-chart" viewBox="0 0 620 400" role="img" aria-label={spec.title}><path d="M50 40V330H570" fill="none" stroke="currentColor" />
       <text x="240" y="390" fill="currentColor">{spec.x_label}</text><text x="10" y="22" fill="currentColor">{spec.y_label}</text>
       <text x="50" y="355" fill="currentColor">{minX}</text><text x="530" y="355" fill="currentColor">{maxX}</text><text x="5" y="60" fill="currentColor">{maxY}</text><text x="5" y="330" fill="currentColor">{minY}</text>
-      {visible.map(({ entry, index }) => <g key={index} fill={colors[index % colors.length]}>{spec.chart === "line" && <polyline fill="none" stroke={colors[index % colors.length]} points={entry.points.map(p => `${x(p[0])},${y(p[1])}`).join(" ")} />}{entry.points.map((point, p) => spec.chart === "bar" ? <rect key={p} x={x(point[0]) + index * 8 - 5} y={Math.min(y(0), y(point[1]))} width={7} height={Math.max(1, Math.abs(y(0)-y(point[1])))}><title>{entry.name}: {point.join(", ")}</title></rect> : <circle key={p} cx={x(point[0])} cy={y(point[1])} r={4}><title>{entry.name}: {point.join(", ")}</title></circle>)}</g>)}</svg>
+      {visible.map(({ entry, index }) => {
+        const style = chartStyles[index % chartStyles.length];
+        return <g key={index} fill={style.color}>{spec.chart === "line" && <polyline fill="none" stroke={style.color} strokeWidth={2} strokeDasharray={style.dash} points={entry.points.map(p => `${x(p[0])},${y(p[1])}`).join(" ")} />}{entry.points.map((point, p) => spec.chart === "bar" ? <rect key={p} x={x(point[0]) + index * 8 - 5} y={Math.min(y(0), y(point[1]))} width={7} height={Math.max(1, Math.abs(y(0)-y(point[1])))}><title>{entry.name}: {point.join(", ")}</title></rect> : <path key={p} d={style.point} transform={`translate(${x(point[0])} ${y(point[1])})`}><title>{entry.name}: {point.join(", ")}</title></path>)}</g>;
+      })}</svg>
     <details><summary>Source data</summary><table><thead><tr><th>Series</th><th>{spec.x_label}</th><th>{spec.y_label}</th></tr></thead><tbody>{series.flatMap((entry, i) => entry.points.map((point, j) => <tr key={`${i}-${j}`}><td>{entry.name}</td><td>{point[0]}</td><td>{point[1]}</td></tr>))}</tbody></table></details></>;
 }
 
