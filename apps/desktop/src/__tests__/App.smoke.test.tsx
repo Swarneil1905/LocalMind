@@ -118,6 +118,17 @@ describe("desktop chat workflow", () => {
     fireEvent.click(web);
     expect(screen.getByText("Local model", { selector: ".local-label" })).toBeTruthy();
   });
+  it("remembers the web search choice across launches", async () => {
+    localStorage.removeItem("lm-web-search");
+    await setup();
+    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
+    fireEvent.click(screen.getByRole("button", { name: "Web" }));
+    expect(localStorage.getItem("lm-web-search")).toBe("on");
+    cleanup();
+    await setup();
+    expect(screen.getByText("Web search enabled", { selector: ".local-label" })).toBeTruthy();
+    localStorage.removeItem("lm-web-search");
+  });
   it("keeps drafts but blocks sending until the selected model passes inspection", async () => {
     modelReady = false;
     render(<App />);
