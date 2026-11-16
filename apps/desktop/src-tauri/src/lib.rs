@@ -1771,6 +1771,32 @@ async fn get_followup_questions(
 }
 
 #[tauri::command]
+async fn suggest_chat_title(
+    last_user: String,
+    last_assistant: String,
+    model: Option<String>,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<String, String> {
+    let (url, token) = sidecar_url(&sidecar_state, "/chat/title")?;
+    let body = serde_json::json!({
+        "last_user": last_user,
+        "last_assistant": last_assistant,
+        "model": model.unwrap_or_else(|| "qwen2.5:1.5b".to_string()),
+    });
+    let client = localmind_core::http::local_client();
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .and_then(|response| response.error_for_status())
+        .map_err(|e| e.to_string())?;
+    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(data["title"].as_str().unwrap_or_default().to_string())
+}
+
+#[tauri::command]
 async fn list_all_tasks(
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<Vec<TaskWithProject>, String> {
@@ -2390,6 +2416,7 @@ pub fn run() {
             create_memory_link,
             delete_memory_link,
             get_followup_questions,
+            suggest_chat_title,
             list_ollama_models,
             model_profile,
             model_readiness,

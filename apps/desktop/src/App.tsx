@@ -129,6 +129,9 @@ export default function App() {
   const navigationVersion = useRef(0);
   const changingConversation = useRef(false);
   const sending = useRef(false);
+  // Chats whose title LocalMind chose; a rename by the user removes the chat from this set.
+  const autoTitled = useRef(new Set<string>());
+  const turnCounts = useRef(new Map<string, number>());
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const ollama = useOllama();
   const runtime = useSidecarStatus();
@@ -257,6 +260,15 @@ export default function App() {
         );
         throw new Error("Conversation save failed");
       }
+      // Retitle chats we named ourselves: after the first answer, and again at the third in case the topic moved.
+      if (conversationId && autoTitled.current.has(conversationId)) {
+        const turns = (turnCounts.current.get(conversationId) || 0) + 1;
+        turnCounts.current.set(conversationId, turns);
+        if (turns === 1 || turns === 3) void (async () => { try {
+          const title = await invoke<string>("suggest_chat_title", { lastUser: user, lastAssistant: answer.slice(0, 600), model: speedModel });
+          if (title && autoTitled.current.has(conversationId)) await renameConversation(conversationId, title);
+        } catch { /* The first-message title stays. */ } })();
+      }
       // Suggestions after a refusal or an empty search would repeat the question that just failed.
       if (/^(Web search is off|No current sources)/.test(answer)) return;
       void (async () => { try {
@@ -271,7 +283,7 @@ export default function App() {
         /* Suggestions are optional; the saved answer remains usable. */
       } })();
     },
-    [saveCurrentTurn, speedModel],
+    [saveCurrentTurn, speedModel, renameConversation],
   );
   const {
     messages,
@@ -410,6 +422,7 @@ export default function App() {
       try {
         const id =
           activeId || (await createConversation(text.trim().slice(0, 60))).id;
+        if (!activeId) autoTitled.current.add(id);
         if (version !== navigationVersion.current) return false;
         if (!activeId) {
           attachments.move(draftKey, id);
@@ -603,7 +616,7 @@ export default function App() {
               if (id === activeId && version === navigationVersion.current)
                 newChat();
             }}
-            onRename={renameConversation}
+            onRename={(id, title) => { autoTitled.current.delete(id); return renameConversation(id, title); }}
           />
           <div className="sidebar-footer">
             <nav aria-label="Application">
@@ -722,7 +735,7 @@ export default function App() {
                 {activePage === "media"
                   ? "Local + optional cloud"
                   : activePage === "chats"
-                    ? (providerId !== "ollama" ? `Cloud · ${cloud?.label || providerId}` : webSearchEnabled ? "Web search enabled" : "Local model")
+                    ? (providerId !== "ollama" ? `Cloud · ${cloud?.label || providerId}` : "Local model")
                     : "Local workspace"}
               </span>
             </div>
@@ -849,7 +862,7 @@ export default function App() {
               onRefresh={() => void refreshMemory()}
             />
           ) : activePage === "knowledge" ? (
-            <KnowledgePage embedModel={EMBED_MODEL} />
+            <KnowledgePage embedModel={EMBED_MODEL} installedModels={ollama?.running ? ollama.models.map(model => model.name) : undefined} />
           ) : activePage === "projects" ? (
             <ProjectsPage speedModel={speedModel} />
           ) : activePage === "tasks" ? (
