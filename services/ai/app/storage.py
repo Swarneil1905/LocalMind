@@ -5,6 +5,7 @@ OS-user directory, never a machine-wide temporary folder or the working tree.
 An explicit override is an isolated profile; it never imports the user's data.
 """
 
+import logging
 import os
 import shutil
 import sqlite3
@@ -90,27 +91,32 @@ def migrate_legacy_connectors() -> None:
     if completed.exists():
         return
     old_root = Path.home() / ".localmind"
-    for name in ("messages.db", "people.db", "search_config.db"):
-        source, target = old_root / name, target_root / name
-        if not source.is_file() or target.exists():
-            continue
-        staging = target.with_suffix(".migration")
-        try:
-            with closing(sqlite3.connect(f"{source.as_uri()}?mode=ro", uri=True)) as src:
-                with closing(sqlite3.connect(staging)) as dst:
-                    src.backup(dst)
-            staging.replace(target)
-        finally:
-            staging.unlink(missing_ok=True)
-    # Old Gmail tokens granted full mailbox access and lived in plaintext.
-    # Never copy them into a new profile; require read-only reauthorization.
-    for name in ("wa_session",):
-        source, target = old_root / name, target_root / name
-        if source.is_dir() and not target.exists():
-            # Publish a complete directory so an interrupted copy is retryable.
-            staging = target_root / f".{name}.migration"
-            shutil.copytree(source, staging, dirs_exist_ok=True, symlinks=True)
-            staging.rename(target)
+    try:
+        for name in ("messages.db", "people.db", "search_config.db"):
+            source, target = old_root / name, target_root / name
+            if not source.is_file() or target.exists():
+                continue
+            staging = target.with_suffix(".migration")
+            try:
+                with closing(sqlite3.connect(f"{source.as_uri()}?mode=ro", uri=True)) as src:
+                    with closing(sqlite3.connect(staging)) as dst:
+                        src.backup(dst)
+                staging.replace(target)
+            finally:
+                staging.unlink(missing_ok=True)
+        # Old Gmail tokens granted full mailbox access and lived in plaintext.
+        # Never copy them into a new profile; require read-only reauthorization.
+        for name in ("wa_session",):
+            source, target = old_root / name, target_root / name
+            if source.is_dir() and not target.exists():
+                # Publish a complete directory so an interrupted copy is retryable.
+                staging = target_root / f".{name}.migration"
+                shutil.copytree(source, staging, dirs_exist_ok=True, symlinks=True)
+                staging.rename(target)
+    except (OSError, sqlite3.Error, shutil.Error):
+        # An unreadable old file must not stop the app. No marker is written, so the next launch retries.
+        logging.getLogger(__name__).warning("Legacy data import skipped; it will retry on the next launch.", exc_info=True)
+        return
     # Once migrated, deleting/disconnecting a session must stay deleted. Keeping
     # the old files as a backup must not silently restore them on the next run.
     completed.write_text("completed\n", encoding="utf-8")

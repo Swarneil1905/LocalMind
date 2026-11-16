@@ -181,6 +181,15 @@ class DesktopProfileTests(unittest.TestCase):
             migrate_legacy_connectors()
             self.assertFalse(migrated.exists())
 
+    def test_unreadable_legacy_database_does_not_stop_startup_and_retries(self):
+        legacy = self.root / ".localmind"
+        legacy.mkdir()
+        (legacy / "messages.db").write_text("not a database")
+        profile = data_dir()
+        with patch("app.storage.Path.home", return_value=self.root), patch("app.storage.default_data_dir", return_value=profile):
+            migrate_legacy_connectors()
+        self.assertFalse((profile / ".legacy-migration-v1").exists())
+
     def test_custom_profile_works_without_platform_default_directory(self):
         with patch("app.storage.default_data_dir", side_effect=RuntimeError("missing APPDATA")):
             migrate_legacy_connectors()

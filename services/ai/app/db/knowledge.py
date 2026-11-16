@@ -143,7 +143,7 @@ async def index_source(source_id: str, embed_model: str = DEFAULT_EMBED_MODEL) -
     failed_files = empty_files = failed_chunks = file_count = 0
     passages, vectors = [], []
     try:
-        files = _collect_files(source["path"])
+        files = await asyncio.to_thread(_collect_files, source["path"])
         embedding_failed = False
         for file in files:
             try:
