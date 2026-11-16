@@ -158,7 +158,7 @@ _GENERIC = {"user", "users", "this", "that", "with", "they", "have", "their", "f
 
 
 # "User said: hi" records the chat, not a fact about the person.
-_ABOUT_THE_CHAT = re.compile(r"\buser\s+(?:said|asked|stated|mentioned|wants to know)\b|\bstated that\b", re.I)
+_ABOUT_THE_CHAT = re.compile(r"\buser\s+(?:said|asked|wants to know)\b|\bstated that they (?:explained|asked|said)\b", re.I)
 
 
 def _grounded_in_user_message(fact: str, user_message: str) -> bool:

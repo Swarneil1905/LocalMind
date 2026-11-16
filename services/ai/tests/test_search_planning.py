@@ -253,3 +253,23 @@ class SearchPlanningTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SpecificWordRelevanceTests(unittest.TestCase):
+    def test_one_long_specific_word_is_enough_but_one_common_word_is_not(self):
+        from app.search.planning import rank_relevant
+        from app.search.providers import SearchResult
+        def item(title): return SearchResult(title=title, url="https://x.test/" + title[:6], snippet="")
+        creatine = [item("Creatine may help memory, study finds"), item("Best protein powders ranked")]
+        self.assertEqual([r.title for r in rank_relevant(creatine, "latest research on creatine")], ["Creatine may help memory, study finds"])
+        common = [item("Mortgage rates climb again")]
+        self.assertEqual(rank_relevant(common, "latest Fed interest rate news"), [])
+
+
+class SourceQuestionTests(unittest.TestCase):
+    def test_asking_for_the_last_answers_source_does_not_start_a_new_search(self):
+        from app.search.planning import plan_query
+        history = [{"role": "user", "content": "is Nvidia stock up today?"}, {"role": "assistant", "content": "NVDA trades at $162."}]
+        for question in ("what's your source for that?", "where did you get that"):
+            self.assertIsNone(plan_query(question, history), question)
+        self.assertIsNotNone(plan_query("latest Nvidia news", history))

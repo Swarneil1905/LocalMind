@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowDown, ExternalLink, Globe, RefreshCw } from "lucide-react";
+import { ArrowDown, Cpu, ExternalLink, Globe, RefreshCw } from "lucide-react";
 import type { Message } from "../types";
 import { Brand } from "./Brand";
 import { AnswerContent, CopyButton, safeWebUrl } from "./AnswerContent";
@@ -17,6 +17,7 @@ interface MessageListProps {
   onSendFollowUp?: (question: string) => void;
   onRegenerate?: () => void;
   onEnableWeb?: () => void;
+  onFallbackLocal?: () => void;
 }
 
 export function MessageList({
@@ -28,6 +29,7 @@ export function MessageList({
   onSendFollowUp,
   onRegenerate,
   onEnableWeb,
+  onFallbackLocal,
 }: MessageListProps) {
   const scroll = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -82,6 +84,7 @@ export function MessageList({
               searching={!!isSearching}
               onRegenerate={index === messages.length - 1 ? onRegenerate : undefined}
               onEnableWeb={index === messages.length - 1 ? onEnableWeb : undefined}
+              onFallbackLocal={index === messages.length - 1 ? onFallbackLocal : undefined}
             />
           ))}
           {!isStreaming && !last?.error && !last?.cancelled && followUpQuestions.length > 0 && onSendFollowUp && (
@@ -121,6 +124,7 @@ const MessageRow = memo(function MessageRow({
   searching,
   onRegenerate,
   onEnableWeb,
+  onFallbackLocal,
 }: {
   message: Message;
   conversationId?: string;
@@ -128,6 +132,7 @@ const MessageRow = memo(function MessageRow({
   searching: boolean;
   onRegenerate?: () => void;
   onEnableWeb?: () => void;
+  onFallbackLocal?: () => void;
 }) {
   const user = message.role === "user";
   const sources = (message.sources || []).map((source, index) => ({ ...source, index, safeUrl: safeWebUrl(source.url) })).filter((source) => source.safeUrl);
@@ -179,6 +184,16 @@ const MessageRow = memo(function MessageRow({
       {!user && message.diagnostics && <ResponseDetails data={message.diagnostics} />}
       {!user && !streaming && !message.error && !message.cancelled && conversationId && message.content && <ResponseFeedback key={`${conversationId}:${message.id}`} conversationId={conversationId} content={message.content} />}
       {!user && message.usage && <p className="page-footnote">API usage: {message.usage.input_tokens ?? "unknown"} input tokens · {message.usage.output_tokens ?? "unknown"} output tokens · {message.usage.cost_usd == null ? "Cost unknown" : `Estimated $${message.usage.cost_usd.toFixed(4)}`}</p>}
+      {(message.sources || []).filter((source) => source.kind === "memory").map((source) => source.memories?.length ? (
+        <details className="message-sources memory-used" key="memory-used">
+          <summary>Memories used ({source.memories.length})</summary>
+          <ul>
+            {source.memories.map((memory) => (
+              <li key={memory.id}>{memory.content}{memory.matched.length > 0 && <small> · matched: {memory.matched.join(", ")}</small>}</li>
+            ))}
+          </ul>
+        </details>
+      ) : null)}
       {(message.sources || []).some((source) => source.kind === "knowledge") && (
         <details className="message-sources">
           <summary>Local file passages</summary>
@@ -197,6 +212,11 @@ const MessageRow = memo(function MessageRow({
           {onRegenerate && (
             <button type="button" onClick={onRegenerate}>
               <RefreshCw size={14} aria-hidden="true" /> Try again
+            </button>
+          )}
+          {onFallbackLocal && (
+            <button type="button" onClick={onFallbackLocal}>
+              <Cpu size={14} aria-hidden="true" /> Try on this computer
             </button>
           )}
         </div>

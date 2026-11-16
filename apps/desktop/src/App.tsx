@@ -532,19 +532,29 @@ export default function App() {
     void send(user.content, undefined, { provider: providerId, model: selectedModel, consentId: cloud?.consent_id, attachments: user.attachments, attachmentDraftId: user.attachmentDraftId });
   };
   // Turn Web on first, then resend once the new setting is in effect.
-  const [webRetry, setWebRetry] = useState<string | null>(null);
+  const webRetry = useRef<string | null>(null);
   useEffect(() => {
-    if (!webRetry || !webSearchEnabled || isStreaming) return;
-    const text = webRetry;
-    setWebRetry(null);
+    if (!webRetry.current || !webSearchEnabled || isStreaming) return;
+    const text = webRetry.current;
+    webRetry.current = null;
     void send(text);
-  }, [webRetry, webSearchEnabled, isStreaming, send]);
-  const askedForWeb = !webSearchEnabled && last?.role === "assistant" && /^Web search is off/.test(last.content);
+  }, [webSearchEnabled, isStreaming, send]);
+  // A failed cloud answer can be retried on the local model without losing the question.
+  const localRetry = useRef(false);
+  useEffect(() => {
+    if (!localRetry.current || providerId !== "ollama" || isStreaming || !ready) return;
+    localRetry.current = false;
+    retry();
+  });
+  const fallbackToLocal = providerId !== "ollama" && last?.error
+    ? () => { setPendingCloud(null); setProviderId("ollama"); localRetry.current = true; }
+    : undefined;
+  const askedForWeb =!webSearchEnabled && last?.role === "assistant" && /^Web search is off/.test(last.content);
   const enableWebAndRetry = () => {
     const user = [...messages].reverse().find((m) => m.role === "user");
     if (!user) return;
     setWebSearchEnabled(true);
-    setWebRetry(user.content);
+    webRetry.current = user.content;
   };
 
   return (
@@ -784,6 +794,7 @@ export default function App() {
                   followUpQuestions={followUps}
                   onSendFollowUp={(q) => void send(q)}
                   onEnableWeb={askedForWeb ? enableWebAndRetry : undefined}
+                  onFallbackLocal={fallbackToLocal}
                   onRegenerate={
                     last?.error || last?.cancelled ? retry : undefined
                   }

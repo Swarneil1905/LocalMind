@@ -117,11 +117,13 @@ async def _run_web_search(query: str, fresh: bool = False, *,
                                query.lower()))
     if fresh and not is_link and not live_data:
         # Dated headlines first; they are the only fresh-news evidence with a real publish date.
+        # The planner may prefix today's date for the web search; a news feed matches words, not dates.
+        news_query = re.sub(r"^\d{4}-\d{2}-\d{2}\s+", "", query)
         try:
-            headlines = await search_news(query)
+            headlines = await search_news(news_query)
         except Exception:
             headlines = []
-        headlines = rank_relevant(headlines, query)
+        headlines = rank_relevant(headlines, news_query)
         results = headlines + [r for r in results if r.url not in {h.url for h in headlines}]
 
     if not results:
@@ -342,6 +344,8 @@ async def _stream_response(request: ChatRequest, timing: ChatTiming) -> AsyncIte
         "messages": packed.messages,
         "stream": True,
         "options": {"temperature": 0.2, "num_ctx": 16384, "num_predict": 2048},
+        # Ollama unloads a model after 5 idle minutes by default; reloading an 8B model costs 20 to 30 seconds.
+        "keep_alive": "30m",
     }
     if profile:
         payload["options"] = generation_options(profile)

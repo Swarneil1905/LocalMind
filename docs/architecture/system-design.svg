@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1090" viewBox="0 0 1440 1090" role="img" aria-labelledby="title desc">
+  <title id="title">Proposed LocalMind system design</title>
+  <desc id="desc">User interfaces communicate through the native desktop host with a durable run service. The service coordinates context, model adapters and tools. Profile storage preserves results and events. Network providers and connectors require explicit data and permission boundaries. Arrows show logical requests or data access, not separately deployed microservices. The design is proposed, not a claim that every component is implemented.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#526860"/></marker>
+    <style>
+      text { font-family: Inter, Segoe UI, Arial, sans-serif; fill: #203a30; }
+      .title { font-size: 28px; font-weight: 650; }
+      .label { font-size: 18px; font-weight: 650; }
+      .body { font-size: 16px; }
+      .small { font-size: 14px; fill: #526860; }
+      .box { fill: #fff; stroke: #a8beb4; stroke-width: 1.5; rx: 10; }
+      .line { fill: none; stroke: #526860; stroke-width: 2; marker-end: url(#arrow); }
+      .boundary { fill: #f3f7f4; stroke: #a8beb4; stroke-width: 1.5; rx: 14; }
+    </style>
+  </defs>
+  <rect width="1440" height="1090" fill="#fff"/>
+  <text class="title" x="32" y="43">LocalMind: the proposed product architecture</text>
+  <text class="small" x="32" y="69">DESIGN, NOT IMPLEMENTED STATE · Independent desktop profiles · Frameworks can change; contracts and boundaries remain</text>
+  <rect class="boundary" x="24" y="96" width="1080" height="772"/>
+  <text class="label" x="48" y="126">On this device</text>
+  <rect class="boundary" x="1130" y="96" width="286" height="772" style="fill:#faf8f3;stroke-dasharray:7 5"/>
+  <text class="label" x="1150" y="126">Outside the device</text>
+  <text class="small" x="1150" y="150">Configured and authorized only</text>
+
+  <rect class="box" x="56" y="172" width="288" height="106"/>
+  <text class="label" x="74" y="203">User workspace</text>
+  <text class="body" x="74" y="230">Chat · mini chat · voice</text>
+  <text class="small" x="74" y="254">Submit once; subscribe to run events</text>
+  <rect class="box" x="396" y="172" width="288" height="106"/>
+  <text class="label" x="414" y="203">Desktop host</text>
+  <text class="body" x="414" y="230">Lifecycle · credentials · updates</text>
+  <text class="small" x="414" y="254">Authenticated loopback transport</text>
+  <rect class="box" x="752" y="172" width="320" height="106" style="fill:#dfede5;stroke:#557666"/>
+  <text class="label" x="770" y="203">Durable run service</text>
+  <text class="body" x="770" y="230">State · deadlines · approvals</text>
+  <text class="small" x="770" y="254">Ordered events · cancel · recover</text>
+  <path class="line" d="M344 225 H396"/>
+  <path class="line" d="M684 225 H752"/>
+
+  <path d="M912 278 V316 H200" fill="none" stroke="#526860" stroke-width="2"/>
+  <path class="line" d="M200 316 V370"/>
+  <path class="line" d="M540 316 V370"/>
+  <path class="line" d="M912 316 V370"/>
+  <text class="small" x="246" y="345">Selected context, permitted inference, and reviewed tool steps</text>
+  <rect class="box" x="56" y="370" width="288" height="125"/>
+  <text class="label" x="74" y="401">Context and evidence</text>
+  <text class="body" x="74" y="429">History · memory · retrieval</text>
+  <text class="small" x="74" y="454">Provenance, scope and token budget</text>
+  <text class="small" x="74" y="477">Reference data is not permission</text>
+  <rect class="box" x="396" y="370" width="288" height="125"/>
+  <text class="label" x="414" y="401">Model adapters</text>
+  <text class="body" x="414" y="429">Capabilities · route · usage</text>
+  <text class="small" x="414" y="454">Explicit model choice wins</text>
+  <text class="small" x="414" y="477">Reserve cost before cloud dispatch</text>
+  <rect class="box" x="752" y="370" width="320" height="125"/>
+  <text class="label" x="770" y="401">Tool broker</text>
+  <text class="body" x="770" y="429">MCP · manifests · grants · receipts</text>
+  <text class="small" x="770" y="454">Validate exact operation at execution</text>
+  <text class="small" x="770" y="477">Unknown write → reconcile first</text>
+
+  <path class="line" d="M540 495 V558"/>
+  <path class="line" d="M912 495 V558"/>
+  <rect class="box" x="396" y="558" width="288" height="110"/>
+  <text class="label" x="414" y="589">Local inference engine</text>
+  <text class="body" x="414" y="617">One admitted GPU job</text>
+  <text class="small" x="414" y="642">Foreground before background work</text>
+  <rect class="box" x="752" y="558" width="320" height="110"/>
+  <text class="label" x="770" y="589">Owned worker processes</text>
+  <text class="body" x="770" y="617">Documents · speech · media · tools</text>
+  <text class="small" x="770" y="642">Bounded resources and owned cleanup</text>
+  <text class="small" x="74" y="579">A small research team is optional.</text>
+  <text class="small" x="74" y="602">It shares run, cost and tool limits.</text>
+  <text class="small" x="74" y="625">A greeting takes the direct path.</text>
+
+  <rect class="box" x="56" y="730" width="1016" height="108"/>
+  <text class="label" x="74" y="761">Profile persistence</text>
+  <text class="body" x="74" y="790">SQLite run ledger and domain stores · managed attachments/artifacts · rebuildable search indexes</text>
+  <text class="small" x="74" y="816">Transactional results + outbox · backup/restore · OS credential store kept separate from logs and exports</text>
+  <path class="line" d="M200 495 V520 H40 V700 H200 V730"/>
+  <path class="line" d="M912 668 V730"/>
+  <path class="line" d="M1072 254 H1088 V712 H540 V730"/>
+  <text class="small" x="563" y="705">Checkpoint state and durable results</text>
+
+  <rect class="box" x="1150" y="370" width="246" height="125"/>
+  <text class="label" x="1166" y="401">Connected providers</text>
+  <text class="body" x="1166" y="429">User API key and billing</text>
+  <text class="small" x="1166" y="454">Data scope + spending limit</text>
+  <text class="small" x="1166" y="477">Optional remote vLLM later</text>
+  <path class="line" d="M684 386 H714 V350 H1120 V414 H1150"/>
+  <rect class="box" x="1150" y="558" width="246" height="110"/>
+  <text class="label" x="1166" y="589">Apps and web sources</text>
+  <text class="body" x="1166" y="617">Scoped accounts and tools</text>
+  <text class="small" x="1166" y="642">Read/write distinction visible</text>
+  <path class="line" d="M1072 429 H1116 V608 H1150"/>
+  <text class="small" x="1150" y="748">Network access is a capability,</text>
+  <text class="small" x="1150" y="771">not an automatic fallback.</text>
+  <text class="small" x="1150" y="808">Release downloads use a separate</text>
+  <text class="small" x="1150" y="831">signed update path (not shown).</text>
+
+  <text class="label" x="32" y="909">Build order</text>
+  <text class="body" x="32" y="941">Durable chat → usable BYOK → one real connector → multimodal work → measured, bounded delegation</text>
+  <path d="M32 966 H1408" stroke="#a8beb4"/>
+  <text class="label" x="32" y="998">Starting candidates, not stack lock-in</text>
+  <text class="body" x="32" y="1027">UI: React/TypeScript · Host: Tauri or Electron comparison · Run service: Python + LangGraph experiment</text>
+  <text class="body" x="32" y="1054">Storage: SQLite locally · Inference: Ollama or llama.cpp · Optional remote models through a common adapter</text>
+</svg>

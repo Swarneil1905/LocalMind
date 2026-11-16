@@ -232,12 +232,22 @@ def _source_context(message: str, history: list[dict]) -> str | None:
     return None
 
 
+_ABOUT_LAST_ANSWER = re.compile(
+    r"\b(?:what(?:'s|\s+is|\s+was)\s+(?:your|the)\s+sources?\s+for\s+(?:that|this|it)|"
+    r"where\s+did\s+you\s+(?:get|find|read|see)\s+(?:that|this|it)|"
+    r"sources?\s+for\s+(?:that|this|it)\b)", re.I)
+
+
 def plan_query(message: str, history: list[dict]) -> str | None:
     text = message.strip()
     normalized = _normalized(text)
     if search_opted_out(text):
         return None
     if is_social_turn(text):
+        return None
+    # "What's your source for that?" is about the last answer, whose sources sit under it. A new search
+    # for those words finds nothing and replaces a good answer with a "no sources" notice.
+    if history and _ABOUT_LAST_ANSWER.search(text):
         return None
     instruction = _normalized(_instruction(text)) if _TRANSFORM.search(normalized) else normalized
     links = _LINK.findall(text)
@@ -302,6 +312,12 @@ def _terms(text: str) -> list[str]:
     return [t for t in dict.fromkeys(re.findall(r"[a-z0-9&]+", text)) if t not in _QUERY_STOP]
 
 
+# Long words that still appear in unrelated headlines.
+_COMMON_LONG = frozenset({"missions", "interest", "research", "business", "industry", "national", "official",
+                          "officials", "company", "companies", "government", "election", "football", "program",
+                          "programs", "problems", "services", "campaign", "economic", "markets"})
+
+
 def rank_relevant(results: list, query: str) -> list:
     """Order headlines by how many of the question's key words they contain and drop the rest.
 
@@ -320,8 +336,14 @@ def rank_relevant(results: list, query: str) -> list:
     scored = [(score(item), item) for item in results]
     best = max((s for s, _ in scored), default=0)
     # One shared common word ("mission", "rates") is not evidence for a multi-word question.
+    # A long, specific word ("creatine", "bitcoin") is: nothing else shares it by chance.
     if best < min(2, len(terms)):
-        return []
+        specific = {t for t in terms if len(t) >= 8 and t not in _COMMON_LONG}
+        hit = any(any(w == t or w.startswith(t[:5]) for t in specific)
+                  for item in results for w in re.findall(r"[a-z0-9&]+", item.title.lower()))
+        if best < 1 or not hit:
+            return []
+        return [item for s, item in scored if s >= 1]
     keep = [(s, item) for s, item in scored if s >= max(1, -(-best // 2))]
     return [item for _, item in sorted(keep, key=lambda pair: -pair[0])]  # sorted() is stable: feed order breaks ties
 

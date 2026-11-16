@@ -137,3 +137,10 @@ class ExtractParsingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChatRecordRuleTests(unittest.TestCase):
+    def test_a_real_fact_phrased_with_stated_that_is_kept(self):
+        for fact, said in (("User stated that they are allergic to peanuts.", "I'm allergic to peanuts, just so you know"),):
+            with self.subTest(fact=fact):
+                self.assertTrue(memory._grounded_in_user_message(fact, said))

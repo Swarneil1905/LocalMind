@@ -3,7 +3,9 @@
 export type ModelMode = "speed" | "balanced" | "boost";
 
 export interface WebSource {
-  kind?: "web" | "knowledge" | "document";
+  kind?: "web" | "knowledge" | "document" | "memory";
+  /** Saved memories that shaped the answer, with the words that matched the question. */
+  memories?: { id: string; content: string; matched: string[] }[];
   citation?: string;
   chunk_id?: string;
   source_id?: string;

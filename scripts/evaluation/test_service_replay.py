@@ -139,15 +139,15 @@ class ReplayTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Evidence old", messages[-2]["content"])
         self.assertIn("2026-10-14T12:00:00+00:00", messages[-2]["content"])
 
-    async def test_missing_sources_preserve_real_service_refusal_without_model_call(self):
+    async def test_missing_sources_show_the_notice_then_answer_from_the_model(self):
         case = sample_case(web_search=True, evidence=[],
                            messages=[{"role": "user", "content": "What is today's ferry news?"}])
         result = await self.replay(case)
         self.assertEqual(result["status"], "completed")
-        self.assertIn("couldn't verify", result["answer"])
-        self.assertIsNone(result["effective_request"])
-        self.assertFalse(result["trace"]["model_called"])
-        self.assertEqual(self.requests, [])
+        self.assertTrue(result["answer"].startswith("No current sources were found"))
+        self.assertIsNotNone(result["effective_request"])
+        self.assertTrue(result["trace"]["model_called"])
+        self.assertEqual(len(self.requests), 1)
 
     async def test_greeting_skips_search_and_does_not_report_unused_sources_as_rejected(self):
         case = sample_case(web_search=True, messages=[{"role": "user", "content": "hello"}],
@@ -310,7 +310,7 @@ class ReplayTests(unittest.IsolatedAsyncioTestCase):
 
 
 class WorkerTests(unittest.TestCase):
-    def test_real_worker_cli_executes_no_source_case_without_inference(self):
+    def test_real_worker_cli_keeps_the_notice_when_the_model_is_unavailable(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             document, output = root / "input.json", root / "output.json"
@@ -324,12 +324,13 @@ class WorkerTests(unittest.TestCase):
                 capture_output=True, text=True, timeout=20, check=False,
                 creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
             )
-            self.assertEqual(process.returncode, 0, process.stderr)
+            # The notice is written before the model runs, so a missing model keeps it as a partial answer.
+            self.assertEqual(process.returncode, 1, process.stderr)
             result = json.loads(output.read_text(encoding="utf-8"))
-            self.assertEqual(result["status"], "completed")
-            self.assertFalse(result["trace"]["model_called"])
+            self.assertEqual(result["status"], "run_error")
+            self.assertTrue(result["answer"].startswith("No current sources were found"))
+            self.assertTrue(result["trace"]["model_called"])
             self.assertTrue(result["trace"]["checkpoint_final"])
-            self.assertIsNone(result["effective_request"])
             self.assertEqual(result["trace"]["clock_utc"], "2026-10-14T12:00:00+00:00")
 
     def test_existing_profile_is_rejected_before_replay_and_output_is_preserved(self):

@@ -1048,3 +1048,7 @@
 .update-notice > span {
   flex: 1;
 }
+
+.memory-used ul { margin:8px 0 0; padding-left:18px; color:var(--text-2); font-size:13px; }
+.memory-used li + li { margin-top:4px; }
+.memory-used small { color:var(--text-3); }

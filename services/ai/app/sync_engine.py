@@ -55,6 +55,11 @@ async def start_background_sync():
             replace_existing=True,
             max_instances=1,          # never run two syncs in parallel
         )
+        from datetime import datetime, timedelta
+        from .memory_dream import dream_pass
+        # First pass 10 minutes after launch, then daily.
+        scheduler.add_job(dream_pass, trigger="interval", hours=24, id="memory_dream", replace_existing=True,
+                          max_instances=1, next_run_time=datetime.now() + timedelta(minutes=10))
         scheduler.start()
         _scheduler = scheduler
         logger.info("[Sync] Background sync engine started (every 15 min)")

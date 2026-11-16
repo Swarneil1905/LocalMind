@@ -27,6 +27,7 @@ _EXPLICIT_SUBJECT = re.compile(
     r"(?!(?:it|its|that|this|these|those|they|their|the above|the same|your|in more|"
     r"more|further|again)\b)\w", re.I,
 )
+MEMORY_BUDGET_CHARS = 1500  # about 400 tokens of saved memories per request
 _STYLE_PREFERENCE = re.compile(
     r"^(?:you|the user|user)\s+prefers?\s+(?:(?:learning|explanations?)\s+"
     r"(?:through|with|using)\s+)?(?:(?:small|short|worked|concrete|simple|visual)\s+)*"
@@ -121,7 +122,14 @@ def select_memories(query: str, candidates: list[dict], *,
             score += 2
         if score:
             ranked.append((score, -index, item))
-    return [item for _, _, item in sorted(ranked, key=lambda row: row[:2], reverse=True)[:limit]]
+    # Best matches first, within a size budget so memory never crowds out the question and sources.
+    chosen, used = [], 0
+    for _, _, item in sorted(ranked, key=lambda row: row[:2], reverse=True)[:limit]:
+        if chosen and used + len(item["content"]) > MEMORY_BUDGET_CHARS:
+            break
+        chosen.append(item)
+        used += len(item["content"])
+    return chosen
 
 
 async def collect_context(
@@ -141,8 +149,14 @@ async def collect_context(
         selected = select_memories(query, memories.list_all(), project_id=project_id,
                                    conversation_id=conversation_id)
         if selected:
+            query_terms = _terms(query)
+            # The app shows which memories shaped the answer and which words matched.
+            used = [{"id": item["id"], "content": item["content"],
+                     "matched": sorted(query_terms & _terms(item["content"]))[:4]} for item in selected]
             references.append({"label": "Relevant saved memories",
-                               "content": "\n".join(item["content"] for item in selected)})
+                               "content": "\n".join(item["content"] for item in selected),
+                               "source": {"kind": "memory", "title": "Saved memories", "url": "",
+                                          "snippet": "", "memories": used}})
     if project_id:
         project = projects.get_project(project_id)
         if not project:

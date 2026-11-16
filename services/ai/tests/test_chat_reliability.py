@@ -69,6 +69,12 @@ class ChatStreamTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Reuters", context)
         self.assertIn('"cite": "[1]"', context)
 
+    async def test_the_news_feed_is_asked_without_the_planners_date_prefix(self):
+        feed = AsyncMock(return_value=[])
+        with patch("app.api.routes.chat.search_news", feed), patch("app.api.routes.chat.search", AsyncMock(return_value=[])):
+            await _run_web_search("2026-11-16 who is the current president of France?", fresh=True)
+        feed.assert_awaited_once_with("who is the current president of France?")
+
     async def test_headlines_survive_a_failed_web_search(self):
         now = datetime.now(timezone.utc)
         headline = SearchResult("Fed holds rates", "https://news.google.com/a", "Reuters", (now - timedelta(days=1)).isoformat())

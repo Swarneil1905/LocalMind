@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LocalMind architecture explorer</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,Segoe UI,sans-serif;background:#101b20;color:#edf3ef}
+*{box-sizing:border-box}body{margin:0}header{padding:18px 24px;border-bottom:1px solid #486268}h1{font-size:23px;margin:0 0 6px}p{line-height:1.5;margin:6px 0;color:#b8cbc5}
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-top:14px}button,select{font:inherit;color:inherit;background:#1b2d33;border:1px solid #607b80;border-radius:6px;padding:9px 12px;cursor:pointer}button:hover,select:hover{background:#294149}button:focus-visible,select:focus-visible{outline:3px solid #8cceb1;outline-offset:3px}button:disabled{opacity:.45;cursor:default}select{max-width:100%}
+main{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:16px;padding:16px}#viewport{height:calc(100vh -210px);min-height:420px;overflow:auto;border:1px solid #486268;border-radius:8px;background:#101b20}#drawing{width:100%;height:100%}#drawing>svg{display:block;width:100%;height:100%}.hit{fill:transparent;stroke:transparent;cursor:pointer}.hit:hover,.hit:focus{stroke:#b2ecd0;stroke-width:5;outline:none}.hit[aria-pressed="true"]{stroke:#8cceb1;stroke-width:5}aside{padding:4px 8px;overflow-wrap:anywhere}aside h2{font-size:18px;line-height:1.4;margin-top:0}aside ul{padding-left:20px;line-height:1.65}#badge{font-size:12px;letter-spacing:.08em;color:#8cceb1}#help{font-size:13px}#status{font-size:13px;min-width:70px}footer{padding:0 24px 18px;color:#b8cbc5;font-size:13px}body:fullscreen #viewport{height:calc(100vh -210px)}@media(max-width:850px){header{padding:14px}main{grid-template-columns:1fr;padding:12px}#viewport{height:62vh;min-height:350px}aside{padding:10px}h1{font-size:21px}}
+</style></head><body>
+<header><h1>LocalMind architecture explorer</h1><p>Proposed MVP · 10 sections · 60 components. Select a section for readable detail, then select a component.</p>
+<div class="controls"><label for="section">Section</label><select id="section"><option value="all">Whole system</option></select><button id="minus" aria-label="Zoom out">−</button><button id="plus" aria-label="Zoom in">+</button><button id="fit">Fit section</button><button id="overview">Whole system</button><button id="fullscreen">Full screen</button><span id="status" role="status" aria-live="polite">100%</span></div></header>
+<main><div id="viewport" aria-label="Scrollable architecture drawing"><div id="drawing"><svg xmlns="http://www.w3.org/2000/svg" width="4200" height="2860" viewBox="0 0 4200 2860" role="img" aria-labelledby="title desc">
+<title id="title">LocalMind buildable MVP system blueprint</title><desc id="desc">Ten sections show the local client, native lifecycle, conversation context, durable coordinator, tools, retrieval, inference, persistence, safety, and a future hosted deployment. Numbered main flows, bounded tool returns and asynchronous jobs are distinct. This is a proposed design, not implemented functionality.</desc>
+<rect width="4200" height="2860" fill="#101b20"/>
+<style>text{font-family:Segoe UI,Arial,sans-serif} .title{font-size:48px;font-weight:650}.section{font-size:30px;font-weight:650}.sub{font-size:23px}.node{font-size:26px;font-weight:600}.body{font-size:22px}.tag{font-size:16px;letter-spacing:1px}.edge{font-size:19px}</style>
+<defs>
+<marker id="arr-main" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#8cceb1"/></marker>
+<marker id="arr-tool" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#c1ced8"/></marker>
+<marker id="arr-async" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#d9c18c"/></marker>
+</defs>
+<text x="45" y="65" class="title" fill="#edf3ef">LocalMind | Buildable MVP system blueprint</text>
+<text x="45" y="105" class="sub" fill="#acbfb9">Proposed architecture · independent desktop installations · logical modules, not ten deployed services · 14 Nov 2026</text>
+<text x="45" y="175" class="sub" fill="#edf3ef">REQUEST  1 compose → 2 admit → 3 persist → 4 context → 5 coordinate → 6 prompt → 7 infer → 8/9 tools → 10 validate → 11 stream → 12 commit</text>
+<path d="M3030 50 h60" stroke="#8cceb1" stroke-width="3"/>
+<text x="3100" y="57" class="edge" fill="#acbfb9">Request / response</text>
+<path d="M3400 50 h60" stroke="#c1ced8" stroke-width="3"/>
+<text x="3470" y="57" class="edge" fill="#acbfb9">Bounded tool return</text>
+<path d="M3770 50 h60" stroke="#d9c18c" stroke-width="3" stroke-dasharray="10 7"/>
+<text x="3840" y="57" class="edge" fill="#acbfb9">Async job / event</text>
+<text x="3030" y="103" class="edge" fill="#acbfb9">EXTEND = existing foundation   BUILD = new contract   LATER = outside MVP</text>
+<rect x="40" y="210" width="430" height="1190" rx="14" fill="#15242a" stroke="#486268" stroke-width="2"/>
+<text x="64" y="253" class="section" fill="#edf3ef">A  WORKSPACE</text>
+<text x="64" y="288" class="sub" fill="#acbfb9">React / TypeScript · Tauri windows</text>
+<rect x="500" y="210" width="500" height="1190" rx="14" fill="#15242a" stroke="#486268" stroke-width="2"/>
+<text x="524" y="253" class="section" fill="#edf3ef">B  LOCAL ENTRY &amp; LIFECYCLE</text>
+<text x="524" y="288" class="sub" fill="#acbfb9">Rust ownership · authenticated loopback</text>
+<rect x="1030" y="210" width="670" height="1190" rx="14" fill="#15242a" stroke="#486268" stroke-width="2"/>
+<text x="1054" y="253" class="section" fill="#edf3ef">C  CONVERSATION &amp; CONTEXT</text>
+<text x="1054" y="288" class="sub" fill="#acbfb9">Owned history · evidence · token budget</text>
+<rect x="1730" y="210" width="1260" height="1190" rx="14" fill="#15242a" stroke="#486268" stroke-width="2"/>
+<text x="1754" y="253" class="section" fill="#edf3ef">D  DURABLE AI ORCHESTRATION</text>
+<text x="1754" y="288" class="sub" fill="#acbfb9">Application-owned state · bounded execution</text>
+<rect x="3020" y="210" width="1140" height="1190" rx="14" fill="#15242a" stroke="#486268" stroke-width="2"/>
+<text x="3044" y="253" class="section" fill="#edf3ef">E  TOOL EXECUTION &amp; CONNECTORS</text>
+<text x="3044" y="288" class="sub" fill="#acbfb9">Read results are evidence; writes require authority</text>
+<rect x="40" y="1450" width="1320" height="840" rx="14" fill="#15242a" stroke="#486268" stroke-width="2"/>
+<text x="64" y="1493" class="section" fill="#edf3ef">F  KNOWLEDGE &amp; INDEX LIFECYCLE</text>
+<text x="64" y="1528" class="sub" fill="#acbfb9">Existing FTS5 + LanceDB · versioned generations</text>
+<rect x="1390" y="1450" width="1320" height="840" rx="14" fill="#15242a" stroke="#486268" stroke-width="2"/>
+<text x="1414" y="1493" class="section" fill="#edf3ef">G  MODEL GATEWAY &amp; INFERENCE</text>
+<text x="1414" y="1528" class="sub" fill="#acbfb9">Local first · explicit remote choice</text>
+<rect x="2740" y="1450" width="1420" height="840" rx="14" fill="#15242a" stroke="#486268" stroke-width="2"/>
+<text x="2764" y="1493" class="section" fill="#edf3ef">H  BACKGROUND WORK &amp; PERSISTENCE</text>
+<text x="2764" y="1528" class="sub" fill="#acbfb9">Persistent job queue + transactional outbox</text>
+<rect x="40" y="2340" width="4120" height="310" rx="14" fill="#15242a" stroke="#486268" stroke-width="2"/>
+<text x="64" y="2383" class="section" fill="#edf3ef">I  SAFETY, FAILURE HANDLING &amp; RELEASE GATES</text>
+<text x="64" y="2418" class="sub" fill="#acbfb9">Cross-cutting contracts enforced at every boundary</text>
+<rect x="40" y="2690" width="4120" height="120" rx="14" fill="#15242a" stroke="#486268" stroke-width="2" stroke-dasharray="12 8"/>
+<text x="64" y="2733" class="section" fill="#edf3ef">J  LATER: SHARED HOSTED DEPLOYMENT</text>
+<text x="64" y="2768" class="sub" fill="#acbfb9">Not required for the desktop MVP</text>
+<path d="M445 390 H525" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M975 390 H1055" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M1365 465 V515" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M1675 597 H1714 V392 H1760" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M2360 470 V495 H1940 V525" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M2360 495 V525" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M2360 495 H2780 V525" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M1940 705 V760" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M2360 705 V733 H2040 V760" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M2780 705 V760" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M2960 842 H3000 V390 H3050" stroke="#c1ced8" fill="none" stroke-width="2.7" marker-end="url(#arr-tool)"/>
+<path d="M3305 465 V525" stroke="#c1ced8" fill="none" stroke-width="2.7" marker-end="url(#arr-tool)"/>
+<path d="M3560 615 H3620" stroke="#c1ced8" fill="none" stroke-width="2.7" marker-end="url(#arr-tool)"/>
+<path d="M3305 705 V760" stroke="#c1ced8" fill="none" stroke-width="2.7" marker-end="url(#arr-tool)"/>
+<path d="M3875 705 V760" stroke="#c1ced8" fill="none" stroke-width="2.7" marker-end="url(#arr-tool)"/>
+<path d="M4130 1065 H4145 V1422 H3004 V964 H2040 V956" stroke="#c1ced8" fill="none" stroke-width="2.7" marker-end="url(#arr-tool)"/>
+<path d="M1760 835 H1710 V1430 H1376 V1625 H1420" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M1420 2065 H1372 V1440 H1720 V1060 H1760" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M2320 1060 H2400" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M2680 1140 V1190" stroke="#d9c18c" fill="none" stroke-width="2.7" marker-end="url(#arr-async)" stroke-dasharray="10 7"/>
+<path d="M2960 1255 H3005 V145 V85 H24 V595 H65" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M2960 1280 H3008 V1435 H4128 V1555" stroke="#d9c18c" fill="none" stroke-width="2.7" marker-end="url(#arr-async)" stroke-dasharray="10 7"/>
+<path d="M1675 630 H1688 V1415 H1350 V1830 H1330" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M70 2060 H52 V1428 H1015 V922 H1530 V904" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M440 1625 H510" stroke="#d9c18c" fill="none" stroke-width="2.7" marker-end="url(#arr-async)" stroke-dasharray="10 7"/>
+<path d="M880 1625 H950" stroke="#d9c18c" fill="none" stroke-width="2.7" marker-end="url(#arr-async)" stroke-dasharray="10 7"/>
+<path d="M1140 1695 V1730 H370 V1760" stroke="#d9c18c" fill="none" stroke-width="2.7" marker-end="url(#arr-async)" stroke-dasharray="10 7"/>
+<path d="M1030 1920 V1950 H370 V1980" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M670 2060 H730" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M2020 1625 H2080" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M2380 1695 V1730 H1615 V1760" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M1720 1724 V1745 H2050 V1760" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M1615 1920 V1980" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M2050 1920 V1950 H1720 V1980" stroke="#8cceb1" fill="none" stroke-width="2.7" marker-end="url(#arr-main)"/>
+<path d="M3425 1695 V1725 H2980 V1760" stroke="#d9c18c" fill="none" stroke-width="2.7" marker-end="url(#arr-async)" stroke-dasharray="10 7"/>
+<path d="M3425 1725 V1760" stroke="#d9c18c" fill="none" stroke-width="2.7" marker-end="url(#arr-async)" stroke-dasharray="10 7"/>
+<path d="M3425 1725 H3920 V1760" stroke="#d9c18c" fill="none" stroke-width="2.7" marker-end="url(#arr-async)" stroke-dasharray="10 7"/>
+<rect x="65" y="315" width="380" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="83" y="349" class="node" fill="#edf3ef">1  Compose a request</text>
+<text x="83" y="385" class="body" fill="#acbfb9">Chat / mini chat / screenshot</text>
+<text x="83" y="412" class="body" fill="#acbfb9">Project + model + tool choices</text>
+<text x="83" y="439" class="body" fill="#acbfb9">Push-to-talk is a gated pilot</text>
+<text x="345" y="474" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="65" y="515" width="380" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="83" y="549" class="node" fill="#edf3ef">Live answer workspace</text>
+<text x="83" y="585" class="body" fill="#acbfb9">Text and progress events</text>
+<text x="83" y="612" class="body" fill="#acbfb9">Source viewer + artifacts</text>
+<text x="83" y="639" class="body" fill="#acbfb9">Edit diagrams; copy/export</text>
+<text x="83" y="666" class="body" fill="#acbfb9">Visible model and data route</text>
+<text x="345" y="701" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="65" y="735" width="380" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="83" y="769" class="node" fill="#edf3ef">Stop / reconnect</text>
+<text x="83" y="805" class="body" fill="#acbfb9">Cancel by run ID</text>
+<text x="83" y="832" class="body" fill="#acbfb9">Replay from last event sequence</text>
+<text x="83" y="859" class="body" fill="#acbfb9">Unsent drafts remain local</text>
+<text x="345" y="894" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="65" y="940" width="380" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="83" y="974" class="node" fill="#edf3ef">Review a proposed action</text>
+<text x="83" y="1010" class="body" fill="#acbfb9">Exact destination and arguments</text>
+<text x="83" y="1037" class="body" fill="#acbfb9">Approve, reject or edit</text>
+<text x="83" y="1064" class="body" fill="#acbfb9">A receipt confirms completion</text>
+<text x="83" y="1091" class="body" fill="#acbfb9">No receipt: show uncertainty</text>
+<text x="345" y="1126" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="65" y="1160" width="380" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="83" y="1194" class="node" fill="#edf3ef">Settings and recovery</text>
+<text x="83" y="1230" class="body" fill="#acbfb9">Models, keys, permissions</text>
+<text x="83" y="1257" class="body" fill="#acbfb9">Service diagnostics / update</text>
+<text x="83" y="1284" class="body" fill="#acbfb9">Usable without AI service</text>
+<text x="345" y="1319" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="525" y="315" width="450" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="543" y="349" class="node" fill="#edf3ef">2  Native request bridge</text>
+<text x="543" y="385" class="body" fill="#acbfb9">Validated Tauri commands</text>
+<text x="543" y="412" class="body" fill="#acbfb9">Profile-bound service session</text>
+<text x="543" y="439" class="body" fill="#acbfb9">No secret token in UI state</text>
+<text x="875" y="474" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="525" y="515" width="450" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="543" y="549" class="node" fill="#edf3ef">Request admission</text>
+<text x="543" y="585" class="body" fill="#acbfb9">Schema + size + modality checks</text>
+<text x="543" y="612" class="body" fill="#acbfb9">Idempotency key + request ID</text>
+<text x="543" y="639" class="body" fill="#acbfb9">Allowlisted origins / credentials</text>
+<text x="543" y="666" class="body" fill="#acbfb9">No inference before admission</text>
+<text x="875" y="701" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="525" y="735" width="450" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="543" y="769" class="node" fill="#edf3ef">Process supervisor</text>
+<text x="543" y="805" class="body" fill="#acbfb9">Own child PIDs and lifecycle</text>
+<text x="543" y="832" class="body" fill="#acbfb9">One instance per profile</text>
+<text x="543" y="859" class="body" fill="#acbfb9">Backoff; actionable startup states</text>
+<text x="875" y="894" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="525" y="940" width="450" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="543" y="974" class="node" fill="#edf3ef">Resource and spend limits</text>
+<text x="543" y="1010" class="body" fill="#acbfb9">Per-profile pending-work cap</text>
+<text x="543" y="1037" class="body" fill="#acbfb9">Rate limits and deadlines</text>
+<text x="543" y="1064" class="body" fill="#acbfb9">Reserve remote spend before call</text>
+<text x="543" y="1091" class="body" fill="#acbfb9">Reject or queue before model work</text>
+<text x="875" y="1126" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="525" y="1160" width="450" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="543" y="1194" class="node" fill="#edf3ef">Signed update channel</text>
+<text x="543" y="1230" class="body" fill="#acbfb9">Check / verify / stage / install</text>
+<text x="543" y="1257" class="body" fill="#acbfb9">Separate native update command</text>
+<text x="543" y="1284" class="body" fill="#acbfb9">Recovery and rollback test gate</text>
+<text x="875" y="1319" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="1055" y="315" width="620" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="1073" y="349" class="node" fill="#edf3ef">3  Conversation + message repository</text>
+<text x="1073" y="385" class="body" fill="#acbfb9">Resolve conversation/project ownership</text>
+<text x="1073" y="412" class="body" fill="#acbfb9">Persist accepted user message and run ID</text>
+<text x="1073" y="439" class="body" fill="#acbfb9">Branch/edit history explicitly; no silent replacement</text>
+<text x="1575" y="474" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="1055" y="515" width="620" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="1073" y="549" class="node" fill="#edf3ef">4  Context assembly</text>
+<text x="1073" y="585" class="body" fill="#acbfb9">Current user turn + recent conversation first</text>
+<text x="1073" y="612" class="body" fill="#acbfb9">Relevant scoped memory with correction history</text>
+<text x="1073" y="639" class="body" fill="#acbfb9">Source passages and attachment references</text>
+<text x="1073" y="666" class="body" fill="#acbfb9">Token budget includes tools, images and output</text>
+<text x="1575" y="701" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="1055" y="735" width="290" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="1073" y="769" class="node" fill="#edf3ef">Memory records</text>
+<text x="1073" y="805" class="body" fill="#acbfb9">Edit / delete / supersede</text>
+<text x="1073" y="832" class="body" fill="#acbfb9">Scope + provenance</text>
+<text x="1073" y="859" class="body" fill="#acbfb9">Never override topic</text>
+<text x="1245" y="894" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="1385" y="735" width="290" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="1403" y="769" class="node" fill="#edf3ef">Evidence records</text>
+<text x="1403" y="805" class="body" fill="#acbfb9">Source + version + ID</text>
+<text x="1403" y="832" class="body" fill="#acbfb9">Page / line / region</text>
+<text x="1403" y="859" class="body" fill="#acbfb9">Recheck eligibility</text>
+<text x="1575" y="894" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="1055" y="940" width="620" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="1073" y="974" class="node" fill="#edf3ef">Snapshots and summaries</text>
+<text x="1073" y="1010" class="body" fill="#acbfb9">Summary links to covered messages</text>
+<text x="1073" y="1037" class="body" fill="#acbfb9">Invalidate affected derivatives after corrections</text>
+<text x="1073" y="1064" class="body" fill="#acbfb9">Never treat an inferred summary as a user fact</text>
+<text x="1073" y="1091" class="body" fill="#acbfb9">Pin permitted source versions for each run</text>
+<text x="1575" y="1126" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="1055" y="1160" width="620" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="1073" y="1194" class="node" fill="#edf3ef">Context diagnostics</text>
+<text x="1073" y="1230" class="body" fill="#acbfb9">Record selected IDs, dropped counts and timings</text>
+<text x="1073" y="1257" class="body" fill="#acbfb9">Distinguish retrieval miss from context-budget loss</text>
+<text x="1073" y="1284" class="body" fill="#acbfb9">No raw private document text in routine traces</text>
+<text x="1575" y="1319" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="1760" y="315" width="1200" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="1778" y="349" class="node" fill="#edf3ef">5  Run coordinator</text>
+<text x="1778" y="385" class="body" fill="#acbfb9">accepted → preparing → queued → running → completed</text>
+<text x="1778" y="412" class="body" fill="#acbfb9">Branches: waiting_approval / cancelled / interrupted / failed / needs_reconciliation</text>
+<text x="1778" y="439" class="body" fill="#acbfb9">App-owned run contract + event sequence + attempt IDs + leases</text>
+<text x="2860" y="474" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="1760" y="525" width="360" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="1778" y="559" class="node" fill="#edf3ef">Direct conversation</text>
+<text x="1778" y="595" class="body" fill="#acbfb9">Normal chat and writing</text>
+<text x="1778" y="622" class="body" fill="#acbfb9">No retrieval for a greeting</text>
+<text x="1778" y="649" class="body" fill="#acbfb9">One generation call baseline</text>
+<text x="1778" y="676" class="body" fill="#acbfb9">Preserve active-topic follow-up</text>
+<text x="2020" y="711" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="2180" y="525" width="360" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="2198" y="559" class="node" fill="#edf3ef">Evidence answer</text>
+<text x="2198" y="595" class="body" fill="#acbfb9">Retrieve scoped passages</text>
+<text x="2198" y="622" class="body" fill="#acbfb9">Original query + one rewrite</text>
+<text x="2198" y="649" class="body" fill="#acbfb9">Coverage before synthesis</text>
+<text x="2198" y="676" class="body" fill="#acbfb9">Show missing evidence</text>
+<text x="2440" y="711" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="2600" y="525" width="360" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="2618" y="559" class="node" fill="#edf3ef">Bounded task graph</text>
+<text x="2618" y="595" class="body" fill="#acbfb9">LangGraph executor</text>
+<text x="2618" y="622" class="body" fill="#acbfb9">Read → compare → synthesize</text>
+<text x="2618" y="649" class="body" fill="#acbfb9">Tool/model/time/cost caps</text>
+<text x="2618" y="676" class="body" fill="#acbfb9">Stop repeated unhelpful calls</text>
+<text x="2860" y="711" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="1760" y="760" width="560" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="1778" y="794" class="node" fill="#edf3ef">6  Prompt and capability contract</text>
+<text x="1778" y="830" class="body" fill="#acbfb9">Current tool status + evidence + output schema</text>
+<text x="1778" y="857" class="body" fill="#acbfb9">No claim of web access without actual results</text>
+<text x="1778" y="884" class="body" fill="#acbfb9">Model can propose a tool, not authorize it</text>
+<text x="1778" y="911" class="body" fill="#acbfb9">Context sent only within the approved scope</text>
+<text x="2220" y="946" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="2400" y="760" width="560" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="2418" y="794" class="node" fill="#edf3ef">8  Tool-call dispatcher</text>
+<text x="2418" y="830" class="body" fill="#acbfb9">Validate structured call and tool manifest</text>
+<text x="2418" y="857" class="body" fill="#acbfb9">Read grant or exact write approval</text>
+<text x="2418" y="884" class="body" fill="#acbfb9">Persist intent before external side effect</text>
+<text x="2418" y="911" class="body" fill="#acbfb9">Result goes back as bounded tool data</text>
+<text x="2860" y="946" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="1760" y="985" width="560" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="1778" y="1019" class="node" fill="#edf3ef">10  Output and artifact checks</text>
+<text x="1778" y="1055" class="body" fill="#acbfb9">Validate graph/chart schemas before display</text>
+<text x="1778" y="1082" class="body" fill="#acbfb9">Resolve citation IDs; assess claim support</text>
+<text x="1778" y="1109" class="body" fill="#acbfb9">Treat streamed draft text as provisional</text>
+<text x="2220" y="1144" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="2400" y="985" width="560" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="2418" y="1019" class="node" fill="#edf3ef">11  Event stream and completion</text>
+<text x="2418" y="1055" class="body" fill="#acbfb9">Persist ordered deltas / batches before publish</text>
+<text x="2418" y="1082" class="body" fill="#acbfb9">Commit final message and terminal state</text>
+<text x="2418" y="1109" class="body" fill="#acbfb9">UI replays by sequence; rejects stale attempts</text>
+<text x="2860" y="1144" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="1760" y="1190" width="1200" height="142" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="1778" y="1224" class="node" fill="#edf3ef">12  Checkpoint, outbox and accounting</text>
+<text x="1778" y="1260" class="body" fill="#acbfb9">Short local transactions; no database transaction held during inference or approval</text>
+<text x="1778" y="1287" class="body" fill="#acbfb9">Usage/receipt state is durable. Summaries and analytics run off the response path.</text>
+<text x="2860" y="1322" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="3050" y="315" width="1080" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="3068" y="349" class="node" fill="#edf3ef">Tool registry and permission broker</text>
+<text x="3068" y="385" class="body" fill="#acbfb9">Typed manifest + schema + effect class + grant scope + timeout + result-size cap</text>
+<text x="3068" y="412" class="body" fill="#acbfb9">Allowlist executables and destinations. Untrusted tool text cannot grant privileges.</text>
+<text x="3068" y="439" class="body" fill="#acbfb9">Version and argument fingerprint invalidate stale approvals.</text>
+<text x="4030" y="474" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="3050" y="525" width="510" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="3068" y="559" class="node" fill="#edf3ef">9  Execution service</text>
+<text x="3068" y="595" class="body" fill="#acbfb9">Lease one attempt; check cancel</text>
+<text x="3068" y="622" class="body" fill="#acbfb9">Deadline and result limits</text>
+<text x="3068" y="649" class="body" fill="#acbfb9">Capture provider operation ID</text>
+<text x="3068" y="676" class="body" fill="#acbfb9">Receipt or needs_reconciliation</text>
+<text x="3460" y="711" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="3620" y="525" width="510" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="3638" y="559" class="node" fill="#edf3ef">MCP client + adapters</text>
+<text x="3638" y="595" class="body" fill="#acbfb9">Curated local / remote servers</text>
+<text x="3638" y="622" class="body" fill="#acbfb9">Negotiation + scoped credentials</text>
+<text x="3638" y="649" class="body" fill="#acbfb9">Bounded protocol and output</text>
+<text x="3638" y="676" class="body" fill="#acbfb9">Current fixture is not general MCP</text>
+<text x="4030" y="711" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="3050" y="760" width="510" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="3068" y="794" class="node" fill="#edf3ef">Read tools</text>
+<text x="3068" y="830" class="body" fill="#acbfb9">Project search / passage reads</text>
+<text x="3068" y="857" class="body" fill="#acbfb9">Configured live web search</text>
+<text x="3068" y="884" class="body" fill="#acbfb9">One connected read-only source</text>
+<text x="3068" y="911" class="body" fill="#acbfb9">Return typed success/error/evidence</text>
+<text x="3460" y="946" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="3620" y="760" width="510" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="3638" y="794" class="node" fill="#edf3ef">Reviewed write tool</text>
+<text x="3638" y="830" class="body" fill="#acbfb9">Existing LocalMind task first</text>
+<text x="3638" y="857" class="body" fill="#acbfb9">External writes require read-back</text>
+<text x="3638" y="884" class="body" fill="#acbfb9">No blind retry after timeout</text>
+<text x="3638" y="911" class="body" fill="#acbfb9">Approval bound to exact proposal</text>
+<text x="4030" y="946" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="3050" y="985" width="1080" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="3068" y="1019" class="node" fill="#edf3ef">Tool loop: propose → validate → execute → result → infer</text>
+<text x="3068" y="1055" class="body" fill="#acbfb9">The loop shares the run budget, cancellation state and remaining context allowance.</text>
+<text x="3068" y="1082" class="body" fill="#acbfb9">Reacquire GPU only for the next inference pass; do not hold it while waiting on a tool.</text>
+<text x="3068" y="1109" class="body" fill="#acbfb9">Every result has a call ID, attempt ID and status; prose cannot substitute for success.</text>
+<text x="4030" y="1144" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="3050" y="1190" width="1080" height="142" rx="8" fill="#1b2d33" stroke="#486268" stroke-dasharray="8 6"/>
+<text x="3068" y="1224" class="node" fill="#edf3ef">Later: generated-code execution</text>
+<text x="3068" y="1260" class="body" fill="#acbfb9">Requires a real sandbox with filesystem/network/resource policies and package controls.</text>
+<text x="3068" y="1287" class="body" fill="#acbfb9">An ordinary worker process or a subprocess timeout is not a security sandbox.</text>
+<text x="4030" y="1322" class="tag" fill="#bdad99">LATER</text>
+<rect x="70" y="1555" width="370" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="88" y="1589" class="node" fill="#edf3ef">F1  Source intake</text>
+<text x="88" y="1625" class="body" fill="#acbfb9">Import / scope / hash</text>
+<text x="88" y="1652" class="body" fill="#acbfb9">Immutable source revision</text>
+<text x="88" y="1679" class="body" fill="#acbfb9">Managed bytes + ownership</text>
+<text x="340" y="1714" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="510" y="1555" width="370" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="528" y="1589" class="node" fill="#edf3ef">F2  Parse and chunk</text>
+<text x="528" y="1625" class="body" fill="#acbfb9">Text/PDF baseline</text>
+<text x="528" y="1652" class="body" fill="#acbfb9">Optional Docling / OCR worker</text>
+<text x="528" y="1679" class="body" fill="#acbfb9">Page, line and table locations</text>
+<text x="780" y="1714" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="950" y="1555" width="380" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="968" y="1589" class="node" fill="#edf3ef">F3  Stage a generation</text>
+<text x="968" y="1625" class="body" fill="#acbfb9">Parser + chunker revision</text>
+<text x="968" y="1652" class="body" fill="#acbfb9">Embedding fingerprint</text>
+<text x="968" y="1679" class="body" fill="#acbfb9">Separate FTS and vector state</text>
+<text x="1230" y="1714" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="70" y="1760" width="600" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="88" y="1794" class="node" fill="#edf3ef">F4  Activate or report degradation</text>
+<text x="88" y="1830" class="body" fill="#acbfb9">Full hybrid: activate after both indexes are ready</text>
+<text x="88" y="1857" class="body" fill="#acbfb9">Lexical-only: explicit generation and status</text>
+<text x="88" y="1884" class="body" fill="#acbfb9">Deleted/revoked source becomes ineligible now</text>
+<text x="88" y="1911" class="body" fill="#acbfb9">No mixed embedding families, even at equal dimensions</text>
+<text x="570" y="1946" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="730" y="1760" width="600" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="748" y="1794" class="node" fill="#edf3ef">F5  Query candidates</text>
+<text x="748" y="1830" class="body" fill="#acbfb9">Original query plus optional scoped rewrite</text>
+<text x="748" y="1857" class="body" fill="#acbfb9">FTS5 exact terms + LanceDB semantic candidates</text>
+<text x="748" y="1884" class="body" fill="#acbfb9">RRF fusion → deduplicate → optional rerank</text>
+<text x="748" y="1911" class="body" fill="#acbfb9">Return distinct retrieval status on failures</text>
+<text x="1230" y="1946" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="70" y="1980" width="600" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="88" y="2014" class="node" fill="#edf3ef">F6  Evidence selection</text>
+<text x="88" y="2050" class="body" fill="#acbfb9">Required-source coverage for comparisons</text>
+<text x="88" y="2077" class="body" fill="#acbfb9">Diversify within the context budget</text>
+<text x="88" y="2104" class="body" fill="#acbfb9">Check scope again before context/cloud dispatch</text>
+<text x="88" y="2131" class="body" fill="#acbfb9">Citations bind to supplied passage versions</text>
+<text x="570" y="2166" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="730" y="1980" width="600" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="748" y="2014" class="node" fill="#edf3ef">F7  Evidence quality</text>
+<text x="748" y="2050" class="body" fill="#acbfb9">Valid link ≠ supported claim</text>
+<text x="748" y="2077" class="body" fill="#acbfb9">Numbers, dates, qualifiers and contradictions</text>
+<text x="748" y="2104" class="body" fill="#acbfb9">Explain missing/old/inaccessible evidence</text>
+<text x="748" y="2131" class="body" fill="#acbfb9">Human-labeled evals calibrate optional model judges</text>
+<text x="1230" y="2166" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="70" y="2180" width="1260" height="80" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="88" y="2214" class="node" fill="#edf3ef">Migration rule: current 768-dimensional index is a baseline, not a universal schema</text>
+<text x="1230" y="2250" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="1420" y="1555" width="600" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="1438" y="1589" class="node" fill="#edf3ef">7  Capability-aware model routing</text>
+<text x="1438" y="1625" class="body" fill="#acbfb9">Explicit model choice wins</text>
+<text x="1438" y="1652" class="body" fill="#acbfb9">Text / image / tool schema compatibility</text>
+<text x="1438" y="1679" class="body" fill="#acbfb9">Local-only never silently routes to cloud</text>
+<text x="1920" y="1714" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="2080" y="1555" width="600" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="2098" y="1589" class="node" fill="#edf3ef">Local resource scheduler</text>
+<text x="2098" y="1625" class="body" fill="#acbfb9">Foreground generation admission</text>
+<text x="2098" y="1652" class="body" fill="#acbfb9">Pause / batch background embeddings</text>
+<text x="2098" y="1679" class="body" fill="#acbfb9">Loading, prefill and generation timings</text>
+<text x="2580" y="1714" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="1420" y="1760" width="390" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="1438" y="1794" class="node" fill="#edf3ef">Ollama adapter</text>
+<text x="1438" y="1830" class="body" fill="#acbfb9">Chat or vision model</text>
+<text x="1438" y="1857" class="body" fill="#acbfb9">Supported thinking controls</text>
+<text x="1438" y="1884" class="body" fill="#acbfb9">Warm/cold timing and memory</text>
+<text x="1438" y="1911" class="body" fill="#acbfb9">Do not load every model at once</text>
+<text x="1710" y="1946" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="1855" y="1760" width="390" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="1873" y="1794" class="node" fill="#edf3ef">User API adapters</text>
+<text x="1873" y="1830" class="body" fill="#acbfb9">Existing cloud providers</text>
+<text x="1873" y="1857" class="body" fill="#acbfb9">Native credential store</text>
+<text x="1873" y="1884" class="body" fill="#acbfb9">Consent + spend reservation</text>
+<text x="1873" y="1911" class="body" fill="#acbfb9">No hidden paid fallback</text>
+<text x="2145" y="1946" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="2290" y="1760" width="390" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="2308" y="1794" class="node" fill="#edf3ef">Model roles</text>
+<text x="2308" y="1830" class="body" fill="#acbfb9">Chat / vision / embeddings</text>
+<text x="2308" y="1857" class="body" fill="#acbfb9">Optional shortlist reranker</text>
+<text x="2308" y="1884" class="body" fill="#acbfb9">Versioned capability records</text>
+<text x="2308" y="1911" class="body" fill="#acbfb9">Benchmarked per device tier</text>
+<text x="2580" y="1946" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="1420" y="1980" width="600" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="1438" y="2014" class="node" fill="#edf3ef">Provider result contract</text>
+<text x="1438" y="2050" class="body" fill="#acbfb9">Text / tool call / usage / stop reason / error</text>
+<text x="1438" y="2077" class="body" fill="#acbfb9">Cancel and timeout behavior per provider</text>
+<text x="1438" y="2104" class="body" fill="#acbfb9">Hold uncertain usage; reconcile later</text>
+<text x="1438" y="2131" class="body" fill="#acbfb9">No silent concatenation of different retry answers</text>
+<text x="1920" y="2166" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="2080" y="1980" width="600" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="2098" y="2014" class="node" fill="#edf3ef">Controlled fallback</text>
+<text x="2098" y="2050" class="body" fill="#acbfb9">Retry eligible failures before visible output</text>
+<text x="2098" y="2077" class="body" fill="#acbfb9">After output: preserve partial answer and retry choice</text>
+<text x="2098" y="2104" class="body" fill="#acbfb9">Respect model choice, privacy and cost ceiling</text>
+<text x="2098" y="2131" class="body" fill="#acbfb9">Auth errors and uncertain writes are not retryable reads</text>
+<text x="2580" y="2166" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="1420" y="2180" width="1260" height="80" rx="8" fill="#1b2d33" stroke="#486268" stroke-dasharray="8 6"/>
+<text x="1438" y="2214" class="node" fill="#edf3ef">Later: user-operated vLLM endpoint; inference throughput is not a reasoning upgrade</text>
+<text x="2580" y="2250" class="tag" fill="#bdad99">LATER</text>
+<rect x="2770" y="1555" width="1360" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="2788" y="1589" class="node" fill="#edf3ef">H1  Transactional outbox + durable job queue</text>
+<text x="2788" y="1625" class="body" fill="#acbfb9">runs.db: state transitions and outgoing events commit together</text>
+<text x="2788" y="1652" class="body" fill="#acbfb9">Leases + bounded retries + duplicate handling + parked failed jobs</text>
+<text x="2788" y="1679" class="body" fill="#acbfb9">Workers consume only committed work; no Kafka or Redis dependency in the desktop MVP</text>
+<text x="4030" y="1714" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="2770" y="1760" width="420" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="2788" y="1794" class="node" fill="#edf3ef">Index / OCR workers</text>
+<text x="2788" y="1830" class="body" fill="#acbfb9">Foreground backpressure</text>
+<text x="2788" y="1857" class="body" fill="#acbfb9">Resume incomplete generations</text>
+<text x="2788" y="1884" class="body" fill="#acbfb9">Delete/revoke invalidation</text>
+<text x="2788" y="1911" class="body" fill="#acbfb9">Optional parser downloads</text>
+<text x="3090" y="1946" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="3240" y="1760" width="420" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="3258" y="1794" class="node" fill="#edf3ef">Summaries / memory</text>
+<text x="3258" y="1830" class="body" fill="#acbfb9">Source-linked summaries</text>
+<text x="3258" y="1857" class="body" fill="#acbfb9">Explicit correction history</text>
+<text x="3258" y="1884" class="body" fill="#acbfb9">No automatic weight training</text>
+<text x="3258" y="1911" class="body" fill="#acbfb9">No cross-project memory leak</text>
+<text x="3560" y="1946" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="3710" y="1760" width="420" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="3728" y="1794" class="node" fill="#edf3ef">Speech / media workers</text>
+<text x="3728" y="1830" class="body" fill="#acbfb9">Editable speech transcript</text>
+<text x="3728" y="1857" class="body" fill="#acbfb9">Interruptible audio playback</text>
+<text x="3728" y="1884" class="body" fill="#acbfb9">Image quality gate retained</text>
+<text x="3728" y="1911" class="body" fill="#acbfb9">Video APIs are later scope</text>
+<text x="4030" y="1946" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="2770" y="1980" width="650" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="2788" y="2014" class="node" fill="#edf3ef">Canonical local persistence</text>
+<text x="2788" y="2050" class="body" fill="#acbfb9">Existing domain SQLite stores: messages and scope</text>
+<text x="2788" y="2077" class="body" fill="#acbfb9">New run ledger: events, attempts, approvals, receipts</text>
+<text x="2788" y="2104" class="body" fill="#acbfb9">Managed snapshots / artifacts; retention and backup</text>
+<text x="2788" y="2131" class="body" fill="#acbfb9">Native credential store is a separate security boundary</text>
+<text x="3320" y="2166" class="tag" fill="#8cceb1">EXTEND</text>
+<rect x="3480" y="1980" width="650" height="196" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="3498" y="2014" class="node" fill="#edf3ef">Diagnostics and evaluation</text>
+<text x="3498" y="2050" class="body" fill="#acbfb9">Stage timings + queue depth + categorized failures</text>
+<text x="3498" y="2077" class="body" fill="#acbfb9">Redacted local traces; opt-in diagnostics export</text>
+<text x="3498" y="2104" class="body" fill="#acbfb9">Frozen cases + model/hardware/config fingerprints</text>
+<text x="3498" y="2131" class="body" fill="#acbfb9">No claim that mocked checks prove live-model quality</text>
+<text x="4030" y="2166" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="2770" y="2180" width="1360" height="80" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="2788" y="2214" class="node" fill="#edf3ef">Atomicity is per transaction/store; recovery reconciles domain updates across existing databases</text>
+<text x="4030" y="2250" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="70" y="2445" width="780" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="88" y="2479" class="node" fill="#edf3ef">Ownership and privacy</text>
+<text x="88" y="2515" class="body" fill="#acbfb9">Profile / project / source scope</text>
+<text x="88" y="2542" class="body" fill="#acbfb9">Consent before outbound data</text>
+<text x="88" y="2569" class="body" fill="#acbfb9">Treat retrieved text as untrusted</text>
+<text x="750" y="2604" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="890" y="2445" width="780" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="908" y="2479" class="node" fill="#edf3ef">Failure and cancellation</text>
+<text x="908" y="2515" class="body" fill="#acbfb9">Typed errors; bounded backoff</text>
+<text x="908" y="2542" class="body" fill="#acbfb9">Circuit breaker per provider</text>
+<text x="908" y="2569" class="body" fill="#acbfb9">After dispatch: reconcile writes</text>
+<text x="1570" y="2604" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="1710" y="2445" width="780" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="1728" y="2479" class="node" fill="#edf3ef">Streaming correctness</text>
+<text x="1728" y="2515" class="body" fill="#acbfb9">Persist sequence before publish</text>
+<text x="1728" y="2542" class="body" fill="#acbfb9">Do not retry into a partial reply</text>
+<text x="1728" y="2569" class="body" fill="#acbfb9">Artifact validation before render</text>
+<text x="2390" y="2604" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="2530" y="2445" width="780" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="2548" y="2479" class="node" fill="#edf3ef">CI and quality gates</text>
+<text x="2548" y="2515" class="body" fill="#acbfb9">Unit / DB / contract / replay tests</text>
+<text x="2548" y="2542" class="body" fill="#acbfb9">Held-out live-model evaluations</text>
+<text x="2548" y="2569" class="body" fill="#acbfb9">Native install / update / recovery</text>
+<text x="3210" y="2604" class="tag" fill="#8cceb1">BUILD</text>
+<rect x="3350" y="2445" width="780" height="169" rx="8" fill="#1b2d33" stroke="#486268"/>
+<text x="3368" y="2479" class="node" fill="#edf3ef">Cost and resource controls</text>
+<text x="3368" y="2515" class="body" fill="#acbfb9">Reservations across attempts</text>
+<text x="3368" y="2542" class="body" fill="#acbfb9">GPU admission and worker quotas</text>
+<text x="3368" y="2569" class="body" fill="#acbfb9">Unknown charges stay reserved</text>
+<text x="4030" y="2604" class="tag" fill="#8cceb1">BUILD</text>
+<text x="466" y="377" class="edge" fill="#8cceb1">1 → 2</text>
+<text x="1008" y="377" class="edge" fill="#8cceb1">3</text>
+<text x="1380" y="497" class="edge" fill="#8cceb1">4</text>
+<text x="1718" y="490" class="edge" fill="#8cceb1">5</text>
+<text x="3038" y="495" class="edge" fill="#c1ced8">8 → registry → 9</text>
+<text x="3230" y="1418" class="edge" fill="#c1ced8">tool result → next bounded model pass</text>
+<text x="1450" y="1424" class="edge" fill="#8cceb1">7  model request</text>
+<text x="1775" y="1436" class="edge" fill="#8cceb1">normalized model events → 10</text>
+<text x="2350" y="1047" class="edge" fill="#8cceb1">11</text>
+<text x="2695" y="1171" class="edge" fill="#d9c18c">12</text>
+<text x="1550" y="132" class="edge" fill="#8cceb1">ordered stream / replay → workspace</text>
+<text x="3735" y="1430" class="edge" fill="#d9c18c">committed events / jobs</text>
+<text x="1055" y="1410" class="edge" fill="#8cceb1">scoped retrieval → F5</text>
+<text x="600" y="1423" class="edge" fill="#8cceb1">evidence → C4</text>
+<text x="1150" y="2767" class="sub" fill="#acbfb9">Auth / membership → gateway → PostgreSQL + pgvector → object storage → shared queue → GPU workers; Redis/CDN/regions only when justified</text>
+<text x="45" y="2840" class="sub" fill="#acbfb9">Release scope: dependable chat + document comparison + screenshot/artifact flow + one curated connection + reviewed task + restart recovery. No promise of frontier quality from model count.</text>
+</svg></div></div><aside aria-live="polite"><p id="badge">PROPOSED DESIGN</p><h2 id="detail-title">Start with a section</h2><p id="section-detail">Choose A–J above to focus the diagram. Use + to enlarge and scroll inside the drawing. Click any component to read its details here.</p><ul id="details"></ul><p id="help">EXTEND: existing foundation needing changes or verification. BUILD: proposed work. LATER: outside the core MVP.</p></aside></main>
+<footer>This file works offline. No app installation, login, external scripts or local server is needed. The drawing describes proposed architecture, not implemented functionality.</footer>
+<script>
+'use strict';
+const data={"W": 4200, "H": 2860, "panels": [{"id": "A", "x": 40, "y": 210, "w": 430, "h": 1190, "title": "A  WORKSPACE", "subtitle": "React / TypeScript · Tauri windows", "detail": "Extend the current desktop. Full chat and mini chat subscribe to the same durable run. An unsent draft is not a submitted request. Clipboard attachments are owned by the profile and conversation."}, {"id": "B", "x": 500, "y": 210, "w": 500, "h": 1190, "title": "B  LOCAL ENTRY & LIFECYCLE", "subtitle": "Rust ownership · authenticated loopback", "detail": "One native supervisor and one service owner per profile. Validate requests before inference. Diagnostics and updater commands remain available when Python or Ollama is unavailable."}, {"id": "C", "x": 1030, "y": 210, "w": 670, "h": 1190, "title": "C  CONVERSATION & CONTEXT", "subtitle": "Owned history · evidence · token budget", "detail": "Persist the accepted request before work starts. Current user intent outranks retrieved memory. Separate source evidence, mutable memory, conversation history and generated summaries."}, {"id": "D", "x": 1730, "y": 210, "w": 1260, "h": 1190, "title": "D  DURABLE AI ORCHESTRATION", "subtitle": "Application-owned state · bounded execution", "detail": "One coordinator owns a run. Direct chat skips the research graph. LangGraph executes bounded research behind the app contract. A lease and checkpoint support recovery but cannot make external writes exactly-once."}, {"id": "E", "x": 3020, "y": 210, "w": 1140, "h": 1190, "title": "E  TOOL EXECUTION & CONNECTORS", "subtitle": "Read results are evidence; writes require authority", "detail": "Every tool call checks scope, arguments, grants, budgets and cancellation. First ship a curated read-only MCP connection and the existing reviewed task write. Arbitrary generated-code execution requires a separate sandbox design."}, {"id": "F", "x": 40, "y": 1450, "w": 1320, "h": 840, "title": "F  KNOWLEDGE & INDEX LIFECYCLE", "subtitle": "Existing FTS5 + LanceDB · versioned generations", "detail": "Hybrid retrieval already exists. Add embedding fingerprints, generation manifests and deletion enforcement before model migration. Stage new indexes and activate a consistent generation; never mix old vectors with new text."}, {"id": "G", "x": 1390, "y": 1450, "w": 1320, "h": 840, "title": "G  MODEL GATEWAY & INFERENCE", "subtitle": "Local first · explicit remote choice", "detail": "Route by explicit model choice, modality, capability and permissions. Use one foreground GPU admission slot; pause indexing during chat. Optional cloud calls need approved data scope and spend reservation."}, {"id": "H", "x": 2740, "y": 1450, "w": 1420, "h": 840, "title": "H  BACKGROUND WORK & PERSISTENCE", "subtitle": "Persistent job queue + transactional outbox", "detail": "Background workers consume persisted jobs with leases, bounded retries and duplicate handling. Usage records and write receipts are correctness-critical; analytics can run later. Never place raw secrets in traces."}, {"id": "I", "x": 40, "y": 2340, "w": 4120, "h": 310, "title": "I  SAFETY, FAILURE HANDLING & RELEASE GATES", "subtitle": "Cross-cutting contracts enforced at every boundary", "detail": "These controls apply to each request and tool call. Streamed text cannot be unsent. Cancellation stops new work; already-dispatched external writes may still need reconciliation. Test packaged behavior, not only mocked APIs."}, {"id": "J", "x": 40, "y": 2690, "w": 4120, "h": 120, "title": "J  LATER: SHARED HOSTED DEPLOYMENT", "subtitle": "Not required for the desktop MVP", "detail": "If shared cloud workspaces become an actual product requirement: auth and membership, API gateway, PostgreSQL/pgvector, object storage, shared queue and GPU workers. Redis, CDN, vLLM and regional deployment are workload-dependent additions."}], "nodes": [{"id": "a1", "p": "A", "x": 65, "y": 315, "w": 380, "h": 169, "title": "1  Compose a request", "body": ["Chat / mini chat / screenshot", "Project + model + tool choices", "Push-to-talk is a gated pilot"], "status": "EXTEND"}, {"id": "a2", "p": "A", "x": 65, "y": 515, "w": 380, "h": 196, "title": "Live answer workspace", "body": ["Text and progress events", "Source viewer + artifacts", "Edit diagrams; copy/export", "Visible model and data route"], "status": "EXTEND"}, {"id": "a3", "p": "A", "x": 65, "y": 735, "w": 380, "h": 169, "title": "Stop / reconnect", "body": ["Cancel by run ID", "Replay from last event sequence", "Unsent drafts remain local"], "status": "BUILD"}, {"id": "a4", "p": "A", "x": 65, "y": 940, "w": 380, "h": 196, "title": "Review a proposed action", "body": ["Exact destination and arguments", "Approve, reject or edit", "A receipt confirms completion", "No receipt: show uncertainty"], "status": "EXTEND"}, {"id": "a5", "p": "A", "x": 65, "y": 1160, "w": 380, "h": 169, "title": "Settings and recovery", "body": ["Models, keys, permissions", "Service diagnostics / update", "Usable without AI service"], "status": "EXTEND"}, {"id": "b1", "p": "B", "x": 525, "y": 315, "w": 450, "h": 169, "title": "2  Native request bridge", "body": ["Validated Tauri commands", "Profile-bound service session", "No secret token in UI state"], "status": "EXTEND"}, {"id": "b2", "p": "B", "x": 525, "y": 515, "w": 450, "h": 196, "title": "Request admission", "body": ["Schema + size + modality checks", "Idempotency key + request ID", "Allowlisted origins / credentials", "No inference before admission"], "status": "BUILD"}, {"id": "b3", "p": "B", "x": 525, "y": 735, "w": 450, "h": 169, "title": "Process supervisor", "body": ["Own child PIDs and lifecycle", "One instance per profile", "Backoff; actionable startup states"], "status": "EXTEND"}, {"id": "b4", "p": "B", "x": 525, "y": 940, "w": 450, "h": 196, "title": "Resource and spend limits", "body": ["Per-profile pending-work cap", "Rate limits and deadlines", "Reserve remote spend before call", "Reject or queue before model work"], "status": "EXTEND"}, {"id": "b5", "p": "B", "x": 525, "y": 1160, "w": 450, "h": 169, "title": "Signed update channel", "body": ["Check / verify / stage / install", "Separate native update command", "Recovery and rollback test gate"], "status": "EXTEND"}, {"id": "c1", "p": "C", "x": 1055, "y": 315, "w": 620, "h": 169, "title": "3  Conversation + message repository", "body": ["Resolve conversation/project ownership", "Persist accepted user message and run ID", "Branch/edit history explicitly; no silent replacement"], "status": "EXTEND"}, {"id": "c2", "p": "C", "x": 1055, "y": 515, "w": 620, "h": 196, "title": "4  Context assembly", "body": ["Current user turn + recent conversation first", "Relevant scoped memory with correction history", "Source passages and attachment references", "Token budget includes tools, images and output"], "status": "EXTEND"}, {"id": "c3", "p": "C", "x": 1055, "y": 735, "w": 290, "h": 169, "title": "Memory records", "body": ["Edit / delete / supersede", "Scope + provenance", "Never override topic"], "status": "EXTEND"}, {"id": "c4", "p": "C", "x": 1385, "y": 735, "w": 290, "h": 169, "title": "Evidence records", "body": ["Source + version + ID", "Page / line / region", "Recheck eligibility"], "status": "BUILD"}, {"id": "c5", "p": "C", "x": 1055, "y": 940, "w": 620, "h": 196, "title": "Snapshots and summaries", "body": ["Summary links to covered messages", "Invalidate affected derivatives after corrections", "Never treat an inferred summary as a user fact", "Pin permitted source versions for each run"], "status": "BUILD"}, {"id": "c6", "p": "C", "x": 1055, "y": 1160, "w": 620, "h": 169, "title": "Context diagnostics", "body": ["Record selected IDs, dropped counts and timings", "Distinguish retrieval miss from context-budget loss", "No raw private document text in routine traces"], "status": "BUILD"}, {"id": "d1", "p": "D", "x": 1760, "y": 315, "w": 1200, "h": 169, "title": "5  Run coordinator", "body": ["accepted → preparing → queued → running → completed", "Branches: waiting_approval / cancelled / interrupted / failed / needs_reconciliation", "App-owned run contract + event sequence + attempt IDs + leases"], "status": "BUILD"}, {"id": "d2", "p": "D", "x": 1760, "y": 525, "w": 360, "h": 196, "title": "Direct conversation", "body": ["Normal chat and writing", "No retrieval for a greeting", "One generation call baseline", "Preserve active-topic follow-up"], "status": "EXTEND"}, {"id": "d3", "p": "D", "x": 2180, "y": 525, "w": 360, "h": 196, "title": "Evidence answer", "body": ["Retrieve scoped passages", "Original query + one rewrite", "Coverage before synthesis", "Show missing evidence"], "status": "EXTEND"}, {"id": "d4", "p": "D", "x": 2600, "y": 525, "w": 360, "h": 196, "title": "Bounded task graph", "body": ["LangGraph executor", "Read → compare → synthesize", "Tool/model/time/cost caps", "Stop repeated unhelpful calls"], "status": "BUILD"}, {"id": "d5", "p": "D", "x": 1760, "y": 760, "w": 560, "h": 196, "title": "6  Prompt and capability contract", "body": ["Current tool status + evidence + output schema", "No claim of web access without actual results", "Model can propose a tool, not authorize it", "Context sent only within the approved scope"], "status": "BUILD"}, {"id": "d6", "p": "D", "x": 2400, "y": 760, "w": 560, "h": 196, "title": "8  Tool-call dispatcher", "body": ["Validate structured call and tool manifest", "Read grant or exact write approval", "Persist intent before external side effect", "Result goes back as bounded tool data"], "status": "BUILD"}, {"id": "d7", "p": "D", "x": 1760, "y": 985, "w": 560, "h": 169, "title": "10  Output and artifact checks", "body": ["Validate graph/chart schemas before display", "Resolve citation IDs; assess claim support", "Treat streamed draft text as provisional"], "status": "EXTEND"}, {"id": "d8", "p": "D", "x": 2400, "y": 985, "w": 560, "h": 169, "title": "11  Event stream and completion", "body": ["Persist ordered deltas / batches before publish", "Commit final message and terminal state", "UI replays by sequence; rejects stale attempts"], "status": "BUILD"}, {"id": "d9", "p": "D", "x": 1760, "y": 1190, "w": 1200, "h": 142, "title": "12  Checkpoint, outbox and accounting", "body": ["Short local transactions; no database transaction held during inference or approval", "Usage/receipt state is durable. Summaries and analytics run off the response path."], "status": "BUILD"}, {"id": "e1", "p": "E", "x": 3050, "y": 315, "w": 1080, "h": 169, "title": "Tool registry and permission broker", "body": ["Typed manifest + schema + effect class + grant scope + timeout + result-size cap", "Allowlist executables and destinations. Untrusted tool text cannot grant privileges.", "Version and argument fingerprint invalidate stale approvals."], "status": "BUILD"}, {"id": "e2", "p": "E", "x": 3050, "y": 525, "w": 510, "h": 196, "title": "9  Execution service", "body": ["Lease one attempt; check cancel", "Deadline and result limits", "Capture provider operation ID", "Receipt or needs_reconciliation"], "status": "BUILD"}, {"id": "e3", "p": "E", "x": 3620, "y": 525, "w": 510, "h": 196, "title": "MCP client + adapters", "body": ["Curated local / remote servers", "Negotiation + scoped credentials", "Bounded protocol and output", "Current fixture is not general MCP"], "status": "BUILD"}, {"id": "e4", "p": "E", "x": 3050, "y": 760, "w": 510, "h": 196, "title": "Read tools", "body": ["Project search / passage reads", "Configured live web search", "One connected read-only source", "Return typed success/error/evidence"], "status": "EXTEND"}, {"id": "e5", "p": "E", "x": 3620, "y": 760, "w": 510, "h": 196, "title": "Reviewed write tool", "body": ["Existing LocalMind task first", "External writes require read-back", "No blind retry after timeout", "Approval bound to exact proposal"], "status": "EXTEND"}, {"id": "e6", "p": "E", "x": 3050, "y": 985, "w": 1080, "h": 169, "title": "Tool loop: propose → validate → execute → result → infer", "body": ["The loop shares the run budget, cancellation state and remaining context allowance.", "Reacquire GPU only for the next inference pass; do not hold it while waiting on a tool.", "Every result has a call ID, attempt ID and status; prose cannot substitute for success."], "status": "BUILD"}, {"id": "e7", "p": "E", "x": 3050, "y": 1190, "w": 1080, "h": 142, "title": "Later: generated-code execution", "body": ["Requires a real sandbox with filesystem/network/resource policies and package controls.", "An ordinary worker process or a subprocess timeout is not a security sandbox."], "status": "LATER"}, {"id": "f1", "p": "F", "x": 70, "y": 1555, "w": 370, "h": 169, "title": "F1  Source intake", "body": ["Import / scope / hash", "Immutable source revision", "Managed bytes + ownership"], "status": "EXTEND"}, {"id": "f2", "p": "F", "x": 510, "y": 1555, "w": 370, "h": 169, "title": "F2  Parse and chunk", "body": ["Text/PDF baseline", "Optional Docling / OCR worker", "Page, line and table locations"], "status": "EXTEND"}, {"id": "f3", "p": "F", "x": 950, "y": 1555, "w": 380, "h": 169, "title": "F3  Stage a generation", "body": ["Parser + chunker revision", "Embedding fingerprint", "Separate FTS and vector state"], "status": "BUILD"}, {"id": "f4", "p": "F", "x": 70, "y": 1760, "w": 600, "h": 196, "title": "F4  Activate or report degradation", "body": ["Full hybrid: activate after both indexes are ready", "Lexical-only: explicit generation and status", "Deleted/revoked source becomes ineligible now", "No mixed embedding families, even at equal dimensions"], "status": "BUILD"}, {"id": "f5", "p": "F", "x": 730, "y": 1760, "w": 600, "h": 196, "title": "F5  Query candidates", "body": ["Original query plus optional scoped rewrite", "FTS5 exact terms + LanceDB semantic candidates", "RRF fusion → deduplicate → optional rerank", "Return distinct retrieval status on failures"], "status": "EXTEND"}, {"id": "f6", "p": "F", "x": 70, "y": 1980, "w": 600, "h": 196, "title": "F6  Evidence selection", "body": ["Required-source coverage for comparisons", "Diversify within the context budget", "Check scope again before context/cloud dispatch", "Citations bind to supplied passage versions"], "status": "BUILD"}, {"id": "f7", "p": "F", "x": 730, "y": 1980, "w": 600, "h": 196, "title": "F7  Evidence quality", "body": ["Valid link ≠ supported claim", "Numbers, dates, qualifiers and contradictions", "Explain missing/old/inaccessible evidence", "Human-labeled evals calibrate optional model judges"], "status": "BUILD"}, {"id": "f8", "p": "F", "x": 70, "y": 2180, "w": 1260, "h": 80, "title": "Migration rule: current 768-dimensional index is a baseline, not a universal schema", "body": [], "status": "BUILD"}, {"id": "g1", "p": "G", "x": 1420, "y": 1555, "w": 600, "h": 169, "title": "7  Capability-aware model routing", "body": ["Explicit model choice wins", "Text / image / tool schema compatibility", "Local-only never silently routes to cloud"], "status": "EXTEND"}, {"id": "g2", "p": "G", "x": 2080, "y": 1555, "w": 600, "h": 169, "title": "Local resource scheduler", "body": ["Foreground generation admission", "Pause / batch background embeddings", "Loading, prefill and generation timings"], "status": "EXTEND"}, {"id": "g3", "p": "G", "x": 1420, "y": 1760, "w": 390, "h": 196, "title": "Ollama adapter", "body": ["Chat or vision model", "Supported thinking controls", "Warm/cold timing and memory", "Do not load every model at once"], "status": "EXTEND"}, {"id": "g4", "p": "G", "x": 1855, "y": 1760, "w": 390, "h": 196, "title": "User API adapters", "body": ["Existing cloud providers", "Native credential store", "Consent + spend reservation", "No hidden paid fallback"], "status": "EXTEND"}, {"id": "g5", "p": "G", "x": 2290, "y": 1760, "w": 390, "h": 196, "title": "Model roles", "body": ["Chat / vision / embeddings", "Optional shortlist reranker", "Versioned capability records", "Benchmarked per device tier"], "status": "BUILD"}, {"id": "g6", "p": "G", "x": 1420, "y": 1980, "w": 600, "h": 196, "title": "Provider result contract", "body": ["Text / tool call / usage / stop reason / error", "Cancel and timeout behavior per provider", "Hold uncertain usage; reconcile later", "No silent concatenation of different retry answers"], "status": "BUILD"}, {"id": "g7", "p": "G", "x": 2080, "y": 1980, "w": 600, "h": 196, "title": "Controlled fallback", "body": ["Retry eligible failures before visible output", "After output: preserve partial answer and retry choice", "Respect model choice, privacy and cost ceiling", "Auth errors and uncertain writes are not retryable reads"], "status": "BUILD"}, {"id": "g8", "p": "G", "x": 1420, "y": 2180, "w": 1260, "h": 80, "title": "Later: user-operated vLLM endpoint; inference throughput is not a reasoning upgrade", "body": [], "status": "LATER"}, {"id": "h1", "p": "H", "x": 2770, "y": 1555, "w": 1360, "h": 169, "title": "H1  Transactional outbox + durable job queue", "body": ["runs.db: state transitions and outgoing events commit together", "Leases + bounded retries + duplicate handling + parked failed jobs", "Workers consume only committed work; no Kafka or Redis dependency in the desktop MVP"], "status": "BUILD"}, {"id": "h2", "p": "H", "x": 2770, "y": 1760, "w": 420, "h": 196, "title": "Index / OCR workers", "body": ["Foreground backpressure", "Resume incomplete generations", "Delete/revoke invalidation", "Optional parser downloads"], "status": "EXTEND"}, {"id": "h3", "p": "H", "x": 3240, "y": 1760, "w": 420, "h": 196, "title": "Summaries / memory", "body": ["Source-linked summaries", "Explicit correction history", "No automatic weight training", "No cross-project memory leak"], "status": "EXTEND"}, {"id": "h4", "p": "H", "x": 3710, "y": 1760, "w": 420, "h": 196, "title": "Speech / media workers", "body": ["Editable speech transcript", "Interruptible audio playback", "Image quality gate retained", "Video APIs are later scope"], "status": "EXTEND"}, {"id": "h5", "p": "H", "x": 2770, "y": 1980, "w": 650, "h": 196, "title": "Canonical local persistence", "body": ["Existing domain SQLite stores: messages and scope", "New run ledger: events, attempts, approvals, receipts", "Managed snapshots / artifacts; retention and backup", "Native credential store is a separate security boundary"], "status": "EXTEND"}, {"id": "h6", "p": "H", "x": 3480, "y": 1980, "w": 650, "h": 196, "title": "Diagnostics and evaluation", "body": ["Stage timings + queue depth + categorized failures", "Redacted local traces; opt-in diagnostics export", "Frozen cases + model/hardware/config fingerprints", "No claim that mocked checks prove live-model quality"], "status": "BUILD"}, {"id": "h7", "p": "H", "x": 2770, "y": 2180, "w": 1360, "h": 80, "title": "Atomicity is per transaction/store; recovery reconciles domain updates across existing databases", "body": [], "status": "BUILD"}, {"id": "i0", "p": "I", "x": 70, "y": 2445, "w": 780, "h": 169, "title": "Ownership and privacy", "body": ["Profile / project / source scope", "Consent before outbound data", "Treat retrieved text as untrusted"], "status": "BUILD"}, {"id": "i1", "p": "I", "x": 890, "y": 2445, "w": 780, "h": 169, "title": "Failure and cancellation", "body": ["Typed errors; bounded backoff", "Circuit breaker per provider", "After dispatch: reconcile writes"], "status": "BUILD"}, {"id": "i2", "p": "I", "x": 1710, "y": 2445, "w": 780, "h": 169, "title": "Streaming correctness", "body": ["Persist sequence before publish", "Do not retry into a partial reply", "Artifact validation before render"], "status": "BUILD"}, {"id": "i3", "p": "I", "x": 2530, "y": 2445, "w": 780, "h": 169, "title": "CI and quality gates", "body": ["Unit / DB / contract / replay tests", "Held-out live-model evaluations", "Native install / update / recovery"], "status": "BUILD"}, {"id": "i4", "p": "I", "x": 3350, "y": 2445, "w": 780, "h": 169, "title": "Cost and resource controls", "body": ["Reservations across attempts", "GPU admission and worker quotas", "Unknown charges stay reserved"], "status": "BUILD"}], "edges": [{"d": "M445 390 H525", "kind": "main"}, {"d": "M975 390 H1055", "kind": "main"}, {"d": "M1365 465 V515", "kind": "main"}, {"d": "M1675 597 H1714 V392 H1760", "kind": "main"}, {"d": "M2360 470 V495 H1940 V525", "kind": "main"}, {"d": "M2360 495 V525", "kind": "main"}, {"d": "M2360 495 H2780 V525", "kind": "main"}, {"d": "M1940 705 V760", "kind": "main"}, {"d": "M2360 705 V733 H2040 V760", "kind": "main"}, {"d": "M2780 705 V760", "kind": "main"}, {"d": "M2960 842 H3000 V390 H3050", "kind": "tool"}, {"d": "M3305 465 V525", "kind": "tool"}, {"d": "M3560 615 H3620", "kind": "tool"}, {"d": "M3305 705 V760", "kind": "tool"}, {"d": "M3875 705 V760", "kind": "tool"}, {"d": "M4130 1065 H4145 V1422 H3004 V964 H2040 V956", "kind": "tool"}, {"d": "M1760 835 H1710 V1430 H1376 V1625 H1420", "kind": "main"}, {"d": "M1420 2065 H1372 V1440 H1720 V1060 H1760", "kind": "main"}, {"d": "M2320 1060 H2400", "kind": "main"}, {"d": "M2680 1140 V1190", "kind": "async"}, {"d": "M2960 1255 H3005 V145 V85 H24 V595 H65", "kind": "main"}, {"d": "M2960 1280 H3008 V1435 H4128 V1555", "kind": "async"}, {"d": "M1675 630 H1688 V1415 H1350 V1830 H1330", "kind": "main"}, {"d": "M70 2060 H52 V1428 H1015 V922 H1530 V904", "kind": "main"}, {"d": "M440 1625 H510", "kind": "async"}, {"d": "M880 1625 H950", "kind": "async"}, {"d": "M1140 1695 V1730 H370 V1760", "kind": "async"}, {"d": "M1030 1920 V1950 H370 V1980", "kind": "main"}, {"d": "M670 2060 H730", "kind": "main"}, {"d": "M2020 1625 H2080", "kind": "main"}, {"d": "M2380 1695 V1730 H1615 V1760", "kind": "main"}, {"d": "M1720 1724 V1745 H2050 V1760", "kind": "main"}, {"d": "M1615 1920 V1980", "kind": "main"}, {"d": "M2050 1920 V1950 H1720 V1980", "kind": "main"}, {"d": "M3425 1695 V1725 H2980 V1760", "kind": "async"}, {"d": "M3425 1725 V1760", "kind": "async"}, {"d": "M3425 1725 H3920 V1760", "kind": "async"}], "labels": [{"x": 466, "y": 377, "text": "1 → 2", "kind": "main"}, {"x": 1008, "y": 377, "text": "3", "kind": "main"}, {"x": 1380, "y": 497, "text": "4", "kind": "main"}, {"x": 1718, "y": 490, "text": "5", "kind": "main"}, {"x": 3038, "y": 495, "text": "8 → registry → 9", "kind": "tool"}, {"x": 3230, "y": 1418, "text": "tool result → next bounded model pass", "kind": "tool"}, {"x": 1450, "y": 1424, "text": "7  model request", "kind": "main"}, {"x": 1775, "y": 1436, "text": "normalized model events → 10", "kind": "main"}, {"x": 2350, "y": 1047, "text": "11", "kind": "main"}, {"x": 2695, "y": 1171, "text": "12", "kind": "async"}, {"x": 1550, "y": 132, "text": "ordered stream / replay → workspace", "kind": "main"}, {"x": 3735, "y": 1430, "text": "committed events / jobs", "kind": "async"}, {"x": 1055, "y": 1410, "text": "scoped retrieval → F5", "kind": "main"}, {"x": 600, "y": 1423, "text": "evidence → C4", "kind": "main"}]};
+const select=document.getElementById('section'),svg=document.querySelector('#drawing>svg'),drawing=document.getElementById('drawing'),viewport=document.getElementById('viewport');
+let zoom=1, selectedSection='all';
+for(const panel of data.panels){const option=document.createElement('option');option.value=panel.id;option.textContent=panel.title;select.append(option);}
+function detail(title,description,body=[],status='PROPOSED DESIGN'){document.getElementById('detail-title').textContent=title;document.getElementById('section-detail').textContent=description;document.getElementById('badge').textContent=status;const list=document.getElementById('details');list.replaceChildren();for(const item of body){const li=document.createElement('li');li.textContent=item;list.append(li);}}
+function applyZoom(){drawing.style.width=(100*zoom)+'%';drawing.style.height=(100*zoom)+'%';document.getElementById('status').textContent=Math.round(zoom*100)+'%';document.getElementById('minus').disabled=zoom<=1;document.getElementById('plus').disabled=zoom>=5;}
+function focusSection(id){selectedSection=id;select.value=id;const panel=data.panels.find(p=>p.id===id);svg.setAttribute('viewBox',panel?`${panel.x-15} ${panel.y-15} ${panel.w+30} ${panel.h+30}`:`0 0 ${data.W} ${data.H}`);zoom=1;applyZoom();viewport.scrollTo(0,0);for(const hit of svg.querySelectorAll('.hit')){hit.setAttribute('tabindex',id==='all'||hit.dataset.panel===id?'0':'-1');hit.setAttribute('aria-pressed','false');}detail(panel?panel.title:'Whole system',panel?panel.detail:'Select a section to read it at a useful size. The components are logical modules within a small number of processes.');}
+const ns='http://www.w3.org/2000/svg';
+for(const n of data.nodes){const hit=document.createElementNS(ns,'rect');for(const key of ['x','y','width','height'])hit.setAttribute(key,String(key==='width'?n.w:key==='height'?n.h:n[key]));hit.setAttribute('rx','8');hit.setAttribute('class','hit');hit.setAttribute('role','button');hit.setAttribute('tabindex','0');hit.setAttribute('aria-label',n.title);hit.setAttribute('aria-pressed','false');hit.dataset.panel=n.p;hit.dataset.node=n.id;const activate=()=>{for(const h of svg.querySelectorAll('.hit'))h.setAttribute('aria-pressed',String(h===hit));const p=data.panels.find(p=>p.id===n.p);detail(n.title,p.detail,n.body,n.status);};hit.addEventListener('click',activate);hit.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();activate();}});svg.append(hit);}
+select.addEventListener('change',()=>focusSection(select.value));document.getElementById('plus').addEventListener('click',()=>{zoom=Math.min(5,zoom+.5);applyZoom();});document.getElementById('minus').addEventListener('click',()=>{zoom=Math.max(1,zoom-.5);applyZoom();});document.getElementById('fit').addEventListener('click',()=>{zoom=1;applyZoom();viewport.scrollTo(0,0);});document.getElementById('overview').addEventListener('click',()=>focusSection('all'));
+document.getElementById('fullscreen').addEventListener('click',async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}catch{document.getElementById('status').textContent='Use F11 for full screen';}});document.addEventListener('fullscreenchange',()=>document.getElementById('fullscreen').textContent=document.fullscreenElement?'Exit full screen':'Full screen');
+focusSection('all');
+</script></body></html>

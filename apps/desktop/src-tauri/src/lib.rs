@@ -850,7 +850,7 @@ async fn delete_memory(
     app_handle: tauri::AppHandle,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<(), String> {
-    let (url, token) = sidecar_url(&sidecar_state, &format!("/memory/{memory_id}"))?;
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/memory/{}", path_id(&memory_id)?))?;
     let client = localmind_core::http::local_client();
     delete_from_sidecar(&client, &url, &token).await?;
     let (list_url, list_token) = sidecar_url(&sidecar_state, "/memory/list")?;
@@ -927,7 +927,7 @@ async fn delete_memory_link(
     link_id: String,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<(), String> {
-    let (url, token) = sidecar_url(&sidecar_state, &format!("/memory/link/{link_id}"))?;
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/memory/link/{}", path_id(&link_id)?))?;
     let client = localmind_core::http::local_client();
     delete_from_sidecar(&client, &url, &token).await?;
     Ok(())
@@ -1031,7 +1031,7 @@ async fn delete_knowledge_source(
     app_handle: tauri::AppHandle,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<(), String> {
-    let (url, token) = sidecar_url(&sidecar_state, &format!("/knowledge/source/{source_id}"))?;
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/knowledge/source/{}", path_id(&source_id)?))?;
     let client = localmind_core::http::local_client();
     delete_from_sidecar(&client, &url, &token).await?;
     let (list_url, list_token) = sidecar_url(&sidecar_state, "/knowledge/sources")?;
@@ -1055,7 +1055,7 @@ async fn assign_knowledge_project(
     project_id: Option<String>,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<Vec<KnowledgeSource>, String> {
-    let (url, token) = sidecar_url(&sidecar_state, &format!("/knowledge/source/{source_id}/project"))?;
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/knowledge/source/{}/project", path_id(&source_id)?))?;
     let response = localmind_core::http::local_client()
         .patch(&url)
         .header("Authorization", format!("Bearer {token}"))
@@ -1145,6 +1145,19 @@ fn knowledge_id(value: &str) -> Result<&str, String> {
     Ok(value)
 }
 
+/// Ids the local service makes are UUIDs. Checking them here keeps text like "../all" out of request paths.
+fn path_id(value: &str) -> Result<&str, String> {
+    knowledge_id(value).map_err(|_| "Invalid identifier".to_string())
+}
+
+/// Operation and connector names are short lowercase words, never paths.
+fn path_word(value: &str) -> Result<&str, String> {
+    if value.is_empty() || value.len() > 40 || !value.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_') {
+        return Err("Invalid operation name".into());
+    }
+    Ok(value)
+}
+
 #[tauri::command]
 async fn create_conversation(
     title: String,
@@ -1191,7 +1204,7 @@ async fn get_conversation_messages(
 ) -> Result<Vec<ConversationMessage>, String> {
     let (url, token) = sidecar_url(
         &sidecar_state,
-        &format!("/conversations/{conversation_id}/messages"),
+        &format!("/conversations/{}/messages", path_id(&conversation_id)?),
     )?;
     let client = localmind_core::http::local_client();
     let resp = client
@@ -1217,7 +1230,7 @@ async fn save_conversation_turn(
 ) -> Result<(), String> {
     let (url, token) = sidecar_url(
         &sidecar_state,
-        &format!("/conversations/{conversation_id}/turn"),
+        &format!("/conversations/{}/turn", path_id(&conversation_id)?),
     )?;
     let body = serde_json::json!({
         "user_content": user_content,
@@ -1249,7 +1262,7 @@ async fn delete_conversation(
 ) -> Result<(), String> {
     let (url, token) = sidecar_url(
         &sidecar_state,
-        &format!("/conversations/{conversation_id}"),
+        &format!("/conversations/{}", path_id(&conversation_id)?),
     )?;
     let client = localmind_core::http::local_client();
     delete_from_sidecar(&client, &url, &token).await?;
@@ -1294,7 +1307,7 @@ async fn rename_conversation(
 ) -> Result<(), String> {
     let (url, token) = sidecar_url(
         &sidecar_state,
-        &format!("/conversations/{conversation_id}"),
+        &format!("/conversations/{}", path_id(&conversation_id)?),
     )?;
     let body = serde_json::json!({ "title": title });
     let client = localmind_core::http::local_client();
@@ -1364,7 +1377,7 @@ async fn update_project(
     summary: Option<String>,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<Project, String> {
-    let (url, token) = sidecar_url(&sidecar_state, &format!("/projects/{project_id}"))?;
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/projects/{}", path_id(&project_id)?))?;
     let body = serde_json::json!({ "name": name, "path": path, "summary": summary });
     let client = localmind_core::http::local_client();
     let resp = client
@@ -1387,7 +1400,7 @@ async fn delete_project(
     app_handle: tauri::AppHandle,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<(), String> {
-    let (url, token) = sidecar_url(&sidecar_state, &format!("/projects/{project_id}"))?;
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/projects/{}", path_id(&project_id)?))?;
     let client = localmind_core::http::local_client();
     delete_from_sidecar(&client, &url, &token).await?;
     let (list_url, list_token) = sidecar_url(&sidecar_state, "/projects")?;
@@ -1411,7 +1424,7 @@ async fn generate_project_summary(
     speed_model: String,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<String, String> {
-    let (url, token) = sidecar_url(&sidecar_state, &format!("/projects/{project_id}/summary"))?;
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/projects/{}/summary", path_id(&project_id)?))?;
     let body = serde_json::json!({ "speed_model": speed_model });
     let client = localmind_core::http::local_client();
     let resp = client
@@ -1464,7 +1477,7 @@ async fn media_request(
         return Err("Media request is too large".into());
     }
     let body = if operation == "status" { None } else { Some(payload.unwrap_or_else(|| serde_json::json!({}))) };
-    reviewed_request(&sidecar_state, &format!("/media/{operation}"), body).await
+    reviewed_request(&sidecar_state, &format!("/media/{}", path_word(&operation)?), body).await
 }
 
 fn provider_path_allowed(method: &str, path: &str) -> bool {
@@ -1562,6 +1575,32 @@ mod cloud_bridge_tests {
         assert!(!provider_path_allowed("GET", "/providers/openai/credential"));
     }
     #[test]
+    fn every_provider_gets_exactly_the_same_actions() {
+        const PROVIDERS: [&str; 8] = ["openai", "anthropic", "gemini", "deepseek", "openrouter", "groq", "mistral", "xai"];
+        const ALLOWED: [(&str, &str); 7] = [("GET", "models"), ("POST", "check"), ("PUT", "credential"),
+            ("DELETE", "credential"), ("PATCH", "config"), ("PUT", "consent"), ("DELETE", "consent")];
+        const METHODS: [&str; 5] = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+        const ACTIONS: [&str; 6] = ["models", "check", "credential", "config", "consent", "export"];
+        for provider in PROVIDERS {
+            for method in METHODS {
+                for action in ACTIONS {
+                    let path = format!("/providers/{provider}/{action}");
+                    assert_eq!(provider_path_allowed(method, &path), ALLOWED.contains(&(method, action)), "{method} {path}");
+                }
+            }
+        }
+    }
+    #[test]
+    fn request_path_pieces_cannot_climb_out_of_their_route() {
+        use super::{path_id, path_word};
+        assert!(path_id("123e4567-e89b-12d3-a456-426614174000").is_ok());
+        for bad in ["all", "../all", "123e4567-e89b-12d3-a456-426614174000/../all", "", "list"] {
+            assert!(path_id(bad).is_err(), "{bad}");
+        }
+        for good in ["status", "recipe-export", "whatsapp_web"] { assert!(path_word(good).is_ok(), "{good}"); }
+        for bad in ["", "../memory/all", "a/b", "Status", "x?y", &"a".repeat(41)] { assert!(path_word(bad).is_err(), "{bad}"); }
+    }
+    #[test]
     fn attachment_paths_cannot_escape_the_collection() {
         assert!(attachment_path_allowed("POST", "/attachments"));
         assert!(!attachment_path_allowed("DELETE", "/attachments/../../profile"));
@@ -1635,7 +1674,7 @@ async fn voice_request(
         return Err("Voice request is too large".into());
     }
     let body = if operation == "status" { None } else { Some(payload.unwrap_or(serde_json::json!({}))) };
-    reviewed_request(&sidecar_state, &format!("/voice/{operation}"), body).await
+    reviewed_request(&sidecar_state, &format!("/voice/{}", path_word(&operation)?), body).await
 }
 
 #[tauri::command]
@@ -1648,7 +1687,7 @@ async fn mcp_request(
         return Err("Unknown local tool operation".into());
     }
     let body = if operation == "preview" { None } else { Some(payload.unwrap_or_else(|| serde_json::json!({}))) };
-    reviewed_request(&sidecar_state, &format!("/mcp/{operation}"), body).await
+    reviewed_request(&sidecar_state, &format!("/mcp/{}", path_word(&operation)?), body).await
 }
 
 #[tauri::command]
@@ -1664,7 +1703,7 @@ async fn extension_request(
         return Err("Extension request is too large".into());
     }
     let body = if matches!(operation.as_str(), "status" | "recipe-export") { None } else { Some(payload.unwrap_or_else(|| serde_json::json!({}))) };
-    reviewed_request(&sidecar_state, &format!("/extensions/{operation}"), body).await
+    reviewed_request(&sidecar_state, &format!("/extensions/{}", path_word(&operation)?), body).await
 }
 
 #[tauri::command]
@@ -1709,7 +1748,7 @@ async fn create_task(
     due_at: Option<String>,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<Task, String> {
-    let (url, token) = sidecar_url(&sidecar_state, &format!("/projects/{project_id}/tasks"))?;
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/projects/{}/tasks", path_id(&project_id)?))?;
     let body = serde_json::json!({ "title": title, "due_at": due_at });
     let client = localmind_core::http::local_client();
     let resp = client
@@ -1731,7 +1770,7 @@ async fn list_tasks(
     project_id: String,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<Vec<Task>, String> {
-    let (url, token) = sidecar_url(&sidecar_state, &format!("/projects/{project_id}/tasks"))?;
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/projects/{}/tasks", path_id(&project_id)?))?;
     let client = localmind_core::http::local_client();
     let resp = client
         .get(&url)
@@ -1824,7 +1863,7 @@ async fn update_task(
 ) -> Result<(), String> {
     let (url, token) = sidecar_url(
         &sidecar_state,
-        &format!("/projects/{project_id}/tasks/{task_id}"),
+        &format!("/projects/{}/tasks/{}", path_id(&project_id)?, path_id(&task_id)?),
     )?;
     let body = serde_json::json!({ "title": title, "status": status, "due_at": due_at });
     let client = localmind_core::http::local_client();
@@ -1850,7 +1889,7 @@ async fn delete_task(
 ) -> Result<(), String> {
     let (url, token) = sidecar_url(
         &sidecar_state,
-        &format!("/projects/{project_id}/tasks/{task_id}"),
+        &format!("/projects/{}/tasks/{}", path_id(&project_id)?, path_id(&task_id)?),
     )?;
     let client = localmind_core::http::local_client();
     delete_from_sidecar(&client, &url, &token).await?;
@@ -1887,7 +1926,7 @@ async fn get_project_conversations(
 ) -> Result<Vec<Conversation>, String> {
     let (url, token) = sidecar_url(
         &sidecar_state,
-        &format!("/projects/{project_id}/conversations"),
+        &format!("/projects/{}/conversations", path_id(&project_id)?),
     )?;
     let client = localmind_core::http::local_client();
     let resp = client
@@ -2206,7 +2245,7 @@ async fn connect_connector(
     credentials: Option<serde_json::Value>,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<serde_json::Value, String> {
-    let (url, token) = sidecar_url(&sidecar_state, &format!("/connectors/{connector_id}/connect"))?;
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/connectors/{}/connect", path_word(&connector_id)?))?;
     let body = serde_json::json!({ "credentials": credentials.unwrap_or(serde_json::json!({})) });
     let client = localmind_core::http::local_client();
     let resp = client
@@ -2225,7 +2264,7 @@ async fn disconnect_connector(
     connector_id: String,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<(), String> {
-    let (url, token) = sidecar_url(&sidecar_state, &format!("/connectors/{connector_id}"))?;
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/connectors/{}", path_word(&connector_id)?))?;
     let client = localmind_core::http::local_client();
     delete_from_sidecar(&client, &url, &token).await?;
     Ok(())
@@ -2236,7 +2275,7 @@ async fn sync_connector(
     connector_id: String,
     sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<serde_json::Value, String> {
-    let (url, token) = sidecar_url(&sidecar_state, &format!("/connectors/{connector_id}/sync"))?;
+    let (url, token) = sidecar_url(&sidecar_state, &format!("/connectors/{}/sync", path_word(&connector_id)?))?;
     let client = localmind_core::http::local_client();
     let resp = client
         .post(&url)

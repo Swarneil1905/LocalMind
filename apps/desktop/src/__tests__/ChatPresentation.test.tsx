@@ -132,6 +132,14 @@ describe("transcript interactions", () => {
     expect(screen.queryByRole("button", { name: "Copy response" })).toBeNull();
   });
 
+  it("shows which saved memories shaped an answer and why", () => {
+    render(<MessageList messages={[question, answer("Here you go.", { sources: [{ kind: "memory", title: "Saved memories", url: "", snippet: "",
+      memories: [{ id: "m1", content: "User is learning Rust.", matched: ["rust"] }] }] })]} isStreaming={false} />);
+    expect(screen.getByText("Memories used (1)")).toBeTruthy();
+    expect(screen.getByText(/matched: rust/)).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Sources" })).toBeNull();
+  });
+
   it("offers one click to turn Web on and retry", () => {
     const enable = vi.fn();
     render(<MessageList messages={[question, answer("Web search is off, so I can't verify this.")]} isStreaming={false} onEnableWeb={enable} />);
