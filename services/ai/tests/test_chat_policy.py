@@ -287,3 +287,28 @@ class AnswerPolicyTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AnswerShapeTests(unittest.TestCase):
+    def test_common_question_types_get_a_layout_hint(self):
+        from app.chat_policy import answer_shape
+        self.assertIn("numbered steps", answer_shape("How do I install Docker?"))
+        self.assertIn("newest first", answer_shape("any news on Nvidia?"))
+        self.assertIn("figure", answer_shape("why did the stock market fall today"))
+        self.assertEqual(answer_shape("hey, whats up?"), "")
+
+
+class ChatTitleTests(unittest.IsolatedAsyncioTestCase):
+    async def _title(self, reply):
+        class Client:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return False
+            async def post(self, *a, **k):
+                return httpx.Response(200, json={"message": {"content": reply}}, request=httpx.Request("POST", "http://x"))
+        with patch("app.api.routes.chat.httpx.AsyncClient", return_value=Client()):
+            return await chat.chat_title(chat.TitleRequest(last_user="hi", last_assistant="hello"))
+
+    async def test_title_is_cleaned_and_bad_replies_are_ignored(self):
+        self.assertEqual((await self._title('Title: "Gamma radiation basics."\nextra'))["title"], "Gamma radiation basics")
+        self.assertEqual((await self._title(""))["title"], "")
+        self.assertEqual((await self._title("x" * 200))["title"], "")

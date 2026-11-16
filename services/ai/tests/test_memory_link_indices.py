@@ -99,6 +99,12 @@ class MemoryGateTests(unittest.TestCase):
             with self.subTest(fact=fact):
                 self.assertFalse(memory._grounded_in_user_message(fact, asked))
 
+    def test_records_of_what_was_said_are_rejected(self):
+        for fact, said in (("User said: how have you been?", "how have you been?"),
+                           ("User's job: User stated that they explained gamma radiation.", "explain gamma radiation")):
+            with self.subTest(fact=fact):
+                self.assertFalse(memory._grounded_in_user_message(fact, said))
+
     def test_facts_the_user_stated_are_kept(self):
         for fact, said in (("User is a software engineer who works with Python.", "I'm a software engineer and I mostly write Python"),
                            ("User prefers dark mode in every app.", "Remember that I like dark mode in every app"),

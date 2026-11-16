@@ -1,8 +1,8 @@
 """Conservative request packing without a downloaded tokenizer.
 
-For the supported byte-fallback models, UTF-8 bytes bound ordinary text tokens.
-We additionally reserve 32 tokens per message and 128 for template framing.
-This intentionally overestimates English; it is not a measured tokenizer count.
+For the supported byte-fallback models, UTF-8 bytes bound text tokens; ASCII text is counted
+at one token per 3 characters. We additionally reserve 32 tokens per message and 128 for
+template framing. This still overestimates English; it is not a measured tokenizer count.
 Never silently truncate the governing policy or the latest user request.
 """
 from dataclasses import dataclass
@@ -24,11 +24,14 @@ class PackedContext:
     report: dict
 
 
+def _text_tokens(text: str) -> int:
+    # Plain ASCII runs at 4+ characters per token for English; 3 keeps a margin for URLs and numbers.
+    # Anything else stays at one token per byte.
+    return -(-len(text) // 3) if text.isascii() else len(text.encode("utf-8"))
+
+
 def estimate_tokens(messages: Sequence[Mapping[str, str]]) -> int:
-    return 128 + sum(
-        len(m["content"].encode("utf-8")) + len(m["role"].encode("utf-8")) + 32
-        for m in messages
-    )
+    return 128 + sum(_text_tokens(m["content"]) + len(m["role"]) + 32 for m in messages)
 
 
 def _reference_message(references: list[dict[str, str]]) -> dict[str, str]:

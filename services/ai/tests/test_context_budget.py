@@ -44,7 +44,7 @@ class ContextBudgetTests(unittest.TestCase):
 
     def test_oversized_latest_request_is_rejected_without_truncation(self):
         with self.assertRaisesRegex(ValueError, "too long"):
-            pack_context("Policy", "x" * 5000, [], {}, 4096, 512)
+            pack_context("Policy", "x" * 12000, [], {}, 4096, 512)
 
     def test_invalid_profile_budget_is_rejected(self):
         for budget, reserve in [(2048, 2048), (2048, -1), (True, 1), (4096, 0)]:
@@ -61,3 +61,10 @@ class ContextBudgetTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WebSourceBudgetTests(unittest.TestCase):
+    def test_five_web_sources_fit_the_default_context_untrimmed(self):
+        evidence = "\n\n".join('{"title": "Headline %d", "cite": "[%d]", "snippet": "%s"}' % (i, i, "x" * 2000) for i in range(1, 6))
+        packed = pack_context("p" * 5000, "latest news on Nvidia?", [], [{"label": "Retrieved web evidence", "content": evidence}])
+        self.assertFalse(packed.report["trimmed"])

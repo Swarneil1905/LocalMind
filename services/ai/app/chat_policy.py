@@ -1,4 +1,5 @@
 """The answer policy shared by desktop and direct service chat requests."""
+import re
 
 DEFAULT_SYSTEM_PROMPT = """You are LocalMind, a private local AI assistant.
 Answer the latest request directly. Use earlier turns to understand references and constraints;
@@ -60,6 +61,27 @@ extraction has saved anything during this response.
 
 NO_SOURCES_NOTICE = ("No current sources were found for this question, so the answer below comes from the "
                      "model's own knowledge and may be out of date. Use Try again to search once more.")
+
+
+_SHAPES = (
+    (re.compile(r"\bhow (?:do|can|should|to)\b|\bsteps? to\b|\bset ?up\b|\binstall\b|\bwalk me through\b", re.I),
+     "Shape: numbered steps in order, one action each. Put commands in code blocks. "
+     "End with one line on how to check it worked. No preamble."),
+    (re.compile(r"\b(?:news|headlines?|what'?s happening|latest on|update on|any updates?)\b", re.I),
+     "Shape: one sentence on the most important development, then 3 to 5 short bullets, newest first, "
+     "each with its date and citation. Say what is still unconfirmed."),
+    (re.compile(r"\b(?:stocks?|share price|market|earnings|inflation|interest rates?|bitcoin|crypto|revenue|fed)\b", re.I),
+     "Shape: lead with the figure and its date, then 2 to 4 bullets on what drove it. "
+     "Do not tell the user what to buy or sell."),
+)
+
+
+def answer_shape(message: str) -> str:
+    """A one-line layout hint for common question types; empty when none fits."""
+    for pattern, shape in _SHAPES:
+        if pattern.search(message):
+            return "\n" + shape
+    return ""
 
 
 def answer_policy(today: str, *, searched: bool, web_allowed: bool, search_failed: bool = False) -> str:

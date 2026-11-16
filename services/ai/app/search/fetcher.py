@@ -19,6 +19,7 @@ from dataclasses import dataclass
 import ipaddress
 import json
 import re
+import asyncio
 import socket
 from urllib.parse import urlparse
 
@@ -113,16 +114,27 @@ def _check_url(url: str) -> None:
         raise SSRFError(f"DNS resolution failed: {exc}") from exc
 
     for info in infos:
-        addr_str = info[4][0]
-        try:
-            addr = ipaddress.ip_address(addr_str)
-        except ValueError:
-            continue
-        if addr.is_loopback or addr.is_link_local or addr.is_private:
-            raise SSRFError(f"Blocked address: {addr_str}")
-        for net in _BLOCKED_NETS:
-            if addr in net:
-                raise SSRFError(f"Blocked network: {addr_str} is in {net}")
+        _check_address(info[4][0])
+
+
+def _check_address(addr_str: str) -> None:
+    try:
+        addr = ipaddress.ip_address(addr_str)
+    except ValueError:
+        return
+    if addr.is_loopback or addr.is_link_local or addr.is_private:
+        raise SSRFError(f"Blocked address: {addr_str}")
+    for net in _BLOCKED_NETS:
+        if addr in net:
+            raise SSRFError(f"Blocked network: {addr_str} is in {net}")
+
+
+def _check_connected_peer(response) -> None:
+    """The name can resolve differently when httpx connects (DNS rebinding), so check who answered."""
+    stream = response.extensions.get("network_stream")
+    peer = stream.get_extra_info("server_addr") if stream else None
+    if peer:
+        _check_address(str(peer[0]))
 
 
 class ArticleParser(HTMLParser):
@@ -240,7 +252,7 @@ async def fetch_evidence(url: str) -> PageEvidence:
       ContentTypeError - response is not text/html or text/plain
       httpx errors     - network failures
     """
-    _check_url(url)
+    await asyncio.to_thread(_check_url, url)
 
     async with httpx.AsyncClient(
         timeout=_TIMEOUT,
@@ -251,9 +263,14 @@ async def fetch_evidence(url: str) -> PageEvidence:
         current_url = url
 
         while True:
-            _check_url(current_url)
+            await asyncio.to_thread(_check_url, current_url)
             request = client.build_request("GET", current_url, headers={"User-Agent": "LocalMind/0.6"})
             resp = await client.send(request, stream=True)
+            try:
+                _check_connected_peer(resp)
+            except SSRFError:
+                await resp.aclose()
+                raise
 
             if resp.is_redirect:
                 await resp.aclose()
