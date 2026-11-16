@@ -6,20 +6,20 @@ Installation, model setup, everyday controls and troubleshooting. For a product 
 
 ## Install
 
-**[Open the latest release](https://github.com/Swarneil1905/LocalMind/releases/latest)** and choose your installer. The published version is **0.8.0**; the source tree includes the **0.9.0 release candidate**. See the [published release notes](releases/v0.8.0.md) and [candidate notes and limits](releases/v0.9.0.md). The release page is the source of truth for available installers.
+**[Open the latest release](https://github.com/Swarneil1905/LocalMind/releases/latest)** and choose your installer. The published version is **1.0.0**. See the [release notes and limits](releases/v1.0.0.md). The release page is the source of truth for available installers.
 
 | Platform | Download |
 | --- | --- |
-| Windows x64 | `LocalMind_0.8.0_x64-setup.exe` |
-| macOS Apple Silicon, macOS 14+ | `LocalMind_0.8.0_aarch64.dmg` |
-| macOS Intel, macOS 14+ | `LocalMind_0.8.0_x64.dmg` |
+| Windows x64 | `LocalMind_1.0.0_x64-setup.exe` |
+| macOS Apple Silicon, macOS 14+ | `LocalMind_1.0.0_aarch64.dmg` |
+| macOS Intel, macOS 14+ | `LocalMind_1.0.0_x64.dmg` |
 | Linux x64 | `.deb` or `.AppImage` |
 
 The installer includes the Python AI service and Ollama runtime. You do not need Python, Node.js, Rust or Docker to use the app. An existing local Ollama installation can be reused. **Model weights download separately.** Memory use, disk space and speed depend on your model and computer.
 
 Updater bundles are signed with LocalMind's update key. Windows installers are not Authenticode-signed and macOS apps are not Apple-notarized, so operating systems may display a security prompt. Release assets include `SHA256SUMS.txt`.
 
-**Updating:** v0.8.0 shows an update banner when a newer published version is available. The next release adds **Settings → Updates** with a manual check, installed version, release notes, and retry controls. It works independently of the local AI service. Before selecting **Install and restart**, finish active responses and save unsent drafts. If installation fails, use the installer on the release page. Pulling or pushing source code does not update an installed copy.
+**Updating:** LocalMind shows an update banner when a newer published version is available, and **Settings → Updates** offers a manual check, installed version, release notes, and retry controls. It works independently of the local AI service. Before selecting **Install and restart**, finish active responses and save unsent drafts. If installation fails, use the installer on the release page. Pulling or pushing source code does not update an installed copy.
 
 ## Get started
 
@@ -59,10 +59,9 @@ Once models are installed, local chat and retrieval can work offline. Exact-text
 
 Setup and limitations: [Media](media.md) · [Voice](voice.md) · [Connections and tools](connections.md) · [Image research](image-research.md).
 
-The current source build also adds optional OpenAI, Anthropic and Gemini API
+Version 1.0.0 also includes optional OpenAI, Anthropic, Gemini and DeepSeek API
 connections, screenshot paste and upload, and recovery of interrupted replies.
-These additions require a new build; existing 0.8.0 installers do not gain them
-automatically. See [local and cloud chat](cloud-chat.md) for setup, privacy,
+Installers older than 0.9.0 do not have them until you update. See [local and cloud chat](cloud-chat.md) for setup, privacy,
 image limits and verification status.
 
 The source build also includes [a visual workspace](visual-workspace.md):

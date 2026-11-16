@@ -1,31 +1,19 @@
 WEBVTT
 
-00:00:00.000 --> 00:00:07.000
-LocalMind 0.8.0 | A local workspace, with room to think
+00:00:00.000 --> 00:00:10.000
+Ask a question. Your own model answers on your device.
 
-00:00:07.000 --> 00:00:29.000
-Write a prompt. Stream a response from a model on your computer.
+00:00:10.000 --> 00:00:25.000
+A real answer from qwen3:8b running locally. Waiting time is sped up.
 
-00:00:29.000 --> 00:00:46.000
-Follow up in the same chat. Review drafts: small models can miss instructions.
+00:00:25.000 --> 00:00:35.000
+Chats name themselves. No account and no cloud.
 
-00:00:46.000 --> 00:01:05.000
-Context tools and response presets stay close to the conversation.
+00:00:35.000 --> 00:00:41.000
+Knowledge. Search your own folders and documents.
 
-00:01:05.000 --> 00:01:21.000
-Mini chat | Keep the conversation nearby. Pin it above other windows.
+00:00:41.000 --> 00:00:46.000
+Mini chat. The same conversation beside your work.
 
-00:01:21.000 --> 00:01:37.000
-Start a draft in mini chat, then expand when you need more room.
-
-00:01:37.000 --> 00:01:47.000
-The full workspace keeps your conversation and unsent draft.
-
-00:01:47.000 --> 00:01:53.000
-Choose a calm light or dark workspace.
-
-00:01:53.000 --> 00:02:01.000
-Media studio | Images are experimental. Runway needs your key and approval.
-
-00:02:01.000 --> 00:02:09.000
-Your next question starts here. Download LocalMind from GitHub Releases.
+00:00:46.000 --> 00:00:59.750
+Light and dark themes.
