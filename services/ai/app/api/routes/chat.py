@@ -38,7 +38,7 @@ from pydantic import BaseModel, Field
 
 from app.action_boundary import unsupported_task_response
 from app.task_actions import propose_from_chat
-from app.chat_policy import DEFAULT_SYSTEM_PROMPT, NO_SOURCES_NOTICE, answer_policy
+from app.chat_policy import DEFAULT_SYSTEM_PROMPT, NO_SOURCES_NOTICE, answer_policy, answer_shape
 from app.context_budget import pack_context
 from app.context_retrieval import collect_context, resolve_history, resolve_project
 from app.inference_queue import inference_slot
@@ -189,7 +189,7 @@ async def _prepare_chat(request: ChatRequest, connector_context: str, extra_cont
         searched=bool(sources), web_allowed=request.web_search_enabled and not search_opted_out(request.message),
         search_failed=search_failed,
     )
-    system += response_preferences.instruction()
+    system += response_preferences.instruction() + answer_shape(request.message)
     supplied_context = {"desktop_context": request.context, "connected_apps": connector_context}
     if request.system_prompt and request.system_prompt != DEFAULT_SYSTEM_PROMPT:
         supplied_context["legacy_context"] = request.system_prompt
@@ -516,6 +516,34 @@ async def get_followups(request: FollowUpRequest) -> dict:
         pass
 
     return {"questions": []}
+
+
+class TitleRequest(BaseModel):
+    last_user: str
+    last_assistant: str
+    model: str = "qwen2.5:1.5b"
+
+
+@router.post("/title")
+async def chat_title(request: TitleRequest) -> dict:
+    """A short chat title from the latest exchange; empty on any error so the old title stays."""
+    prompt = (
+        "Write a title of 2 to 6 words for this conversation. Plain words, no quotes, no trailing "
+        "punctuation, no emoji. Reply with the title only.\n\n"
+        f"User: {request.last_user[:500]}\n\nAssistant: {request.last_assistant[:500]}\n\nTitle:"
+    )
+    try:
+        async with inference_slot("background"), httpx.AsyncClient(trust_env=False, timeout=httpx.Timeout(30.0)) as client:
+            resp = await client.post(f"{OLLAMA_BASE}/api/chat", json={
+                "model": request.model, "messages": [{"role": "user", "content": prompt}], "stream": False, "think": False})
+            resp.raise_for_status()
+            lines = (resp.json().get("message", {}).get("content", "") or "").strip().splitlines()
+            title = re.sub(r"^(?:title:\s*)", "", lines[0].strip(), flags=re.I).strip(" \"'`*#.") if lines else ""
+            if 2 <= len(title) <= 60:
+                return {"title": title}
+    except Exception:
+        pass
+    return {"title": ""}
 
 
 @router.post("/stream")

@@ -157,10 +157,14 @@ _GENERIC = {"user", "users", "this", "that", "with", "they", "have", "their", "f
             "likes", "wants", "uses", "works", "working", "enjoys", "interested", "needs", "says", "said"}
 
 
+# "User said: hi" records the chat, not a fact about the person.
+_ABOUT_THE_CHAT = re.compile(r"\buser\s+(?:said|asked|stated|mentioned|wants to know)\b|\bstated that\b", re.I)
+
+
 def _grounded_in_user_message(fact: str, user_message: str) -> bool:
     """A small model often saves what the assistant said. Keep only facts that name the user
     and whose content words mostly come from the user's own message."""
-    if not _USER_CUE.search(fact):
+    if not _USER_CUE.search(fact) or _ABOUT_THE_CHAT.search(fact):
         return False
     words = [w for w in re.findall(r"[a-z0-9]{4,}", fact.lower()) if w not in _GENERIC]
     if not words:
