@@ -132,6 +132,13 @@ describe("transcript interactions", () => {
     expect(screen.queryByRole("button", { name: "Copy response" })).toBeNull();
   });
 
+  it("offers one click to turn Web on and retry", () => {
+    const enable = vi.fn();
+    render(<MessageList messages={[question, answer("Web search is off, so I can't verify this.")]} isStreaming={false} onEnableWeb={enable} />);
+    fireEvent.click(screen.getByRole("button", { name: "Turn on Web and retry" }));
+    expect(enable).toHaveBeenCalledOnce();
+  });
+
   it("announces copy failures without claiming the answer was copied", async () => {
     const user = userEvent.setup();
     vi.spyOn(navigator.clipboard, "writeText").mockRejectedValue(new Error("Permission denied"));
