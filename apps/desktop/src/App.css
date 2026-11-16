@@ -798,6 +798,11 @@
   color: var(--link);
   background: var(--surface-2);
 }
+/* Older answers show their actions on hover or keyboard focus; the latest stays visible. */
+@media (hover: hover) {
+  .message-row:not(:last-of-type) .message-actions { opacity: 0; transition: opacity 160ms ease; }
+  .message-row:hover .message-actions, .message-row:focus-within .message-actions { opacity: 1; }
+}
 .response-status {
   color: var(--text-3);
   font-size: 13px;

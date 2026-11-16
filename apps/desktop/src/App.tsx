@@ -257,6 +257,8 @@ export default function App() {
         );
         throw new Error("Conversation save failed");
       }
+      // Suggestions after a refusal or an empty search would repeat the question that just failed.
+      if (/^(Web search is off|No current sources)/.test(answer)) return;
       void (async () => { try {
         const questions = await invoke<string[]>("get_followup_questions", {
           lastUser: user,
@@ -516,6 +518,21 @@ export default function App() {
     loadMessages(messages.slice(0, -2));
     void send(user.content, undefined, { provider: providerId, model: selectedModel, consentId: cloud?.consent_id, attachments: user.attachments, attachmentDraftId: user.attachmentDraftId });
   };
+  // Turn Web on first, then resend once the new setting is in effect.
+  const [webRetry, setWebRetry] = useState<string | null>(null);
+  useEffect(() => {
+    if (!webRetry || !webSearchEnabled || isStreaming) return;
+    const text = webRetry;
+    setWebRetry(null);
+    void send(text);
+  }, [webRetry, webSearchEnabled, isStreaming, send]);
+  const askedForWeb = !webSearchEnabled && last?.role === "assistant" && /^Web search is off/.test(last.content);
+  const enableWebAndRetry = () => {
+    const user = [...messages].reverse().find((m) => m.role === "user");
+    if (!user) return;
+    setWebSearchEnabled(true);
+    setWebRetry(user.content);
+  };
 
   return (
     <>
@@ -753,6 +770,7 @@ export default function App() {
                   isSearching={isSearching}
                   followUpQuestions={followUps}
                   onSendFollowUp={(q) => void send(q)}
+                  onEnableWeb={askedForWeb ? enableWebAndRetry : undefined}
                   onRegenerate={
                     last?.error || last?.cancelled ? retry : undefined
                   }

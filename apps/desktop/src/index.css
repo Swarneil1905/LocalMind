@@ -25,8 +25,8 @@
 }
 :root {
   color-scheme: dark;
-  --on-accent: #14231d;
-  --accent-contrast: #14231d;
+  --on-accent: #10201a;
+  --accent-contrast: #10201a;
   --bg: #1b1a18;
   --surface: #232220;
   --surface-1: #232220;
@@ -39,8 +39,8 @@
   --text-1: #ece8e0;
   --text-2: #c2bcb0;
   --text-3: #a39d91;
-  --accent: #a8cfbc;
-  --accent-hover: #bcdccd;
+  --accent: #7fae98;
+  --accent-hover: #93bfab;
   --accent-dim: #2a3a33;
   --link: #b5d8c8;
   --success: #8dbba6;

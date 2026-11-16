@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowDown, ExternalLink, RefreshCw } from "lucide-react";
+import { ArrowDown, ExternalLink, Globe, RefreshCw } from "lucide-react";
 import type { Message } from "../types";
 import { Brand } from "./Brand";
 import { AnswerContent, CopyButton, safeWebUrl } from "./AnswerContent";
@@ -16,6 +16,7 @@ interface MessageListProps {
   followUpQuestions?: string[];
   onSendFollowUp?: (question: string) => void;
   onRegenerate?: () => void;
+  onEnableWeb?: () => void;
 }
 
 export function MessageList({
@@ -26,6 +27,7 @@ export function MessageList({
   followUpQuestions = [],
   onSendFollowUp,
   onRegenerate,
+  onEnableWeb,
 }: MessageListProps) {
   const scroll = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -79,6 +81,7 @@ export function MessageList({
               streaming={isStreaming && index === messages.length - 1}
               searching={!!isSearching}
               onRegenerate={index === messages.length - 1 ? onRegenerate : undefined}
+              onEnableWeb={index === messages.length - 1 ? onEnableWeb : undefined}
             />
           ))}
           {!isStreaming && !last?.error && !last?.cancelled && followUpQuestions.length > 0 && onSendFollowUp && (
@@ -117,12 +120,14 @@ const MessageRow = memo(function MessageRow({
   streaming,
   searching,
   onRegenerate,
+  onEnableWeb,
 }: {
   message: Message;
   conversationId?: string;
   streaming: boolean;
   searching: boolean;
   onRegenerate?: () => void;
+  onEnableWeb?: () => void;
 }) {
   const user = message.role === "user";
   const sources = (message.sources || []).map((source, index) => ({ ...source, index, safeUrl: safeWebUrl(source.url) })).filter((source) => source.safeUrl);
@@ -184,6 +189,11 @@ const MessageRow = memo(function MessageRow({
       {!user && !streaming && (message.content || onRegenerate) && (
         <div className="message-actions">
           {message.content && <CopyButton text={message.content} compact />}
+          {onEnableWeb && (
+            <button type="button" onClick={onEnableWeb}>
+              <Globe size={14} aria-hidden="true" /> Turn on Web and retry
+            </button>
+          )}
           {onRegenerate && (
             <button type="button" onClick={onRegenerate}>
               <RefreshCw size={14} aria-hidden="true" /> Try again
