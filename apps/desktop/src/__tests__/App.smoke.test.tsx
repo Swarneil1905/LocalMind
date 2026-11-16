@@ -107,15 +107,13 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("desktop chat workflow", () => {
-  it("updates the header when web search is enabled or disabled", async () => {
+  it("shows the web state once, in the tools, and keeps the header on the model", async () => {
     await setup();
     fireEvent.click(screen.getByRole("button", { name: "Tools" }));
     const web = screen.getByRole("button", { name: "Web" });
     if (web.getAttribute("aria-pressed") === "true") fireEvent.click(web);
-    expect(screen.getByText("Local model", { selector: ".local-label" })).toBeTruthy();
     fireEvent.click(web);
-    expect(screen.getByText("Web search enabled", { selector: ".local-label" })).toBeTruthy();
-    fireEvent.click(web);
+    expect(web.getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByText("Local model", { selector: ".local-label" })).toBeTruthy();
   });
   it("remembers the web search choice across launches", async () => {
@@ -126,7 +124,8 @@ describe("desktop chat workflow", () => {
     expect(localStorage.getItem("lm-web-search")).toBe("on");
     cleanup();
     await setup();
-    expect(screen.getByText("Web search enabled", { selector: ".local-label" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
+    expect(screen.getByRole("button", { name: "Web" }).getAttribute("aria-pressed")).toBe("true");
     localStorage.removeItem("lm-web-search");
   });
   it("keeps drafts but blocks sending until the selected model passes inspection", async () => {

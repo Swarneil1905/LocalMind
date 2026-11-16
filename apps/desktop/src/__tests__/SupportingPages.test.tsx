@@ -29,6 +29,15 @@ beforeEach(() => {
 });
 
 describe("supporting page recovery", () => {
+  it("offers a one-click download when the embedding model is missing", async () => {
+    const { rerender } = render(<KnowledgePage embedModel="embed" installedModels={["qwen3:8b"]} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Download embed" }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("pull_ollama_model", { name: "embed" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Download embed" })).toBeNull());
+    rerender(<KnowledgePage embedModel="embed" installedModels={["embed:latest"]} />);
+    expect(screen.queryByText(/not installed yet/)).toBeNull();
+  });
+
   it("assigns a Knowledge folder explicitly and limits search to the selected project", async () => {
     const source = {
       id: "source-a", path: "fixture", name: "Notes", file_count: 1,

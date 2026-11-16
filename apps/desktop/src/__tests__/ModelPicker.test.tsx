@@ -10,10 +10,10 @@ it("shows actual configured models and changes mode by keyboard", async () => {
   const user = userEvent.setup();
   const input = props();
   render(<ModelPicker {...input} />);
-  const trigger = screen.getByRole("button", { name: "Model mode: Balanced, qwen3:8b" });
+  const trigger = screen.getByRole("button", { name: "Model mode: Smart, qwen3:8b" });
   trigger.focus();
   await user.keyboard("{Enter}");
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: /Balanced: More room/ }));
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: /Smart: More room/ }));
   expect(screen.getByText("qwen2.5:1.5b")).toBeTruthy();
   await user.keyboard("{Shift>}{Tab}{/Shift}{Enter}");
   expect(input.onChange).toHaveBeenCalledWith("speed");
