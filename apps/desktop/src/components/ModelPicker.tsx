@@ -3,8 +3,8 @@ import { Check, ChevronDown, Cpu, Gauge, Zap } from "lucide-react";
 import type { ModelMode } from "../types";
 
 const MODES = [
-  { value: "speed", label: "Speed", description: "Lightweight drafts; check instructions and facts", Icon: Zap },
-  { value: "balanced", label: "Balanced", description: "More room for detailed answers", Icon: Gauge },
+  { value: "speed", label: "Fast", description: "Quick drafts; check instructions and facts", Icon: Zap },
+  { value: "balanced", label: "Smart", description: "More room for detailed answers", Icon: Gauge },
 ] as const;
 
 interface Props {

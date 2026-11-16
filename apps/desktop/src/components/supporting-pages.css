@@ -1269,3 +1269,14 @@
 .connector-icon { background: var(--surface); border-color: var(--border-subtle); border-radius: 12px; width: 48px; height: 48px; }
 .connector-where { margin: 4px 0 0; font-size: 12px; color: var(--text-3); }
 .record-list .connector-row + .connector-row { border-top: 1px solid var(--border-subtle); }
+
+.memory-links { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; margin-top:12px; }
+.page-form-row + .page-section, .page-form-row + .page-notice { margin-top:20px; }
+
+/* Settings sections that stack plain paragraphs: give them one rhythm. */
+section[aria-label="App updates"] > * + *, section[aria-label="Local answer feedback"] > * + * { margin-top:12px; }
+section[aria-label="App updates"] > .settings-section-heading { margin-bottom:8px; }
+section[aria-label="App updates"] > p:first-of-type + p { color:var(--text-2); }
+section[aria-label="Local answer feedback"] { margin-top:32px; padding-top:24px; border-top:1px solid var(--border-subtle); }
+section[aria-label="Local answer feedback"] h3 { font-size:16px; font-weight:500; }
+section[aria-label="Local answer feedback"] > p { color:var(--text-2); font-size:14px; max-width:60ch; }

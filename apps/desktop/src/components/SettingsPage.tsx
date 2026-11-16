@@ -97,7 +97,7 @@ export function SettingsPage(props: SettingsPageProps) {
                   </button>
                 </SettingRow>
                 <p className="page-footnote">
-                  Uses the Speed model. Falls back to direct search when the
+                  Uses the Fast model. Falls back to direct search when the
                   model is unavailable.
                 </p>
               </section>
@@ -228,16 +228,16 @@ function ModelSettings({
         <span className={`status-dot ${running ? "" : "offline"}`} />
       </div>
       <SettingRow
-        label="Speed"
+        label="Fast"
         hint="For quick conversations and background tasks."
       >
-        {select("Speed model", speedModel, onSpeedModelChange)}
+        {select("Fast model", speedModel, onSpeedModelChange)}
       </SettingRow>
       <SettingRow
-        label="Balanced"
+        label="Smart"
         hint="For everyday chat and more involved questions."
       >
-        {select("Balanced model", balancedModel, onBalancedModelChange)}
+        {select("Smart model", balancedModel, onBalancedModelChange)}
       </SettingRow>
       <div className="section-heading">
         <h2>Installed models</h2>

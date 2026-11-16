@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   FolderOpen,
   Search,
@@ -11,7 +12,19 @@ import { useProjects } from "../hooks/useProjects";
 import { KnowledgeCitation } from "./KnowledgeCitation";
 import "./supporting-pages.css";
 
-export function KnowledgePage({ embedModel }: { embedModel: string }) {
+export function KnowledgePage({ embedModel, installedModels }: { embedModel: string; installedModels?: string[] }) {
+  // Without the embedding model, adding a folder fails later with a confusing error.
+  const [fetchState, setFetchState] = useState<"idle" | "downloading" | "failed" | "done">("idle");
+  const embedMissing = !!installedModels && fetchState !== "downloading" && fetchState !== "done" && !installedModels.some(name => name === embedModel || name.startsWith(`${embedModel}:`));
+  async function downloadEmbedModel() {
+    setFetchState("downloading");
+    try {
+      await invoke("pull_ollama_model", { name: embedModel });
+      setFetchState("done");
+    } catch {
+      setFetchState("failed");
+    }
+  }
   const {
     sources,
     loading,
@@ -76,7 +89,7 @@ export function KnowledgePage({ embedModel }: { embedModel: string }) {
           </button>
         </header>
         <label className="page-form-row">
-          Project for new folders and search
+          Project
           <select
             aria-label="Knowledge project"
             value={projectId ?? ""}
@@ -90,6 +103,20 @@ export function KnowledgePage({ embedModel }: { embedModel: string }) {
             {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
           </select>
         </label>
+        {(embedMissing || fetchState === "downloading") && (
+          <div className="page-notice" role="status">
+            <span>
+              {fetchState === "downloading"
+                ? `Downloading ${embedModel}… this is a small model.`
+                : fetchState === "failed"
+                  ? `Could not download ${embedModel}. Check your connection and try again.`
+                  : `Searching your files needs the ${embedModel} model, which is not installed yet.`}
+            </span>
+            {fetchState !== "downloading" && (
+              <button className="page-button" onClick={() => void downloadEmbedModel()}>Download {embedModel}</button>
+            )}
+          </div>
+        )}
         {error && (
           <div className="page-notice error" role="alert">
             <span>{error}</span>
@@ -101,7 +128,7 @@ export function KnowledgePage({ embedModel }: { embedModel: string }) {
         <section className="page-section" aria-labelledby="knowledge-sources">
           <div className="section-heading">
             <h2 id="knowledge-sources">Folders</h2>
-            <span className="muted">{sources.length} added</span>
+            <span className="muted">{sources.length}</span>
           </div>
           {refreshing && !sources.length ? (
             <div className="page-empty-state" role="status">
@@ -113,19 +140,11 @@ export function KnowledgePage({ embedModel }: { embedModel: string }) {
               <div className="empty-icon">
                 <FolderOpen size={26} strokeWidth={1.5} />
               </div>
-              <h2>Your files, within reach</h2>
+              <h2>No folders yet</h2>
               <p>
                 Add a folder to search its contents and reference it in chat.
                 Your original files stay where they are.
               </p>
-              <button
-                className="page-button"
-                onClick={() => void addFolder(embedModel, projectId).catch(() => {})}
-                disabled={loading}
-              >
-                <FolderOpen size={15} />
-                Choose a folder
-              </button>
             </div>
           ) : (
             <div className="record-list">

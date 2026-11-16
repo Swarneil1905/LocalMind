@@ -153,9 +153,11 @@ export function MemoryPage({
                         { month: "short", day: "numeric", year: "numeric" },
                       )}
                     </time>
-                    <p className="page-footnote">{memory.conversation_id ? `Source conversation: ${memory.conversation_id}` : "Legacy memory: source conversation unavailable"}{memory.project_id ? ` · Project: ${memory.project_id}` : ""}</p>
-                    {memory.conversation_id && onOpenConversation && <button className="page-button" onClick={() => onOpenConversation(memory.conversation_id!)}>Open source conversation</button>}
-                    <MemoryEditor key={`${memory.id}:${memory.content}`} memory={memory} onSaved={onRefresh} />
+                    {!memory.conversation_id && <p className="page-footnote">Saved before sources were tracked</p>}
+                    <div className="memory-links">
+                      {memory.conversation_id && onOpenConversation && <button className="page-button" onClick={() => onOpenConversation(memory.conversation_id!)}>Open source conversation</button>}
+                      <MemoryEditor key={`${memory.id}:${memory.content}`} memory={memory} onSaved={onRefresh} />
+                    </div>
                   </div>
                   <button
                     className="page-icon-button"
