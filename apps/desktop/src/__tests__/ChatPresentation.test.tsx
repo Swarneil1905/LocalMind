@@ -201,7 +201,7 @@ describe("composer keyboard controls", () => {
   it("shows enabled context and opens voice controls without changing the draft", () => {
     const props = composerProps();
     const { rerender } = render(<Composer {...props} />);
-    expect(screen.getByLabelText("Enabled context").textContent).toBe("ContextMemory");
+    expect(screen.getByLabelText("Enabled context").textContent).toBe("Memory");
     expect(screen.queryByRole("region", { name: "Local voice controls" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Voice controls" }));
     const panel = screen.getByRole("region", { name: "Local voice controls" });
@@ -209,7 +209,7 @@ describe("composer keyboard controls", () => {
     expect((screen.getByRole("textbox", { name: "Message LocalMind" }) as HTMLTextAreaElement).value).toBe("A draft");
     expect(props.onSend).not.toHaveBeenCalled();
     rerender(<Composer {...props} knowledgeEnabled webSearchEnabled />);
-    expect(screen.getByLabelText("Enabled context").textContent).toBe("ContextMemoryKnowledgeWeb");
+    expect(screen.getByLabelText("Enabled context").textContent).toBe("MemoryKnowledgeWeb");
     expect(screen.getByText(/Search queries leave this device/)).toBeTruthy();
   });
 

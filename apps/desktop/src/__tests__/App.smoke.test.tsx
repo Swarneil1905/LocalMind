@@ -299,6 +299,11 @@ describe("mini chat window", () => {
   });
 });
 
+async function chooseOpenAI() {
+  fireEvent.click(screen.getByRole("button", { name: /Model mode/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "OpenAI, configured-model" }));
+}
+
 describe("cloud chat handoff", () => {
   it("reviews newly included project context even when the Knowledge toggle is off", async () => {
     const original = vi.mocked(invoke).getMockImplementation()!;
@@ -316,8 +321,7 @@ describe("cloud chat handoff", () => {
     const input = await setup();
     fireEvent.click(screen.getByRole("button", { name: "Saved conversation" }));
     await screen.findByText("Previous answer");
-    await screen.findByRole("option", { name: /OpenAI · configured-model/ });
-    fireEvent.change(screen.getByLabelText("Chat provider"), { target: { value: "openai" } });
+    await chooseOpenAI();
     fireEvent.click(screen.getByRole("button", { name: "Tools" }));
     const memory = screen.getByRole("button", { name: "Memory", pressed: true });
     if (memory.getAttribute("aria-pressed") === "true") fireEvent.click(memory);
@@ -355,8 +359,7 @@ describe("cloud chat handoff", () => {
       return original(command, args);
     });
     const input = await setup();
-    await screen.findByRole("option", { name: /OpenAI · configured-model/ });
-    fireEvent.change(screen.getByLabelText("Chat provider"), { target: { value: "openai" } });
+    await chooseOpenAI();
     fireEvent.change(input, { target: { value: "My reviewed question" } });
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     await screen.findByText("Relevant saved memories");
