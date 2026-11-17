@@ -15,6 +15,7 @@ import { Conversation } from "../hooks/useConversations";
 import { MODEL_MAP } from "../types";
 import "./supporting-pages.css";
 import { ProjectDependencies } from "./ProjectDependencies";
+import { PageArt } from "./PageArt";
 
 type Tab = "summary" | "tasks" | "conversations" | "dependencies";
 const STATUS_LABEL: Record<Task["status"], string> = {
@@ -117,6 +118,7 @@ export function ProjectsPage({
             <h1>Projects</h1>
             <p>Keep related conversations and tasks together.</p>
           </div>
+          <PageArt kind="projects" />
           <button
             className="page-button primary"
             onClick={() => setShowCreate(true)}
@@ -186,7 +188,7 @@ export function ProjectsPage({
                   }
                   onClick={() => choose(project.id)}
                 >
-                  <FolderOpen size={16} />
+                  <span className="project-avatar" style={{ "--hue": hueOf(project.name) } as React.CSSProperties} aria-hidden="true">{project.name.trim().charAt(0).toUpperCase()}</span>
                   <span>{project.name}</span>
                 </button>
                 <button
@@ -430,9 +432,7 @@ export function ProjectsPage({
               </>
             ) : (
               <div className="page-empty-state">
-                <div className="empty-icon">
-                  <FolderOpen size={26} strokeWidth={1.5} />
-                </div>
+                <PageArt kind="projects" className="art-lg" />
                 <h2>
                   {projects.length
                     ? "Choose a project"
@@ -577,3 +577,5 @@ function ProjectSummary({
     </div>
   );
 }
+
+const hueOf = (name: string) => [...name].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 360, 7);

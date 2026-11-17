@@ -9,6 +9,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import "./supporting-pages.css";
+import { PageArt } from "./PageArt";
 
 interface ConnectorStatus {
   id: string;
@@ -86,6 +87,7 @@ export function TodayPage({
             </p>
             <h1>Overview</h1>
           </div>
+          <PageArt kind="overview" />
           <button
             className="page-button primary"
             onClick={() => onNavigateToChat()}

@@ -11,6 +11,7 @@ import { useKnowledge, type KnowledgeChunk } from "../hooks/useKnowledge";
 import { useProjects } from "../hooks/useProjects";
 import { KnowledgeCitation } from "./KnowledgeCitation";
 import "./supporting-pages.css";
+import { PageArt } from "./PageArt";
 
 export function KnowledgePage({ embedModel, installedModels }: { embedModel: string; installedModels?: string[] }) {
   // Without the embedding model, adding a folder fails later with a confusing error.
@@ -79,6 +80,7 @@ export function KnowledgePage({ embedModel, installedModels }: { embedModel: str
             <h1>Knowledge</h1>
             <p>Bring your own files into the conversation.</p>
           </div>
+          <PageArt kind="knowledge" />
           <button
             className="page-button primary"
             onClick={() => void addFolder(embedModel, projectId).catch(() => {})}
@@ -137,9 +139,7 @@ export function KnowledgePage({ embedModel, installedModels }: { embedModel: str
             </div>
           ) : error && !sources.length ? null : !sources.length ? (
             <div className="page-empty-state">
-              <div className="empty-icon">
-                <FolderOpen size={26} strokeWidth={1.5} />
-              </div>
+              <PageArt kind="knowledge" className="art-lg" />
               <h2>No folders yet</h2>
               <p>
                 Add a folder to search its contents and reference it in chat.

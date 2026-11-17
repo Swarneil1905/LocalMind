@@ -17,6 +17,7 @@ import { ResponsePreferences } from "./ResponsePreferences";
 import { UpdateSettings } from "./UpdateSettings";
 import type { AppUpdater } from "../hooks/useAppUpdater";
 import "./supporting-pages.css";
+import { PageArt } from "./PageArt";
 
 interface SettingsPageProps {
   updater: AppUpdater;
@@ -51,6 +52,7 @@ export function SettingsPage(props: SettingsPageProps) {
             <h1>Settings</h1>
             <p>Make LocalMind work for this computer and the way you use it.</p>
           </div>
+          <PageArt kind="settings" />
         </header>
         <div className="settings-layout">
           <nav className="settings-nav" aria-label="Settings sections">

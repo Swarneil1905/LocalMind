@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Film, Image as ImageIcon, Download, RefreshCw } from "lucide-react";
 import "./media.css";
 import { CloudImageStudio } from "./CloudImageStudio";
+import { PageArt } from "./PageArt";
 
 export interface MediaJob {
   id: string;
@@ -113,14 +114,15 @@ export function MediaPage() {
   const localBusy = catalog?.jobs.some(job => job.kind !== "video" && active.has(job.state));
   return <div className="media-page">
     <header className="media-intro"><span className="page-eyebrow">CREATE & KEEP</span><h1>Media studio</h1>
-      <p>Explore images on your device. Review every video before sending it to Runway.</p></header>
+      <p>Explore images on your device. Review every video before sending it to Runway.</p>
+      <PageArt kind="media" /></header>
     {error && <p className="page-notice error" role="alert">{error}</p>}
     {notice && <p className="page-notice" role="status">{notice}</p>}
     {!catalog ? <p role="status">Connecting to your media library…</p> : <>
-      <CloudImageStudio jobs={catalog.jobs} />
       <div className="media-create-grid">
+        <CloudImageStudio jobs={catalog.jobs} />
         <section className="media-card" aria-labelledby="image-studio-title">
-          <header><ImageIcon size={20} aria-hidden="true" /><h2 id="image-studio-title">Local images</h2><span className="page-badge">Experimental</span></header>
+          <header><span className="media-tile"><ImageIcon size={18} aria-hidden="true" /></span><h2 id="image-studio-title">Local images</h2><span className="page-badge">Experimental</span></header>
           <p>{catalog.images.reason}</p><p className="muted">{catalog.images.requirements}</p>
           <p className="muted">SSD-1B · 512 × 512 · Apache-2.0 model card</p>
           {catalog.images.runtime_ready && <>
@@ -135,7 +137,7 @@ export function MediaPage() {
           </>}
         </section>
         <section className="media-card" aria-labelledby="video-studio-title">
-          <header><Film size={20} aria-hidden="true" /><h2 id="video-studio-title">Image to video</h2><span className="page-badge">Runway cloud</span></header>
+          <header><span className="media-tile"><Film size={18} aria-hidden="true" /></span><h2 id="video-studio-title">Image to video</h2><span className="page-badge">Runway cloud</span></header>
           <p>Animate one image with Gen-4 Turbo. Estimated {money(duration * 5)} for {duration} seconds, before tax. No subscription is included.</p>
           <details><summary>Runway connection · {catalog.credential === "saved" ? "key saved" : catalog.credential === "locked" ? "credential store locked" : "key needed"}</summary>
             <p>Your key stays in your operating system credential store. It is checked by Runway when you submit a job.</p>
@@ -165,7 +167,7 @@ export function MediaPage() {
         </div></div>
       </section>}
       <section className="media-library" aria-labelledby="media-jobs-title"><header><h2 id="media-jobs-title">Your jobs</h2><span className="muted">Saved on this device · latest 100</span></header>
-        {catalog.jobs.length === 0 && <div className="media-empty"><ImageIcon size={30} aria-hidden="true" /><h3>A place for what you create</h3><p>Your previews, generated images and video jobs will appear here.</p></div>}
+        {catalog.jobs.length === 0 && <div className="media-empty"><PageArt kind="media" /><h3>A place for what you create</h3><p>Your previews, generated images and video jobs will appear here.</p></div>}
         <div className="media-jobs">{catalog.jobs.filter(job => job.kind !== "cloud-image").map(job => <article className="media-card" key={job.id} aria-label={`${job.kind} job: ${job.prompt}`}>
           <header><span className="page-badge">{job.location}</span><strong>{job.state}</strong></header>
           <h3>{job.kind === "image-install" ? "Image model download" : job.prompt}</h3>

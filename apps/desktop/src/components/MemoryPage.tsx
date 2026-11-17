@@ -1,9 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Brain, Link, LoaderCircle, Search, Trash2, X } from "lucide-react";
+import { Link, LoaderCircle, Search, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { Memory, MemoryLink } from "../hooks/useMemory";
 import "./supporting-pages.css";
 import { qualityRequest } from "../lib/quality";
+import { PageArt } from "./PageArt";
 
 interface MemoryPageProps {
   memories: Memory[];
@@ -77,6 +78,7 @@ export function MemoryPage({
               matters.
             </p>
           </div>
+          <PageArt kind="memory" />
           <button
             className="page-button danger"
             onClick={clearAll}
@@ -125,9 +127,7 @@ export function MemoryPage({
           </div>
         ) : loadError && !memories.length ? null : memories.length === 0 ? (
           <section className="page-empty-state">
-            <div className="empty-icon">
-              <Brain size={25} strokeWidth={1.5} />
-            </div>
+            <PageArt kind="memory" className="art-lg" />
             <h2>A little context goes a long way</h2>
             <p>
               Turn on Memory in a conversation to save useful facts. Your saved

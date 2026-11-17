@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
-  CheckSquare,
   Circle,
   CircleCheck,
   CircleDot,
@@ -12,6 +11,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Project } from "../hooks/useProjects";
 import "./supporting-pages.css";
+import { PageArt } from "./PageArt";
 
 interface TaskWithProject {
   id: string;
@@ -152,6 +152,7 @@ export function TasksPage({ projects }: { projects: Project[] }) {
             <h1>Tasks</h1>
             <p>Keep track of the next steps across your projects.</p>
           </div>
+          <PageArt kind="tasks" />
           <button
             className="page-icon-button"
             aria-label="Refresh tasks"
@@ -252,9 +253,7 @@ export function TasksPage({ projects }: { projects: Project[] }) {
           </div>
         ) : !visible.length ? (
           <div className="page-empty-state">
-            <div className="empty-icon">
-              <CheckSquare size={25} strokeWidth={1.5} />
-            </div>
+            <PageArt kind="tasks" className="art-lg" />
             <h2>
               {tasks.length
                 ? "No tasks in this view"
