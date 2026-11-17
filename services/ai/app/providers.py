@@ -22,6 +22,8 @@ BASES = {"openai": "https://api.openai.com/v1", "anthropic": "https://api.anthro
          "groq": "https://api.groq.com/openai/v1", "mistral": "https://api.mistral.ai/v1", "xai": "https://api.x.ai/v1"}
 # These speak the OpenAI Chat Completions protocol and list models at GET /models.
 COMPATIBLE = frozenset({"deepseek", "openrouter", "groq", "mistral", "xai"})
+PARTIAL = "The provider stopped before finishing. Your partial answer is kept."
+CUT_OFF = "The reply reached its length limit. Your partial answer is kept."
 TIMEOUT = httpx.Timeout(connect=10, read=90, write=30, pool=10)
 MAX_EVENT = 1_000_000
 
@@ -324,7 +326,7 @@ async def stream_chat(provider: str, model: str, messages: list[dict], *, scopes
                             input_tokens, output_tokens = _tokens(usage.get("input_tokens")), _tokens(usage.get("output_tokens"))
                             received_usage = input_tokens is not None and output_tokens is not None
                             if kind == "response.incomplete":
-                                raise ProviderError("incomplete", "The provider stopped before finishing. Your partial answer is preserved.")
+                                raise ProviderError("incomplete", CUT_OFF if (event.get("response", {}).get("incomplete_details") or {}).get("reason") == "max_output_tokens" else PARTIAL)
                             completed = True
                     elif provider == "anthropic":
                         if kind == "message_start":
@@ -342,7 +344,7 @@ async def stream_chat(provider: str, model: str, messages: list[dict], *, scopes
                             if stop == "refusal":
                                 raise ProviderError("blocked", "The provider declined this request.")
                             if stop not in (None, "end_turn", "stop_sequence"):
-                                raise ProviderError("incomplete", "The provider stopped before finishing. Your partial answer is preserved.")
+                                raise ProviderError("incomplete", CUT_OFF if stop == "max_tokens" else PARTIAL)
                         elif kind == "message_stop":
                             completed = True
                     elif provider in COMPATIBLE:
@@ -359,7 +361,7 @@ async def stream_chat(provider: str, model: str, messages: list[dict], *, scopes
                             if stop == "content_filter":
                                 raise ProviderError("blocked", "The provider declined this request.")
                             if stop and stop != "stop":
-                                raise ProviderError("incomplete", "The provider stopped before finishing. Your partial answer is preserved.")
+                                raise ProviderError("incomplete", CUT_OFF if stop == "length" else PARTIAL)
                             completed = completed or stop == "stop"
                     else:
                         if event.get("promptFeedback", {}).get("blockReason"):
@@ -379,7 +381,7 @@ async def stream_chat(provider: str, model: str, messages: list[dict], *, scopes
                                     yield {"type": "token", "content": part["text"]}
                             stop = candidate.get("finishReason")
                             if stop and stop != "STOP":
-                                raise ProviderError("incomplete", "The provider stopped before finishing. Your partial answer is preserved.")
+                                raise ProviderError("incomplete", CUT_OFF if stop == "MAX_TOKENS" else PARTIAL)
                             completed = completed or stop == "STOP"
         if not completed:
             raise ProviderError("interrupted", "The connection ended before the response finished. Retry explicitly; the provider may already have charged for it.")

@@ -249,6 +249,15 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(store.usage()["spent_usd"], 0)
         self.assertEqual(store.usage()["reserved_usd"], 0)
 
+    async def test_token_limit_stop_says_the_reply_was_cut_off(self):
+        consent = self.setup_provider()
+        raw = sse({"type": "response.output_text.delta", "delta": "ok"})
+        raw += sse({"type": "response.incomplete", "response": {"incomplete_details": {"reason": "max_output_tokens"},
+                                                                "usage": {"input_tokens": 5, "output_tokens": 2}}})
+        with self.transport(lambda req: httpx.Response(200, text=raw)):
+            result = await self.run_chat(consent_id=consent)
+        self.assertIn("length limit", result[-1]["content"])
+
     async def test_malformed_or_oversized_stream_is_not_a_success(self):
         consent = self.setup_provider()
         for raw in ("data: not json\n\n", "data: " + "x" * providers.MAX_EVENT + "\n\n"):

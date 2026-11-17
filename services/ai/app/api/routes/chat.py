@@ -364,7 +364,7 @@ async def _stream_response(request: ChatRequest, timing: ChatTiming) -> AsyncIte
         scopes = _cloud_scopes(request, image_count > 0)
         async for event in stream_chat(request.provider, request.model, packed.messages,
                                       scopes=scopes, request_id=request.operation_id or str(uuid4()),
-                                      consent_id=request.consent_id, max_tokens=2048):
+                                      consent_id=request.consent_id, max_tokens=8192):
             yield f"data: {json.dumps(event)}\n\n"
         return
 
