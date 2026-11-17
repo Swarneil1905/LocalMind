@@ -67,7 +67,6 @@
 .connect-field { display: grid; gap: 6px; font-size: 13px; color: var(--text-2); }
 .connect-field input { background: var(--bg); color: inherit; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 14px; }
 .connect-actions { justify-content: flex-end; }
-.cloud-model-select { max-width: 220px; border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: var(--surface); color: inherit; font: inherit; font-size: 12px; }
 .attachment-list { display: flex; gap: 10px; flex-wrap: wrap; padding: 8px; }
 .attachment-item { display: grid; grid-template-columns: 56px minmax(0,1fr) auto; gap: 8px; align-items: center; border: 1px solid var(--border); border-radius: 8px; padding: 8px; max-width: 100%; font-size: 12px; }
 .attachment-item img { width: 56px; height: 56px; object-fit: contain; border-radius: 4px; }

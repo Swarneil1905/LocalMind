@@ -436,12 +436,12 @@ export function ProjectsPage({
                 <h2>
                   {projects.length
                     ? "Choose a project"
-                    : "Give your work a home"}
+                    : "No projects yet"}
                 </h2>
                 <p>
                   {projects.length
                     ? "Select a project to see its tasks and conversations."
-                    : "Create a project to group related conversations and track what’s next."}
+                    : "A project groups related chats, tasks and files. Create one to get started."}
                 </p>
                 {!projects.length && (
                   <button

@@ -69,9 +69,6 @@ export function TodayPage({
       cancelled = true;
     };
   }, [refresh]);
-  const hour = new Date().getHours();
-  const greeting =
-    hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const connected = connectors.filter(
     (item) => item.status === "connected" || item.status === "syncing",
   );
@@ -87,7 +84,7 @@ export function TodayPage({
                 day: "numeric",
               })}
             </p>
-            <h1>{greeting}.</h1>
+            <h1>Overview</h1>
           </div>
           <button
             className="page-button primary"
@@ -98,7 +95,7 @@ export function TodayPage({
         </header>
         <section className="page-section" aria-labelledby="today-start">
           <div className="section-heading">
-            <h2 id="today-start">Where would you like to start?</h2>
+            <h2 id="today-start">Start with</h2>
           </div>
           <div className="start-actions">
             {ACTIONS.map(({ title, description, icon: Icon, prompt }) => (

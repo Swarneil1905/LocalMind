@@ -9,7 +9,6 @@ import type { Message, ModelMode } from "../types";
 import { useVoice } from "../hooks/useVoice";
 import { VoiceControls } from "./VoiceControls";
 import "./composer-controls.css";
-import { useSpotlight } from "../hooks/useSpotlight";
 
 interface ComposerProps {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
@@ -52,7 +51,6 @@ interface ComposerProps {
 }
 
 export function Composer(props: ComposerProps) {
-  const spotlight = useSpotlight<HTMLDivElement>();
   const helpId = useId();
   const voiceId = useId();
   const picker = useRef<HTMLInputElement>(null);
@@ -90,7 +88,7 @@ export function Composer(props: ComposerProps) {
   ].filter(item => item.enabled);
   return (
     <div className="composer-wrap">
-      <div className="composer-box spotlight-surface" {...spotlight}
+      <div className="composer-box"
         onDragOver={event => { if (props.onAddAttachments && event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
         onDrop={event => {
           if (!props.onAddAttachments || !event.dataTransfer.files.length) return;
@@ -98,7 +96,6 @@ export function Composer(props: ComposerProps) {
           if (!disabled && !isStreaming) props.onAddAttachments(Array.from(event.dataTransfer.files));
         }}>
         {context.length > 0 && <div className="composer-context" aria-label="Enabled context">
-          <span className="context-label">Context</span>
           {context.map(({ name, Icon }) => <span className="context-chip" key={name}>
             <Icon size={12} aria-hidden="true" />{name}
           </span>)}
@@ -154,21 +151,10 @@ export function Composer(props: ComposerProps) {
             }} /><button className="icon-button" type="button" aria-label="Attach files" title="Attach screenshots or PDF/text documents (up to 8 MiB each)" disabled={disabled || isStreaming || props.attachmentBusy} onClick={() => picker.current?.click()}><Paperclip size={17} /></button></>}
             <ChatTools {...props} />
             <span className="composer-divider" aria-hidden="true" />
-            {(!props.provider || props.provider === "ollama") && <ModelPicker value={modelMode} onChange={onModelModeChange} modelName={modelName}
-              models={props.modelNames} disabled={isStreaming || voice.busy} />}
-            {props.onProviderChange && <select className="cloud-model-select" aria-label="Chat provider" value={props.provider || "ollama"} disabled={isStreaming || voice.busy}
-              onChange={event => {
-                if (event.target.value === "settings") props.onOpenProviderSettings?.();
-                else if (event.target.value.startsWith("local:")) { props.onLocalModelChange?.(event.target.value.slice(6)); props.onProviderChange?.("ollama"); }
-                else props.onProviderChange?.(event.target.value as ProviderId);
-              }}>
-              <optgroup label="On this device"><option value="ollama">Ollama · {props.provider === "ollama" && props.imageInput === true ? "Text + images" : "Local"}</option>
-                {(props.installedModels || []).map(name => <option key={name} value={`local:${name}`}>{name} · Local · Capability checked on selection</option>)}
-              </optgroup>
-              <optgroup label={props.localOnly ? "Cloud blocked by local-only setting" : "Your API accounts"}>
-                {(props.providers || []).filter(provider => provider.connected && provider.model).map(provider => <option key={provider.id} value={provider.id} disabled={props.localOnly}>{provider.label} · {provider.model} · {provider.vision ? "Text + images" : "Text"}</option>)}
-              </optgroup><option value="settings">Set up cloud models…</option>
-            </select>}
+            <ModelPicker value={modelMode} onChange={onModelModeChange} modelName={modelName} models={props.modelNames}
+              disabled={isStreaming || voice.busy} provider={props.provider} providers={props.providers} localOnly={props.localOnly}
+              installed={props.installedModels} onSelectLocal={props.onLocalModelChange} onSelectProvider={props.onProviderChange}
+              onManageCloud={props.onOpenProviderSettings} />
           </div>
           <div className="composer-send">
             <button type="button" className={`composer-voice ${voice.open ? "is-open" : ""}`}

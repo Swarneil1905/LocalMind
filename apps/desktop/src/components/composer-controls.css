@@ -1,47 +1,64 @@
-.composer-options { display: flex; align-items: center; min-width: 0; gap: 8px; }
+.composer-options { display: flex; align-items: center; min-width: 0; gap: 6px; }
 .composer-wrap .voice-panel { max-height: min(320px, calc(100dvh - 300px)); overflow-y: auto; overscroll-behavior: contain; }
 .composer-divider { height: 16px; width: 1px; background: var(--border-subtle); flex-shrink: 0; }
-.composer-context { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 14px 18px 0; }
-.context-label { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); margin-right: 3px; }
-.context-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border-radius: 6px; font-size: 11px; color: var(--text-2); background: var(--surface-2); }
-.composer-voice { display: grid; place-items: center; width: 36px; height: 36px; color: var(--text-2); border-radius: 50%; flex-shrink: 0; }
-.composer-voice:hover, .composer-voice.is-open { color: var(--text); background: var(--surface-2); }
+.composer-context { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 12px 16px 0; }
+.context-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; font-size: 11.5px; color: var(--text-2); background: var(--surface-2); }
+.composer-voice { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; }
+
+/* Model picker: one control for local presets, installed models and cloud accounts. */
 .model-picker { position: relative; min-width: 0; }
-.model-picker-trigger { display: flex; align-items: center; gap: 7px; color: var(--text-2); padding: 7px 8px; min-height: 34px; border-radius: 8px; font-size: 12px; max-width: 100%; }
-.model-picker-trigger:hover:not(:disabled), .model-picker-trigger[aria-expanded="true"] { background: var(--surface-2); color: var(--text); }
+.model-picker-trigger { display: flex; align-items: center; gap: 7px; padding: 6px 9px; min-height: 34px; border-radius: 9px; font-size: 12.5px; max-width: 100%; }
 .model-picker-trigger > svg { flex-shrink: 0; }
-.model-picker-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 165px; }
-.model-picker-mode { color: var(--text-3); font-size: 10px; padding: 1px 5px; border: 1px solid var(--border-subtle); border-radius: 4px; }
-.model-picker-panel { position: absolute; bottom: calc(100% + 14px); left: 0; width: 320px; max-width: calc(100vw - 48px); max-height: min(380px, calc(100dvh - 140px)); overflow: auto; z-index: 30; padding: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-lg); }
-.picker-heading { display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px 12px; font-size: 12px; }
-.picker-heading strong { font-weight: 500; }
-.picker-heading > span { font-size: 11px; color: var(--text-3); }
-.model-option { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 10px; border-radius: 9px; text-align: left; }
-.model-option:hover, .model-option[aria-pressed="true"] { background: var(--surface-2); }
-.model-option > svg { flex-shrink: 0; color: var(--text-2); }
+.model-picker-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.model-picker-mode { color: var(--text-3); font-size: 11px; }
+.model-picker-panel { position: absolute; bottom: calc(100% + 10px); left: 0; width: 348px; max-width: calc(100vw - 48px); max-height: min(520px, calc(100dvh - 140px)); overflow: auto; z-index: 30; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-lg); overscroll-behavior: contain; }
+.picker-group { padding: 10px 10px 6px; font-size: 11.5px; font-weight: 500; color: var(--text-3); }
+.picker-group:not(:first-child) { margin-top: 6px; border-top: 1px solid var(--border-subtle); padding-top: 14px; }
+.model-option { display: flex; align-items: center; gap: 11px; width: 100%; padding: 9px 10px; border-radius: 9px; text-align: left; }
+.model-option:hover:not(:disabled), .model-option[aria-pressed="true"] { background: var(--surface-2); }
+.model-option:disabled { opacity: .5; }
+.model-option > svg, .model-option > .brand-logo { flex-shrink: 0; color: var(--text-2); }
 .model-option > span { flex: 1; min-width: 0; }
 .model-option strong, .model-option small, .model-option code { display: block; }
 .model-option strong { font-weight: 500; font-size: 13px; }
-.model-option small { font-size: 11px; color: var(--text-2); margin-top: 3px; }
-.model-option code { font-size: 10px; color: var(--text-3); margin-top: 5px; overflow-wrap: anywhere; }
-.model-picker-panel > p { border-top: 1px solid var(--border-subtle); padding: 10px 10px 4px; margin-top: 6px; font-size: 11px; line-height: 1.5; color: var(--text-3); }
-.mini-mode .model-picker-mode, .mini-mode .context-label { display: none; }
-.mini-mode .model-picker-name { max-width: 115px; }
-.mini-mode .composer-context { padding: 10px 12px 0; }
+.model-option small { font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
+.model-option code { font: 11.5px "Cascadia Code", Consolas, monospace; color: var(--text-3); margin-top: 2px; overflow-wrap: anywhere; }
+.picker-tag { flex-shrink: 0; margin: 0 !important; font-size: 11px !important; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border-subtle); }
+.picker-more > summary { cursor: pointer; padding: 8px 10px; font-size: 12px; color: var(--text-2); border-radius: 8px; }
+.picker-more > summary:hover { background: var(--surface-2); }
+.picker-more > summary span { color: var(--text-3); margin-left: 4px; font-variant-numeric: tabular-nums; }
+.model-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 7px 10px; border-radius: 8px; font-size: 12.5px; text-align: left; color: var(--text-2); }
+.model-row:hover, .model-row[aria-pressed="true"] { background: var(--surface-2); color: var(--text); }
+.model-row > span { min-width: 0; overflow-wrap: anywhere; }
+.model-row code { display: block; font: 11px "Cascadia Code", Consolas, monospace; color: var(--text-3); }
+.picker-manage { margin-top: 4px; justify-content: flex-start; color: var(--text-2); }
+.picker-cloud + .picker-cloud { margin-top: 2px; }
+.picker-browse { display: flex; align-items: center; gap: 4px; margin: 0 0 4px 39px; padding: 3px 4px; font-size: 11.5px; color: var(--text-3); border-radius: 6px; }
+.picker-browse:hover { color: var(--text); }
+.picker-browse svg { transition: transform 120ms ease; }
+.picker-browse[aria-expanded="true"] svg { transform: rotate(90deg); }
+.picker-browser { margin: 2px 4px 8px 39px; }
+.picker-search { display: flex; align-items: center; gap: 7px; padding: 6px 9px; border: 1px solid var(--border-subtle); border-radius: 8px; color: var(--text-3); }
+.picker-search:focus-within { border-color: var(--text-3); }
+.picker-search input { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: var(--text); font: inherit; font-size: 12.5px; }
+.picker-list { max-height: 220px; overflow-y: auto; margin-top: 6px; overscroll-behavior: contain; }
+.picker-empty { padding: 8px 10px; font-size: 12px; line-height: 1.5; color: var(--text-3); }
+.mini-mode .model-picker-mode, .mini-mode .composer-context { display: none; }
+.mini-mode .model-picker-name { max-width: 110px; }
 .mini-mode .composer-toolbar { position: relative; }
 .mini-mode .model-picker { position: static; }
-.mini-mode .model-picker-panel { left: 0; right: auto; width: min(310px, calc(100vw - 40px)); }
+.mini-mode .model-picker-panel { left: 0; right: auto; width: min(320px, calc(100vw - 40px)); }
 @media (max-width: 600px) {
   .model-picker-mode { display: none; }
   .model-picker-name { max-width: 130px; }
   .composer-options { gap: 4px; }
   .composer-toolbar { position: relative; }
   .model-picker { position: static; }
-  .model-picker-panel { left: 0; right: auto; width: min(310px, calc(100vw - 40px)); }
+  .model-picker-panel { left: 0; right: auto; width: min(320px, calc(100vw - 40px)); }
 }
 @media (max-width: 400px) {
-  .composer-options .composer-tool span, .composer-divider, .model-picker-trigger > svg:first-child { display: none; }
-  .model-picker-name { max-width: 115px; }
+  .composer-options .composer-tool span, .composer-divider { display: none; }
+  .model-picker-name { max-width: 110px; }
   .model-picker-trigger { gap: 4px; padding-inline: 4px; }
   .composer-caption .keyboard-hint { display: none; }
 }

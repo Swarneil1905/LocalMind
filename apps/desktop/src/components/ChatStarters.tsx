@@ -1,25 +1,16 @@
-import { ArrowUpRight, Compass, Lightbulb, PenLine } from "lucide-react";
-import { useSpotlight } from "../hooks/useSpotlight";
+import { Compass, Lightbulb, PenLine } from "lucide-react";
 
 const STARTERS = [
-  { label: "Think it through", detail: "Explore an idea", text: "Help me think through an idea: ", Icon: Lightbulb },
-  { label: "Find the words", detail: "Make a first draft", text: "Help me write a clear reply to: ", Icon: PenLine },
-  { label: "Make a plan", detail: "Find your next step", text: "Help me break this goal into steps: ", Icon: Compass },
+  { label: "Think it through", text: "Help me think through an idea: ", Icon: Lightbulb },
+  { label: "Find the words", text: "Help me write a clear reply to: ", Icon: PenLine },
+  { label: "Make a plan", text: "Help me break this goal into steps: ", Icon: Compass },
 ];
 
 export function ChatStarters({ onChoose }: { onChoose: (prompt: string) => void }) {
   return <div className="starter-prompts" aria-label="Ways to start a conversation">
-    {STARTERS.map(starter => <Starter key={starter.label} starter={starter} onChoose={onChoose} />)}
+    {STARTERS.map(({ label, text, Icon }) => <button type="button" key={label} onClick={() => onChoose(text)}>
+      <Icon size={16} strokeWidth={1.6} aria-hidden="true" />
+      <span><strong>{label}</strong></span>
+    </button>)}
   </div>;
-}
-
-function Starter({ starter: { label, detail, text, Icon }, onChoose }: {
-  starter: typeof STARTERS[number]; onChoose: (prompt: string) => void;
-}) {
-  const spotlight = useSpotlight<HTMLButtonElement>();
-  return <button type="button" className="spotlight-surface" {...spotlight} onClick={() => onChoose(text)}>
-      <Icon size={19} strokeWidth={1.6} aria-hidden="true" />
-      <span><strong>{label}</strong><small>{detail}</small></span>
-      <ArrowUpRight size={14} aria-hidden="true" />
-    </button>;
 }

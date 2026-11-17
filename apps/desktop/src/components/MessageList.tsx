@@ -1,7 +1,10 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowDown, Cpu, ExternalLink, Globe, RefreshCw } from "lucide-react";
+import { ArrowDown, ChevronsRight, Cpu, ExternalLink, Globe, Info, RefreshCw } from "lucide-react";
 import type { Message } from "../types";
-import { Brand } from "./Brand";
+import type { ProviderId } from "../lib/providers";
+import { agentFor } from "../lib/agents";
+import { BrandLogo } from "./BrandLogo";
+import { AgentStatus } from "./AgentStatus";
 import { AnswerContent, CopyButton, safeWebUrl } from "./AnswerContent";
 import { ResponseDetails } from "./ResponseDetails";
 import { ResponseFeedback } from "./ResponseFeedback";
@@ -13,9 +16,13 @@ interface MessageListProps {
   messages: Message[];
   isStreaming: boolean;
   isSearching?: boolean;
+  /** Provider and model that answer new messages; they pick each answer's logo and name. */
+  provider?: ProviderId;
+  modelName?: string;
   followUpQuestions?: string[];
   onSendFollowUp?: (question: string) => void;
   onRegenerate?: () => void;
+  onContinue?: () => void;
   onEnableWeb?: () => void;
   onFallbackLocal?: () => void;
 }
@@ -25,9 +32,12 @@ export function MessageList({
   messages,
   isStreaming,
   isSearching,
+  provider = "ollama",
+  modelName,
   followUpQuestions = [],
   onSendFollowUp,
   onRegenerate,
+  onContinue,
   onEnableWeb,
   onFallbackLocal,
 }: MessageListProps) {
@@ -82,7 +92,10 @@ export function MessageList({
               conversationId={conversationId}
               streaming={isStreaming && index === messages.length - 1}
               searching={!!isSearching}
+              provider={provider}
+              modelName={modelName}
               onRegenerate={index === messages.length - 1 ? onRegenerate : undefined}
+              onContinue={index === messages.length - 1 ? onContinue : undefined}
               onEnableWeb={index === messages.length - 1 ? onEnableWeb : undefined}
               onFallbackLocal={index === messages.length - 1 ? onFallbackLocal : undefined}
             />
@@ -122,7 +135,10 @@ const MessageRow = memo(function MessageRow({
   message,
   streaming,
   searching,
+  provider,
+  modelName,
   onRegenerate,
+  onContinue,
   onEnableWeb,
   onFallbackLocal,
 }: {
@@ -130,25 +146,33 @@ const MessageRow = memo(function MessageRow({
   conversationId?: string;
   streaming: boolean;
   searching: boolean;
+  provider: ProviderId;
+  modelName?: string;
   onRegenerate?: () => void;
+  onContinue?: () => void;
   onEnableWeb?: () => void;
   onFallbackLocal?: () => void;
 }) {
   const user = message.role === "user";
+  // Saved answers carry the model that wrote them; a streaming one uses the active model.
+  const model = message.diagnostics?.model || modelName;
+  // A reply cut off by a length limit keeps its text; it is not a failure.
+  const cutOff = !!message.error && !!message.content && /length limit|stopped before finishing/.test(message.errorMessage || "");
   const sources = (message.sources || []).map((source, index) => ({ ...source, index, safeUrl: safeWebUrl(source.url) })).filter((source) => source.safeUrl);
   return (
     <article
-      className={`message-row ${user ? "message-user" : "message-assistant"} ${message.error ? "message-error" : ""}`}
+      className={`message-row ${user ? "message-user" : "message-assistant"} ${message.error && !cutOff ? "message-error" : ""}`}
       aria-label={user ? "Your message" : "LocalMind response"}
     >
-      <div className="message-author">
-        {!user && <Brand size={24} />}
-        {user ? "You" : "LocalMind"}
-        {streaming && <span className="activity-dot" aria-hidden="true" />}
-      </div>
+      {!user && (
+        <div className="message-author">
+          <BrandLogo id={agentFor(model, provider)} label={model || "LocalMind"} size={18} />
+          <span>{model || "LocalMind"}</span>
+        </div>
+      )}
       {message.thinking && (
         <details className="reasoning">
-          <summary>{message.isThinking ? "Thinking…" : "Model notes"}</summary>
+          <summary className={message.isThinking ? "shimmer-text" : undefined}>{message.isThinking ? "Thinking" : "Reasoning"}</summary>
           <p>{message.thinking}</p>
         </details>
       )}
@@ -157,11 +181,7 @@ const MessageRow = memo(function MessageRow({
       ) : message.content ? (
         <AnswerContent conversationId={streaming ? undefined : conversationId} content={message.content} sources={message.sources} />
       ) : streaming ? (
-        <p className="response-status">
-          {searching ? "Searching the web…"
-            : sources.length ? `Read ${sources.length} ${sources.length === 1 ? "source" : "sources"} · writing…`
-            : message.isThinking ? "Thinking…" : "Preparing a response…"}
-        </p>
+        <AgentStatus phase={searching ? "searching" : sources.length ? "reading" : "thinking"} sources={sources.length} web={searching || sources.length > 0} />
       ) : null}
       {sources.length > 0 && !(streaming && !message.content) && (
         <section className="source-cards" aria-label="Sources">
@@ -178,11 +198,9 @@ const MessageRow = memo(function MessageRow({
           </ol>
         </section>
       )}
-      {message.errorMessage && <p className="response-status" role="note">{message.errorMessage}</p>}
+      {message.errorMessage && <p className={`response-note ${cutOff ? "is-info" : ""}`} role="note"><Info size={14} aria-hidden="true" />{message.errorMessage}</p>}
       {(message.sources || []).some(source => source.kind === "document") && <details className="message-sources"><summary>Document excerpts sent with this response</summary>{message.sources?.filter(source => source.kind === "document").map(source => <section key={source.title}><h4>{source.title}</h4><pre style={{ whiteSpace: "pre-wrap" }}>{source.snippet}</pre></section>)}</details>}
       {message.cancelled && <p className="response-status">Response stopped</p>}
-      {!user && message.diagnostics && <ResponseDetails data={message.diagnostics} />}
-      {!user && !streaming && !message.error && !message.cancelled && conversationId && message.content && <ResponseFeedback key={`${conversationId}:${message.id}`} conversationId={conversationId} content={message.content} />}
       {!user && message.usage && <p className="page-footnote">API usage: {message.usage.input_tokens ?? "unknown"} input tokens · {message.usage.output_tokens ?? "unknown"} output tokens · {message.usage.cost_usd == null ? "Cost unknown" : `Estimated $${message.usage.cost_usd.toFixed(4)}`}</p>}
       {(message.sources || []).filter((source) => source.kind === "memory").map((source) => source.memories?.length ? (
         <details className="message-sources memory-used" key="memory-used">
@@ -209,6 +227,11 @@ const MessageRow = memo(function MessageRow({
               <Globe size={14} aria-hidden="true" /> Turn on Web and retry
             </button>
           )}
+          {cutOff && onContinue && (
+            <button type="button" className="action-primary" onClick={onContinue}>
+              <ChevronsRight size={14} aria-hidden="true" /> Continue
+            </button>
+          )}
           {onRegenerate && (
             <button type="button" onClick={onRegenerate}>
               <RefreshCw size={14} aria-hidden="true" /> Try again
@@ -219,6 +242,12 @@ const MessageRow = memo(function MessageRow({
               <Cpu size={14} aria-hidden="true" /> Try on this computer
             </button>
           )}
+        </div>
+      )}
+      {!user && (message.diagnostics || (!streaming && !message.error && !message.cancelled && conversationId && message.content)) && (
+        <div className="message-meta">
+          {message.diagnostics && <ResponseDetails data={message.diagnostics} />}
+          {!streaming && !message.error && !message.cancelled && conversationId && message.content && <ResponseFeedback key={`${conversationId}:${message.id}`} conversationId={conversationId} content={message.content} />}
         </div>
       )}
     </article>

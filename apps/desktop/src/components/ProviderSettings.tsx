@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useProviders } from "../hooks/useProviders";
 import { providerError, providerRequest, type CloudProvider, type ProviderModel } from "../lib/providers";
+import { isChatModel } from "../lib/agents";
 import { BrandLogo, PROVIDER_SITES } from "./BrandLogo";
 import "./providers.css";
 
@@ -119,7 +120,7 @@ function ProviderAccount({ provider, localOnly, onChange }: { provider: CloudPro
           <input value={model} aria-label={`${provider.label} model ID`} onChange={event => selectModel(event.target.value)} placeholder="Model ID, or load the list" />
           <button type="button" className="secondary-button" disabled={!provider.connected || localOnly} onClick={() => void run(async () => {
             const response = await providerRequest<{ models: ProviderModel[]; truncated: boolean }>("GET", `${path}/models`);
-            setModels(response.models);
+            setModels(response.models.filter(item => isChatModel(item.id) || item.id === model));
             if (response.truncated) throw new Error("Only some models are shown. Type the model ID if yours is missing.");
           }, "Models loaded.")}>Load available models</button>
         </div>
