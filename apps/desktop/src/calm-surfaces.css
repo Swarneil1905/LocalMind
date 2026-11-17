@@ -1,106 +1,36 @@
-/* Flat surfaces: neutral backgrounds, hairline borders, no glass, glow or pointer spotlight. */
-:root {
-  --ambient-sage: transparent;
-  --ambient-blue: transparent;
-  --ambient-warm: transparent;
-  --glass-fill: #2b2926;
-  --glass-edge: #4a4640;
-  --glass-shine: transparent;
-  --glass-shadow: #00000040;
-  --spotlight-tint: transparent;
-  --composer-fill: #232220;
-}
-.light {
-  --ambient-sage: transparent;
-  --ambient-blue: transparent;
-  --ambient-warm: transparent;
-  --glass-fill: #fdfcf9;
-  --glass-edge: #d3cec1;
-  --glass-shine: transparent;
-  --glass-shadow: #2a27231a;
-  --spotlight-tint: transparent;
-  --composer-fill: #fdfcf9;
-}
+/* Flat controls: neutral fills, hairline borders, one accent for the primary action. */
+.app-main { background: var(--bg); }
+.app-sidebar { background: var(--sidebar); }
 
-.app-main {
-  background:
-    radial-gradient(ellipse at 12% 0%, var(--ambient-sage), transparent 55%),
-    radial-gradient(ellipse at 100% 75%, var(--ambient-blue), transparent 60%),
-    radial-gradient(ellipse at 45% 100%, var(--ambient-warm), transparent 50%),
-    var(--bg);
+.app-shell :is(.mini-launch, .page-button:not(.danger), .composer-tool, .model-picker-trigger, .composer-voice, .jump-latest) {
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-2);
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
-.app-sidebar { background: linear-gradient(170deg, var(--ambient-sage), transparent 60%), var(--sidebar); }
-.composer-box {
-  background: var(--composer-fill);
-  border-color: var(--glass-edge);
-  box-shadow: inset 0 1px 0 var(--glass-shine), 0 1px 2px var(--glass-shadow);
-}
-.composer-box:focus-within { border-color: var(--link); box-shadow: inset 0 1px 0 var(--glass-shine), 0 0 0 3px var(--accent-dim), 0 1px 2px var(--glass-shadow); }
-.message-user { background: var(--surface-2); }
-
-/* Keep menus and transcript controls above the decorative layer. */
-.spotlight-surface { position: relative; isolation: isolate; }
-.spotlight-surface::before {
-  display: none;
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  border-radius: inherit;
-  background: radial-gradient(240px circle at var(--spotlight-x, 50%) var(--spotlight-y, 50%), var(--spotlight-tint), transparent 75%);
-  opacity: 0;
-  transition: opacity 180ms ease;
-}
-.spotlight-surface[data-spotlight-active="true"]::before,
-.spotlight-surface:focus-visible::before { opacity: 1; }
-.starter-prompts .spotlight-surface { background-color: var(--glass-fill); border-color: var(--glass-edge); box-shadow: inset 0 1px 0 var(--glass-shine), 0 1px 2px var(--glass-shadow); }
-.starter-prompts .spotlight-surface:hover { background-color: var(--glass-fill); border-color: var(--link); }
-
-/* Shared glass finish on actions; navigation rows and destructive actions retain their hierarchy. */
-.app-shell :is(.new-chat-button, .mini-launch, .page-button:not(.danger), .composer-tool, .model-picker-trigger, .composer-voice, .send-button, .jump-latest) {
-  border: 1px solid var(--glass-edge);
-  background: var(--glass-fill);
+.app-shell :is(.mini-launch, .page-button:not(.danger), .composer-tool, .model-picker-trigger, .composer-voice, .jump-latest):hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--border);
   color: var(--text);
-  box-shadow: inset 0 1px 0 var(--glass-shine), inset 0 -1px 1px var(--glass-shadow), 0 1px 2px var(--glass-shadow);
-  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
 }
-.app-shell :is(.new-chat-button, .mini-launch, .page-button:not(.danger), .composer-tool, .model-picker-trigger, .composer-voice, .send-button, .jump-latest):hover:not(:disabled) {
-  border-color: var(--link);
-  box-shadow: inset 0 1px 0 var(--glass-shine), 0 1px 3px var(--glass-shadow);
-}
-.app-shell :is(.new-chat-button, .page-button.primary, .send-button:not(.stop-button)):not(:disabled) {
+.app-shell :is(.page-button.primary, .send-button:not(.stop-button)):not(:disabled) {
+  border-color: transparent;
   background: var(--accent);
   color: var(--on-accent);
 }
+.app-shell :is(.page-button.primary, .send-button:not(.stop-button)):hover:not(:disabled) { background: var(--accent-hover); }
 .app-shell :is(.composer-tool, .model-picker-trigger, .composer-voice)[aria-expanded="true"] {
-  border-color: var(--link);
-  background-color: var(--accent-dim);
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
 }
-.app-shell .stop-button { background-color: var(--surface-3); color: var(--text); }
-.app-shell :is(.new-chat-button, .mini-launch, .page-button:not(.danger), .composer-tool, .model-picker-trigger, .composer-voice, .send-button, .jump-latest):active:not(:disabled) {
-  box-shadow: inset 0 2px 4px var(--glass-shadow), inset 0 1px 0 var(--glass-shine);
-}
-.app-shell :is(.send-button, .page-button, .model-picker-trigger):disabled { box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
-.app-shell .send-button:disabled { background: var(--surface-2); color: var(--text-3); opacity: .6; }
+.app-shell .stop-button { background: var(--surface-3); color: var(--text); border-color: transparent; }
+.app-shell .send-button:disabled { background: var(--surface-2); color: var(--text-3); border-color: transparent; opacity: .7; }
+.jump-latest { background: var(--surface); }
 
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .app-shell :is(.mini-launch, .page-button:not(.primary):not(.danger), .composer-tool, .model-picker-trigger, .composer-voice, .jump-latest) { background-color: var(--surface); }
-}
-@media (prefers-reduced-motion: reduce), (hover: none) {
-  .spotlight-surface::before { display: none; }
+@media (prefers-reduced-motion: reduce) {
   .app-shell button { transition: none; }
-}
-@media (prefers-reduced-transparency: reduce) {
-  .app-main, .app-sidebar { background: var(--bg); }
-  .composer-box { background: var(--surface); }
-  .spotlight-surface::before { display: none; }
-  .app-shell button { backdrop-filter: none; -webkit-backdrop-filter: none; }
-  .app-shell :is(.mini-launch, .page-button:not(.primary):not(.danger), .composer-tool, .model-picker-trigger, .composer-voice, .jump-latest),
-  .starter-prompts .spotlight-surface { background: var(--surface); }
 }
 @media (forced-colors: active) {
   .app-main, .app-sidebar { background: Canvas; }
-  .spotlight-surface::before { display: none; }
-  .app-shell button { backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
 }

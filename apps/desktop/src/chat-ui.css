@@ -1,0 +1,100 @@
+/* Chat surface. Loads after the older layout files, so it owns the transcript and composer look. */
+
+/* Transcript */
+.transcript-content { padding: 32px 28px 24px; }
+.message-row { padding-bottom: 28px; }
+.message-author { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12.5px; font-weight: 500; color: var(--text-3); }
+.message-author .brand-logo { flex-shrink: 0; }
+.message-author span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.message-user { margin: 0 0 24px auto; max-width: min(85%, 560px); padding: 10px 16px; background: var(--surface-2); border: 0; border-radius: 18px 18px 6px 18px; }
+.user-text { font-size: 15px; line-height: 1.6; }
+.markdown-content { font-family: inherit; font-size: 15.5px; line-height: 1.7; }
+.markdown-content h1, .markdown-content h2, .markdown-content h3 { font-size: 16.5px; margin: 22px 0 8px; }
+
+/* Live agent status: a shimmering label, finished steps above it */
+.agent-status { display: grid; gap: 6px; padding: 2px 0 6px; font-size: 14px; }
+.agent-step { display: flex; align-items: center; gap: 8px; margin: 0; }
+.agent-step.is-done { color: var(--text-3); }
+.agent-step.is-done svg { color: var(--accent); flex-shrink: 0; }
+.agent-elapsed { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.shimmer-text {
+  color: transparent;
+  background: linear-gradient(90deg, var(--text-3) 35%, var(--text) 50%, var(--text-3) 65%) 100% 0 / 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: shimmer 2s linear infinite;
+}
+@keyframes shimmer { to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .shimmer-text { animation: none; background: none; color: var(--text-2); }
+}
+
+/* Reasoning, sources and details sit quietly under the answer */
+.reasoning { margin: 0 0 12px; font-size: 13px; }
+.reasoning summary { display: inline-flex; align-items: center; gap: 6px; padding: 4px 0; cursor: pointer; color: var(--text-3); list-style: none; }
+.reasoning summary::-webkit-details-marker { display: none; }
+.reasoning summary::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform 120ms ease; }
+.reasoning[open] summary::before { transform: rotate(45deg); }
+.reasoning summary:hover { color: var(--text); }
+.reasoning p { margin: 6px 0 0; padding: 2px 0 2px 14px; background: transparent; border-left: 2px solid var(--border-subtle); border-radius: 0; color: var(--text-2); line-height: 1.6; }
+.source-cards { margin: 18px 0 4px; }
+.source-cards h4 { margin: 0 0 8px; font-size: 12px; font-weight: 500; color: var(--text-3); }
+.source-cards ol { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+.source-cards a { padding: 10px 12px; background: transparent; border: 1px solid var(--border-subtle); border-radius: 10px; }
+.source-cards a:hover { background: var(--surface-2); border-color: var(--border); }
+.source-card-title { font-size: 13px; line-height: 1.4; color: var(--text); }
+.source-number { display: inline-grid; place-items: center; min-width: 16px; height: 16px; margin-right: 6px; border-radius: 4px; background: var(--surface-3); font-size: 10.5px; }
+.source-cards small { font-size: 11.5px; }
+.message-actions { gap: 2px; margin-top: 8px; }
+.message-actions button { min-height: 30px; padding: 4px 9px; font-size: 12px; border-radius: 8px; }
+.message-actions button:hover { color: var(--text); }
+.followups { gap: 0; padding: 12px 0 8px; }
+.followups > span { padding-bottom: 6px; font-size: 12px; }
+.followups button { width: 100%; padding: 10px 0; border-top: 1px solid var(--border-subtle); font-size: 13.5px; color: var(--text-2); }
+.followups button:hover { color: var(--text); }
+.followups button span { color: var(--text-3); }
+
+/* Composer */
+.composer-wrap { padding: 8px 24px 14px; }
+.composer-box { border-radius: 20px; background: var(--surface); border: 1px solid var(--border-subtle); box-shadow: none; transition: border-color 120ms ease, box-shadow 120ms ease; }
+.composer-box:focus-within { border-color: var(--text-3); box-shadow: 0 0 0 3px var(--accent-dim); }
+.composer-box textarea { min-height: 72px; padding: 16px 18px 8px; font-size: 15px; line-height: 1.6; }
+.composer-toolbar { padding: 4px 10px 10px; }
+.composer-caption { margin-top: 10px; font-size: 11.5px; color: var(--text-3); }
+.send-button { width: 34px; height: 34px; }
+.jump-latest { border-radius: 999px; }
+
+/* Per-answer details and feedback share one quiet row under the actions */
+.message-meta { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 18px; margin-top: 2px; }
+.message-meta .response-details { margin: 4px 0; font-size: 12px; color: var(--text-3); }
+.message-meta .response-details[open] { flex-basis: 100%; color: var(--text-2); }
+.message-meta .response-details summary:hover { color: var(--text); }
+
+/* Reading column: about 70 characters wide, with calmer headings */
+.transcript-content { max-width: 760px; }
+.markdown-content h1, .markdown-content h2, .markdown-content h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; margin: 26px 0 8px; }
+.markdown-content h1:first-child, .markdown-content h2:first-child, .markdown-content h3:first-child { margin-top: 0; }
+.markdown-content p { margin: 0 0 12px; }
+.markdown-content strong { font-weight: 600; }
+.markdown-content li::marker { color: var(--text-3); }
+.markdown-content hr { border: 0; border-top: 1px solid var(--border-subtle); margin: 22px 0; }
+.markdown-content .code-block { border-color: var(--border-subtle); border-radius: 12px; background: var(--surface-1); }
+.markdown-content :not(pre) > code { background: var(--surface-2); border: 1px solid var(--border-subtle); padding: 1px 5px; }
+
+/* A softer edge where the answer slides under the composer */
+.composer-wrap { position: relative; }
+.composer-wrap::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 36px; background: linear-gradient(to top, var(--bg), transparent); pointer-events: none; }
+.empty-chat .composer-wrap::before { display: none; }
+
+/* Composer controls sit quietly inside the box */
+.app-shell .composer-toolbar :is(.composer-tool, .model-picker-trigger, .composer-voice, .icon-button) { border-color: transparent; }
+.app-shell .composer-toolbar :is(.composer-tool, .model-picker-trigger, .composer-voice, .icon-button):hover:not(:disabled) { border-color: transparent; background: var(--surface-2); }
+
+/* Stopped and cut-off notices are notes, not alarms */
+.response-status, .response-note { display: flex; align-items: center; gap: 8px; width: fit-content; max-width: 100%; margin: 10px 0 0; padding: 7px 12px; border-radius: 10px; background: var(--surface-2); color: var(--text-2); font-size: 13px; line-height: 1.45; }
+.response-note svg { flex-shrink: 0; color: var(--text-3); }
+.response-note:not(.is-info) { color: var(--text); }
+.message-assistant .page-footnote { margin: 6px 0 0; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.message-actions .action-primary { color: var(--text); background: var(--surface-2); }
+.message-actions .action-primary:hover { background: var(--surface-3); }
+.message-error { border-left-color: var(--error); }

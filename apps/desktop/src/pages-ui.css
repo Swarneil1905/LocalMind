@@ -1,0 +1,94 @@
+/* Workspace pages: illustrated banners, card surfaces, and calmer settings. Loads after supporting-pages.css. */
+
+/* Illustration palette */
+.page-art { display: block; height: auto; flex-shrink: 0; }
+.page-art .a-surface { fill: var(--surface); }
+.page-art .a-surface2 { fill: var(--surface-2); }
+.page-art .a-surface3 { fill: var(--surface-3); }
+.page-art .a-accent { fill: var(--accent); }
+.page-art .a-accent-dim { fill: var(--accent-dim); }
+.page-art .a-warm { fill: #d9a56a; }
+.page-art .a-warm-dim { fill: color-mix(in srgb, #d9a56a 30%, var(--surface-2)); }
+.page-art .a-cool { fill: #7f9fd0; }
+.page-art .a-text3 { fill: var(--text-3); opacity: .5; }
+.page-art .a-line { stroke: var(--border); stroke-width: 1.5; }
+.page-art .a-link { stroke: var(--border); stroke-width: 2; fill: none; }
+.page-art .a-stroke-on { stroke: var(--on-accent); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+.page-art .a-stroke-accent { stroke: var(--accent); stroke-width: 3; stroke-linecap: round; }
+.page-art .a-stroke-cool { stroke: #7f9fd0; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+
+/* Page banner: text and one action on the left, art on the right */
+.page-heading { position: relative; display: block; overflow: hidden; margin-bottom: 28px; padding: 30px 250px 30px 32px; border: 1px solid var(--border-subtle); border-radius: 20px; background: var(--surface); }
+.page-heading h1 { font-size: 28px; }
+.page-heading > .page-art { position: absolute; right: 22px; top: 50%; width: 208px; transform: translateY(-50%); }
+.page-heading > .page-button { margin-top: 18px; }
+.page-heading > .page-icon-button { position: absolute; top: 14px; right: 14px; }
+.page-heading .page-badge { margin-top: 14px; }
+.today-page .page-heading { padding-bottom: 30px; }
+
+/* Empty states carry an illustration instead of a lone icon */
+.page-empty-state { border: 1px dashed var(--border); border-radius: 20px; background: transparent; padding: 36px 28px 44px; }
+.page-empty-state .page-art.art-lg { width: 200px; margin-bottom: 6px; }
+.page-empty-state h2 { margin-top: 10px; }
+.page-empty-state > p { max-width: 380px; }
+
+/* Cards for records */
+.record-list { border-color: var(--border-subtle); border-radius: 16px; }
+.memory-record, .task-record { transition: background-color 120ms ease; }
+.memory-record:hover, .task-record:hover { background: var(--surface-2); }
+.page-panel, .media-card { border-color: var(--border-subtle); border-radius: 16px; }
+
+/* Projects */
+.projects-layout { border-color: var(--border-subtle); border-radius: 18px; }
+.project-list { border-right-color: var(--border-subtle); }
+.project-list-item { border-radius: 10px; }
+.project-select { gap: 10px; padding: 8px 6px; }
+.project-avatar { display: grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; border-radius: 8px; font-size: 12px; font-weight: 600; color: #fff; background: hsl(var(--hue) 36% 40%); }
+.light .project-avatar { color: hsl(var(--hue) 45% 24%); background: hsl(var(--hue) 45% 86%); }
+
+/* Media studio */
+.media-page { max-width: 1100px; padding: 40px 44px 80px; }
+.media-intro { position: relative; overflow: hidden; max-width: none; margin-bottom: 28px; padding: 30px 250px 30px 32px; border: 1px solid var(--border-subtle); border-radius: 20px; background: var(--surface); }
+.media-intro h1 { font-size: 28px; margin: 6px 0 8px; }
+.media-intro .page-art { position: absolute; right: 22px; top: 50%; width: 208px; transform: translateY(-50%); }
+.page-eyebrow { font-size: 13px; color: var(--text-3); letter-spacing: 0; text-transform: none; }
+.media-create-grid { grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 16px; margin-bottom: 28px; }
+.media-jobs { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.media-library > header { margin-bottom: 14px; }
+.media-empty .page-art { width: 150px; }
+.media-result { border-radius: 12px; background: var(--surface-2); }
+.media-empty { display: grid; justify-items: center; text-align: center; padding: 28px 24px 36px; border: 1px dashed var(--border); border-radius: 20px; }
+.media-empty .page-art { width: 200px; }
+.media-empty h3 { margin-top: 8px; }
+.media-card > header .media-tile { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--accent-dim); color: var(--accent); }
+
+/* Settings: sections are cards; rows divide by hairlines */
+.settings-layout { grid-template-columns: 188px minmax(0, 1fr); gap: 28px; align-items: start; }
+.settings-nav { position: sticky; top: 16px; gap: 2px; }
+.settings-nav button { border-radius: 10px; }
+.settings-nav button[aria-current="page"] { background: var(--surface-2); box-shadow: inset 2px 0 0 var(--accent); }
+.settings-content > section { padding: 22px 26px 12px; border: 1px solid var(--border-subtle); border-radius: 18px; background: var(--surface); }
+.settings-section-heading { padding: 0 0 12px; }
+.settings-section-heading h2 { font-size: 17px; }
+.setting-row { padding: 18px 0; }
+.setting-row:last-of-type { border-bottom: 0; }
+.setting-row p { max-width: 420px; }
+
+@media (max-width: 960px) {
+  .page-heading, .media-intro { padding-right: 28px; }
+  .page-heading > .page-art, .media-intro .page-art { display: none; }
+  .settings-layout { grid-template-columns: 1fr; }
+  .settings-nav { position: static; flex-direction: row; flex-wrap: wrap; }
+}
+
+/* When an empty state already shows the page's illustration, the banner drops its copy */
+.workspace-page:has(.page-empty-state .art-lg) .page-heading > .page-art { display: none; }
+.workspace-page:has(.page-empty-state .art-lg) .page-heading { padding-right: 32px; }
+
+/* Overview: starting points as cards */
+.start-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; border: 0; }
+.start-action { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; min-height: 140px; padding: 18px; border: 1px solid var(--border-subtle); border-radius: 16px; background: var(--surface); text-align: left; transition: background-color 120ms ease, border-color 120ms ease; }
+.start-action:hover { background: var(--surface-2); border-color: var(--border); }
+.start-action > svg:first-child { box-sizing: content-box; padding: 9px; border-radius: 10px; background: var(--accent-dim); color: var(--accent); }
+.start-action > svg:last-child { display: none; }
+.start-action p { margin-top: 4px; }

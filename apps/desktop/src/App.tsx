@@ -58,6 +58,8 @@ import type { ModelMode, WebSource } from "./types";
 import "./App.css";
 import "./workspace-design.css";
 import "./calm-surfaces.css";
+import "./chat-ui.css";
+import "./pages-ui.css";
 
 type PageId =
   | "today"
@@ -791,10 +793,13 @@ export default function App() {
                   conversationId={activeId || undefined}
                   isStreaming={isStreaming}
                   isSearching={isSearching}
+                  provider={providerId}
+                  modelName={selectedModel}
                   followUpQuestions={followUps}
                   onSendFollowUp={(q) => void send(q)}
                   onEnableWeb={askedForWeb ? enableWebAndRetry : undefined}
                   onFallbackLocal={fallbackToLocal}
+                  onContinue={() => void send("Continue from where you stopped.")}
                   onRegenerate={
                     last?.error || last?.cancelled ? retry : undefined
                   }
