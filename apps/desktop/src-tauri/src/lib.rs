@@ -1721,6 +1721,12 @@ async fn review_task_action(operation_id: String, conversation_id: String, decis
 }
 
 #[tauri::command]
+async fn agent_hub_snapshot(project_id: String, sidecar_state: tauri::State<'_, SidecarState>) -> Result<serde_json::Value, String> {
+    let id = knowledge_id(&project_id).map_err(|_| "Invalid project ID")?;
+    reviewed_request(&sidecar_state, &format!("/projects/{id}/hub"), None).await
+}
+
+#[tauri::command]
 async fn project_graph(project_id: String, operation: String, payload: Option<serde_json::Value>, sidecar_state: tauri::State<'_, SidecarState>) -> Result<serde_json::Value, String> {
     let id = knowledge_id(&project_id).map_err(|_| "Invalid project ID")?;
     let suffix = match operation.as_str() {
@@ -2434,6 +2440,7 @@ pub fn run() {
             list_task_actions,
             review_task_action,
             project_graph,
+            agent_hub_snapshot,
             voice_request,
             media_request,
             provider_request,
