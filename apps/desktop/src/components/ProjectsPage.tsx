@@ -16,6 +16,7 @@ import { MODEL_MAP } from "../types";
 import "./supporting-pages.css";
 import { ProjectDependencies } from "./ProjectDependencies";
 import { PageArt } from "./PageArt";
+import { TaskPrerequisites } from "./TaskPrerequisites";
 
 type Tab = "summary" | "tasks" | "conversations" | "dependencies";
 const STATUS_LABEL: Record<Task["status"], string> = {
@@ -386,6 +387,12 @@ export function ProjectsPage({
                           ))}
                         </div>
                       )}
+                      <TaskPrerequisites
+                        key={activeProject.id}
+                        projectId={activeProject.id}
+                        tasks={activeTasks}
+                        tasksLoading={tasksLoading}
+                      />
                     </>
                   )}
                   {tab === "conversations" &&
