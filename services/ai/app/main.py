@@ -22,6 +22,7 @@ from app.api.routes import (
     search_config,
     task_actions,
     project_graph,
+    agent_hub,
     voice,
     mcp,
     extensions,
@@ -95,6 +96,7 @@ app.include_router(search_config.router)
 app.include_router(connectors.router)
 app.include_router(task_actions.router)
 app.include_router(project_graph.router)
+app.include_router(agent_hub.router)
 app.include_router(voice.router)
 app.include_router(mcp.router)
 app.include_router(extensions.router)
