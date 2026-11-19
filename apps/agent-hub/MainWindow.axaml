@@ -33,15 +33,18 @@
           <TextBlock Text="{Binding StatusText}" Foreground="#BDD0CB" TextWrapping="Wrap" VerticalAlignment="Center"/>
           <Button Grid.Column="1" Command="{Binding RefreshCommand}" Content="Refresh"/>
         </Grid>
-        <ListBox Grid.Row="3" ItemsSource="{Binding Tasks}" AutomationProperties.Name="Tasks and prerequisites">
+        <ListBox x:Name="TaskList" Grid.Row="3" ItemsSource="{Binding Tasks}" AutomationProperties.Name="Tasks and prerequisites">
           <ListBox.Styles><Style Selector="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/></Style></ListBox.Styles>
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:TaskItem">
               <Border BorderBrush="#3A4A4F" BorderThickness="0,0,0,1" Padding="6,12">
-                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="5" ColumnSpacing="12">
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="6" ColumnSpacing="12">
                   <TextBlock Text="{Binding Title}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap"/>
                   <Border Grid.Column="1" CornerRadius="4" Background="#294238" Padding="8,3"><TextBlock Foreground="#BAE9CE" Text="{Binding Status}" /></Border>
-                  <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Prerequisites}" Foreground="#BDCFCA" TextWrapping="Wrap"/>
+                  <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding OwnerLabel, StringFormat='Owner: {0}'}" Foreground="#BDCFCA" TextWrapping="Wrap"/>
+                  <TextBlock Grid.Row="2" Text="{Binding DependencySummary}" Foreground="#D4DDD9" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                  <Button Grid.Row="2" Grid.Column="1" Content="Go to blocker" IsVisible="{Binding HasBlocker}"
+                          AutomationProperties.Name="{Binding Title, StringFormat='Go to blocker for {0}'}" Click="GoToBlocker"/>
                 </Grid>
               </Border>
             </DataTemplate>

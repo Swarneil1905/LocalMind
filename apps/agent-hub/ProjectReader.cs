@@ -3,7 +3,29 @@ using Microsoft.Data.Sqlite;
 namespace LocalMind.AgentHub;
 
 public sealed record ProjectItem(string Id, string Name);
-public sealed record TaskItem(string Title, string Status, string Prerequisites);
+public sealed record Prerequisite(string Id, string Title, string Status);
+
+public sealed record TaskItem(string Id, string Title, string Status, IReadOnlyList<Prerequisite> Dependencies)
+{
+    // The current LocalMind schema has no task assignee.
+    public string OwnerLabel => "Unassigned";
+    public string Prerequisites => Dependencies.Count == 0 ? "No prerequisites" :
+        "Requires: " + string.Join(", ", Dependencies.Select(d => d.Title));
+    private Prerequisite? FirstOpen => Dependencies.FirstOrDefault(d => d.Status != "done");
+    public string? FirstBlockerId => FirstOpen?.Id;
+    public bool HasBlocker => FirstBlockerId != null;
+    public string DependencySummary
+    {
+        get
+        {
+            if (FirstOpen is not { } pending)
+                return Dependencies.Count == 0 ? "No prerequisites" : "All prerequisites complete";
+            var others = Dependencies.Count(d => d.Status != "done") - 1;
+            return $"Requires {pending.Title} ({pending.Status.Replace('_', ' ')})"
+                + (others > 0 ? $" · {others} more unresolved" : "");
+        }
+    }
+}
 
 internal sealed class ProjectReader(string path)
 {
@@ -36,18 +58,18 @@ internal sealed class ProjectReader(string path)
         q.CommandText = "SELECT count(*) FROM sqlite_schema WHERE type='table' AND name='hub_dependencies'";
         bool hasEdges = Convert.ToInt64(q.ExecuteScalar()) != 0;
         q.CommandText = hasEdges ? """
-            SELECT t.title,t.status,p.title,t.id FROM tasks t
+            SELECT t.title,t.status,p.title,t.id,p.id,p.status FROM tasks t
             LEFT JOIN hub_dependencies e ON e.task_id=t.id
             LEFT JOIN tasks p ON p.id=e.requires_id AND p.project_id=t.project_id
             WHERE t.project_id=$id ORDER BY t.created_at,t.id,p.title,p.id
-            """ : "SELECT title,status,NULL,id FROM tasks WHERE project_id=$id ORDER BY created_at,id";
+            """ : "SELECT title,status,NULL,id,NULL,NULL FROM tasks WHERE project_id=$id ORDER BY created_at,id";
         q.Parameters.AddWithValue("$id", project);
         using var r = q.ExecuteReader();
         List<TaskItem> result = [];
-        List<string> needs = [];
+        List<Prerequisite> needs = [];
         string? last = null;
         string title = "", status = "";
-        void Finish() => result.Add(new(title, status, needs.Count == 0 ? "No prerequisites" : "Requires: " + string.Join(", ", needs)));
+        void Finish() => result.Add(new(last!, title, status, needs.ToArray()));
         while (r.Read())
         {
             var id = r.GetString(3);
@@ -57,7 +79,7 @@ internal sealed class ProjectReader(string path)
                 needs.Clear();
                 (last, title, status) = (id, r.GetString(0), r.GetString(1).Replace('_', ' '));
             }
-            if (!r.IsDBNull(2)) needs.Add(r.GetString(2));
+            if (!r.IsDBNull(4)) needs.Add(new(r.GetString(4), r.GetString(2), r.GetString(5)));
         }
         if (last != null) Finish();
         return result;
