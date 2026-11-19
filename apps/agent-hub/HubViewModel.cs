@@ -18,12 +18,20 @@ public sealed class HubViewModel : INotifyPropertyChanged
     private bool showProjects = true, showInspector = true, narrow, inspectorBeforeNarrow = true;
     private string statusText = "Open a LocalMind projects.db file to view your workspace.";
     private readonly WorkspaceCommand[] commands;
+    // Navigation snapshot of an in-flight open/refresh, so an overlapping refresh of the same file keeps it.
+    private string? pendingFile, pendingProject, pendingTask;
+    private string[] pendingHistory = [];
     public event PropertyChangedEventHandler? PropertyChanged;
     private void Notify([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new(name));
 
     /// <summary>Supplied by the window; returns a local file path, or null when the user cancels.</summary>
-    public Func<Task<string?>>? PickFile { get; set; }
+    public Func<Task<string?>>? PickFile
+    {
+        get => pickFile;
+        set { pickFile = value; OpenCommand.Changed(); }
+    }
+    private Func<Task<string?>>? pickFile;
     /// <summary>Raised when navigation selects a task the view should scroll to and focus.</summary>
     public event Action<TaskItem>? TaskRevealed;
 
@@ -81,6 +89,7 @@ public sealed class HubViewModel : INotifyPropertyChanged
         set
         {
             if (selected == value) return;
+            pendingFile = null; // an intentional project switch wins over any in-flight refresh snapshot
             SetSelection(value);
             _ = LoadTasksAsync(value, ++version);
         }
@@ -154,14 +163,18 @@ public sealed class HubViewModel : INotifyPropertyChanged
 
     public async Task OpenAsync(string file)
     {
-        var preferred = path == file ? selected?.Id : null;
-        var keepTask = preferred == null ? null : selectedTask?.Id;
-        var keepHistory = preferred == null ? [] : history.ToArray();
+        string? preferred, keepTask;
+        string[] keepHistory;
+        if (pendingFile == file) (preferred, keepTask, keepHistory) = (pendingProject, pendingTask, pendingHistory);
+        else if (path == file) (preferred, keepTask, keepHistory) = (selected?.Id, selectedTask?.Id, history.ToArray());
+        else (preferred, keepTask, keepHistory) = (null, null, []);
+        (pendingFile, pendingProject, pendingTask, pendingHistory) = (file, preferred, keepTask, keepHistory);
         int request = ++version;
+        bool sameFile = path == file;
         path = file;
         SetSelection(null);
-        Projects = [];
-        Notify(nameof(Projects));
+        // A refresh keeps the project list so a switch made mid-refresh still has projects to land on.
+        if (!sameFile) { Projects = []; Notify(nameof(Projects)); }
         StatusText = "Opening database…";
         try
         {
@@ -176,8 +189,14 @@ public sealed class HubViewModel : INotifyPropertyChanged
         }
         catch (Exception ex) when (IsDataError(ex))
         {
-            if (request == version) StatusText = "Could not open this database. Choose a readable LocalMind projects.db file.";
+            if (request == version)
+            {
+                Projects = [];
+                Notify(nameof(Projects));
+                StatusText = "Could not open this database. Choose a readable LocalMind projects.db file.";
+            }
         }
+        finally { if (request == version) pendingFile = null; }
     }
 
     private async Task LoadTasksAsync(ProjectItem? project, int request, string? restoreTask = null, string[]? restoreHistory = null)

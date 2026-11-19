@@ -24,7 +24,9 @@ Menus, buttons and shortcuts call the same command object, so each action runs o
 | Go → Blocker | Ctrl+G | the selected task has an unresolved prerequisite |
 | Go → Back | Ctrl+Backspace | you followed a blocker and its source task still exists |
 
-Back uses Ctrl+Backspace on purpose. Avalonia activates the menu bar when Alt is released, which pulled focus off the task after Alt+Left. On macOS the usual Command equivalents are untested; nothing here has been run on macOS.
+On macOS `Shortcuts.cs` swaps Ctrl for Command and Refresh becomes Command+R. The menu hint and the key binding come from one gesture object. A check proves the table, but nothing has been run on macOS.
+
+Back uses Ctrl+Backspace on purpose. Avalonia activates the menu bar when Alt is released, which pulled focus off the task after Alt+Left.
 
 Layout: at 920 DIPs or wider, Task details sits beside the list. Below that it opens on request in place of the list (**Task details** button, **Back to tasks** to return). Layout is not saved between runs.
 

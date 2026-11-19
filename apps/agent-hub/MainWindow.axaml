@@ -34,27 +34,19 @@
       <Setter Property="BorderThickness" Value="3,0,0,0"/>
     </Style>
   </Window.Styles>
-  <Window.KeyBindings>
-    <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenCommand}"/>
-    <KeyBinding Gesture="F5" Command="{Binding RefreshCommand}"/>
-    <KeyBinding Gesture="Ctrl+B" Command="{Binding ToggleProjectsCommand}"/>
-    <KeyBinding Gesture="Ctrl+I" Command="{Binding ToggleInspectorCommand}"/>
-    <KeyBinding Gesture="Ctrl+G" Command="{Binding GoToBlockerCommand}"/>
-    <KeyBinding Gesture="Ctrl+Back" Command="{Binding BackCommand}"/>
-  </Window.KeyBindings>
   <Grid RowDefinitions="Auto,*,Auto" Background="{StaticResource Canvas}">
     <Menu x:Name="MainMenu" Background="{StaticResource Pane}">
       <MenuItem Header="_File">
-        <MenuItem Header="_Open project file…" InputGesture="Ctrl+O" Command="{Binding OpenCommand}"/>
-        <MenuItem Header="_Refresh" InputGesture="F5" Command="{Binding RefreshCommand}"/>
+        <MenuItem x:Name="OpenItem" Header="_Open project file…" Command="{Binding OpenCommand}"/>
+        <MenuItem x:Name="RefreshItem" Header="_Refresh" Command="{Binding RefreshCommand}"/>
       </MenuItem>
       <MenuItem Header="_View">
-        <MenuItem Header="_Projects" InputGesture="Ctrl+B" Command="{Binding ToggleProjectsCommand}"/>
-        <MenuItem Header="Task _details" InputGesture="Ctrl+I" Command="{Binding ToggleInspectorCommand}"/>
+        <MenuItem x:Name="ProjectsItem" Header="_Projects" Command="{Binding ToggleProjectsCommand}"/>
+        <MenuItem x:Name="DetailsItem" Header="Task _details" Command="{Binding ToggleInspectorCommand}"/>
       </MenuItem>
       <MenuItem Header="_Go">
-        <MenuItem Header="_Blocker" InputGesture="Ctrl+G" Command="{Binding GoToBlockerCommand}"/>
-        <MenuItem Header="B_ack" InputGesture="Ctrl+Back" Command="{Binding BackCommand}"/>
+        <MenuItem x:Name="BlockerItem" Header="_Blocker" Command="{Binding GoToBlockerCommand}"/>
+        <MenuItem x:Name="BackItem" Header="B_ack" Command="{Binding BackCommand}"/>
       </MenuItem>
     </Menu>
 

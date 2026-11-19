@@ -63,6 +63,7 @@ try
     await hub.OpenAsync(missing);
     Check(!File.Exists(missing) && hub.Tasks.Count == 0 && hub.StatusText.StartsWith("Could not open"), "failed open clears stale tasks without creating a file");
     await Workbench(folder.FullName);
+    await Regressions(folder.FullName);
 }
 finally { folder.Delete(true); }
 
@@ -199,4 +200,61 @@ static async Task Workbench(string dir)
     string missing = Path.Combine(dir, "never.db");
     await hub.OpenAsync(missing);
     Check(!File.Exists(missing), "opening a missing file does not create it");
+}
+
+// Review fixes: late picker, overlapping refresh, platform shortcuts.
+static async Task Regressions(string dir)
+{
+    var late = new HubViewModel();
+    int changed = 0;
+    late.OpenCommand.CanExecuteChanged += (_, _) => changed++;
+    Check(!late.OpenCommand.CanExecute(null), "no picker yet: open disabled");
+    late.PickFile = () => Task.FromResult<string?>(null);
+    Check(changed == 1 && late.OpenCommand.CanExecute(null), "assigning the picker after binding re-enables open");
+
+    string file = Path.Combine(dir, "regress.db");
+    MakeFixture(file);
+    Sql(file, "INSERT INTO tasks VALUES ('b2','b','Gate','open','2'); INSERT INTO hub_dependencies VALUES ('b2','b1')");
+    var hub = new HubViewModel { PickFile = () => Task.FromResult<string?>(null) };
+    await hub.OpenAsync(file);
+    hub.SelectedProject = hub.Projects.Single(p => p.Id == "b");
+    await Until(() => hub.Tasks.Count == 2);
+    hub.SelectedTask = hub.Tasks.Single(t => t.Id == "b2");
+    await hub.GoToBlockerCommand.RunAsync();
+    await hub.OpenCommand.RunAsync();
+    Check(hub.SelectedProject?.Id == "b" && hub.SelectedTask?.Id == "b1" && hub.BackCommand.CanExecute(null),
+          "cancelled picker keeps project, task and history");
+
+    var first = hub.RefreshCommand.RunAsync();
+    var second = hub.RefreshCommand.RunAsync();
+    await Task.WhenAll(first, second);
+    Check(hub.SelectedProject?.Id == "b" && hub.SelectedTask?.Id == "b1", "overlapping refresh keeps the non-first project and task");
+    await hub.BackCommand.RunAsync();
+    Check(hub.SelectedTask?.Id == "b2", "overlapping refresh keeps Back history");
+
+    var launch = hub.Projects.Single(p => p.Id == "a");
+    var pending = Task.WhenAll(hub.RefreshCommand.RunAsync(), hub.RefreshCommand.RunAsync());
+    hub.SelectedProject = launch;
+    await pending;
+    await Until(() => hub.Tasks.Count == 3);
+    Check(hub.SelectedProject?.Id == "a" && hub.SelectedTask == null && !hub.BackCommand.CanExecute(null),
+          "an intentional project switch wins over an overlapping refresh");
+    Check(hub.Projects.Select(p => p.Id).Order().SequenceEqual(["a", "b", "c"]), "all projects stay listed after a switch during refresh");
+    hub.SelectedProject = hub.Projects.Single(p => p.Id == "b");
+    await Until(() => hub.Tasks.Any(t => t.Id == "b2"));
+    Check(hub.SelectedProject?.Id == "b" && hub.Tasks.Count == 2, "can switch back to Other without refreshing again");
+
+    string bad = Path.Combine(dir, "regress-bad.db");
+    File.WriteAllText(bad, "not a database");
+    await hub.OpenAsync(bad);
+    Check(hub.Projects.Count == 0 && hub.SelectedProject == null && hub.StatusText.StartsWith("Could not open"), "unreadable database still clears the project list");
+    await hub.OpenAsync(file);
+    Check(hub.Projects.Count == 3, "opening a different database replaces the list");
+
+    var mac = Shortcuts.For(true);
+    var win = Shortcuts.For(false);
+    Check(win["Open"].ToString() == "Ctrl+O" && win["Refresh"].ToString() == "F5", "Windows gestures: Ctrl+O and F5");
+    Check(mac.Values.All(g => g.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Meta) && !g.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control)) &&
+          mac["Open"].Key == Avalonia.Input.Key.O, "macOS gestures use Command, never Ctrl (definition only; not run on macOS)");
+    Check(mac["Refresh"].Key == Avalonia.Input.Key.R && mac["Refresh"].KeyModifiers == Avalonia.Input.KeyModifiers.Meta, "macOS Refresh is Command+R");
 }

@@ -1,4 +1,6 @@
+using System.Windows.Input;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -13,8 +15,15 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        DataContext = hub;
         hub.PickFile = PickFileAsync;
+        DataContext = hub;
+        var keys = Shortcuts.For(OperatingSystem.IsMacOS());
+        Bind(OpenItem, hub.OpenCommand, keys["Open"]);
+        Bind(RefreshItem, hub.RefreshCommand, keys["Refresh"]);
+        Bind(ProjectsItem, hub.ToggleProjectsCommand, keys["Projects"]);
+        Bind(DetailsItem, hub.ToggleInspectorCommand, keys["Details"]);
+        Bind(BlockerItem, hub.GoToBlockerCommand, keys["Blocker"]);
+        Bind(BackItem, hub.BackCommand, keys["Back"]);
         hub.TaskRevealed += Reveal;
         SizeChanged += (_, e) => hub.SetWidth(e.NewSize.Width);
         // Closing a menu (Escape or after an action) hands focus back to where the user was working.
@@ -26,6 +35,13 @@ public partial class MainWindow : Window
         }, DispatcherPriority.Input);
         if (Environment.GetCommandLineArgs().Skip(1).FirstOrDefault() is string file)
             Opened += async (_, _) => await hub.OpenAsync(file);
+    }
+
+    // The same gesture object drives the hint and the binding, so they cannot disagree.
+    private void Bind(MenuItem item, ICommand command, KeyGesture gesture)
+    {
+        item.InputGesture = gesture;
+        KeyBindings.Add(new KeyBinding { Gesture = gesture, Command = command });
     }
 
     private void GoToBlocker(object? sender, RoutedEventArgs args) =>
