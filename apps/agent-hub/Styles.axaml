@@ -1,0 +1,16 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- Keyboard focus, selection and list look, shared by every window. -->
+  <Style Selector="Button:focus-visible, ListBoxItem:focus-visible, MenuItem:focus-visible">
+    <Setter Property="BorderBrush" Value="{DynamicResource Focus}"/>
+    <Setter Property="BorderThickness" Value="2"/>
+  </Style>
+  <Style Selector="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/></Style>
+  <Style Selector="ListBox"><Setter Property="Background" Value="Transparent"/></Style>
+  <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter"><Setter Property="Background" Value="{DynamicResource Hover}"/></Style>
+  <Style Selector="ListBoxItem:selected /template/ ContentPresenter, ListBoxItem:selected:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Selected}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Focus}"/>
+    <Setter Property="BorderThickness" Value="3,0,0,0"/>
+  </Style>
+  <Style Selector=":is(UserControl):disabled"><Setter Property="Opacity" Value="0.5"/></Style>
+</Styles>

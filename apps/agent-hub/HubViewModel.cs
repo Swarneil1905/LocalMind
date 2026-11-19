@@ -1,23 +1,24 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using LocalMind.AgentHub.Core;
 using Microsoft.Data.Sqlite;
 
 namespace LocalMind.AgentHub;
 
-public sealed class HubViewModel : INotifyPropertyChanged
+public sealed partial class HubViewModel : INotifyPropertyChanged
 {
     /// <summary>Below this width projects + 440-DIP task list + 280-DIP inspector no longer fit.</summary>
     public const double SplitWidth = 920;
     private const int MaxHistory = 20;
 
-    private string? path;
+    private string? path, workspaceName;
     private int version;
     private ProjectItem? selected;
     private TaskItem? selectedTask;
     private readonly List<string> history = [];
     private bool showProjects = true, showInspector = true, narrow, inspectorBeforeNarrow = true;
     private string statusText = "Open a LocalMind projects.db file to view your workspace.";
-    private readonly WorkspaceCommand[] commands;
+    private WorkspaceCommand[] commands;
     // Navigation snapshot of an in-flight open/refresh, so an overlapping refresh of the same file keeps it.
     private string? pendingFile, pendingProject, pendingTask;
     private string[] pendingHistory = [];
@@ -40,6 +41,20 @@ public sealed class HubViewModel : INotifyPropertyChanged
     public string StatusText { get => statusText; private set { statusText = value; Notify(); } }
     public string ProjectHeading => selected?.Name ?? "Project workspace";
 
+    /// <summary>Set by the window; null in tests that only read legacy files.</summary>
+    public WorkspaceService? Workspaces { get => workspaces; set { workspaces = value; NotifyWorkspaceCommands(); Notify(nameof(IsWorkspace)); } }
+    private WorkspaceService? workspaces;
+    public Func<Task>? ShowNewWorkspace { get => showNew; set { showNew = value; NotifyWorkspaceCommands(); } }
+    private Func<Task>? showNew;
+    public Func<Task<string?>>? PickFolder { get => pickFolder; set { pickFolder = value; NotifyWorkspaceCommands(); } }
+    private Func<Task<string?>>? pickFolder;
+    private void NotifyWorkspaceCommands() { NewWorkspaceCommand?.Changed(); OpenWorkspaceCommand?.Changed(); ImportLegacyCommand?.Changed(); }
+
+    public string ModeLabel => path == null ? "" : workspaceName == null ? "Legacy file · Read-only" : $"{workspaceName} · Agent Hub workspace";
+
+    public WorkspaceCommand NewWorkspaceCommand { get; }
+    public WorkspaceCommand OpenWorkspaceCommand { get; }
+    public WorkspaceCommand ImportLegacyCommand { get; }
     public WorkspaceCommand OpenCommand { get; }
     public WorkspaceCommand RefreshCommand { get; }
     public WorkspaceCommand ToggleProjectsCommand { get; }
@@ -54,7 +69,22 @@ public sealed class HubViewModel : INotifyPropertyChanged
         {
             if (await PickFile!() is string file) await OpenAsync(file);
         });
-        RefreshCommand = new(_ => path != null, _ => path is string file ? OpenAsync(file) : Task.CompletedTask);
+        RefreshCommand = new(_ => path != null, _ => path is string file ? OpenAsync(file, workspaceName) : Task.CompletedTask);
+        NewWorkspaceCommand = new(_ => workspaces != null && showNew != null, _ => showNew!());
+        OpenWorkspaceCommand = new(_ => workspaces != null && pickFolder != null, async _ =>
+        {
+            if (await pickFolder!() is string folder && await OpenWorkspaceFolderAsync(folder) is { } error) StatusText = error;
+        });
+        ImportLegacyCommand = new(_ => workspaces != null && pickFolder != null && pickFile != null, async _ =>
+        {
+            if (await pickFile!() is not string source || await pickFolder!() is not string folder) return;
+            try
+            {
+                var info = await workspaces!.ImportAsync(source, folder);
+                await OpenAsync(info.DatabasePath, info.Name);
+            }
+            catch (WorkerException e) { StatusText = e.Message; }
+        });
         ToggleProjectsCommand = new(_ => true, _ => { showProjects = !showProjects; Layout(); return Task.CompletedTask; });
         ToggleInspectorCommand = new(_ => true, _ => { showInspector = !showInspector; Layout(); return Task.CompletedTask; });
         GoToBlockerCommand = new(p => Resolve(p) != null, p =>
@@ -79,6 +109,39 @@ public sealed class HubViewModel : INotifyPropertyChanged
             return Task.CompletedTask;
         });
         commands = [OpenCommand, RefreshCommand, ToggleProjectsCommand, ToggleInspectorCommand, GoToBlockerCommand, BackCommand];
+        InitEditing();
+    }
+
+    /// <summary>Creates a workspace and opens it. Returns an error message to show, or null on success; a failure leaves the current selection alone.</summary>
+    public async Task<string?> CreateWorkspaceAsync(string name, string folder)
+    {
+        try
+        {
+            var info = await workspaces!.CreateAsync(folder, name);
+            await OpenAsync(info.DatabasePath, info.Name);
+            return null;
+        }
+        catch (WorkerException e) { return e.Message; }
+    }
+
+    public async Task<string?> OpenWorkspaceFolderAsync(string folder)
+    {
+        try
+        {
+            if (await workspaces!.OpenAsync(folder) is { } info) await OpenAsync(info.DatabasePath, info.Name);
+            return null;
+        }
+        catch (WorkerException e) { return e.Message; }
+    }
+
+    /// <summary>Startup path: a folder or agenthub.db opens as a workspace; any other file opens read-only as a legacy database.</summary>
+    public async Task OpenPathAsync(string target)
+    {
+        if (workspaces != null && (Directory.Exists(target) || Path.GetFileName(target) == ProjectStore.FileName))
+        {
+            if (await OpenWorkspaceFolderAsync(target) is { } error) StatusText = error;
+        }
+        else await OpenAsync(target);
     }
 
     private void RaiseCommands() { foreach (var c in commands) c.Changed(); }
@@ -102,7 +165,7 @@ public sealed class HubViewModel : INotifyPropertyChanged
         {
             if (selectedTask == value) return;
             selectedTask = value;
-            Notify(); Notify(nameof(HasTask));
+            Notify(); Notify(nameof(HasTask)); Notify(nameof(CanEdit));
             RaiseCommands();
         }
     }
@@ -156,12 +219,13 @@ public sealed class HubViewModel : INotifyPropertyChanged
         Tasks = [];
         selectedTask = null;
         history.Clear();
+        RefreshColumns();
         Notify(nameof(SelectedProject)); Notify(nameof(ProjectHeading)); Notify(nameof(Tasks));
         Notify(nameof(SelectedTask)); Notify(nameof(HasTask));
         RaiseCommands();
     }
 
-    public async Task OpenAsync(string file)
+    public async Task OpenAsync(string file, string? workspace = null)
     {
         string? preferred, keepTask;
         string[] keepHistory;
@@ -172,6 +236,8 @@ public sealed class HubViewModel : INotifyPropertyChanged
         int request = ++version;
         bool sameFile = path == file;
         path = file;
+        workspaceName = workspace;
+        Notify(nameof(ModeLabel)); Notify(nameof(IsWorkspace)); Notify(nameof(CanEdit));
         SetSelection(null);
         // A refresh keeps the project list so a switch made mid-refresh still has projects to land on.
         if (!sameFile) { Projects = []; Notify(nameof(Projects)); }
@@ -212,13 +278,16 @@ public sealed class HubViewModel : INotifyPropertyChanged
             var tasks = await Task.Run(() => new ProjectReader(file).Tasks(project.Id));
             if (version != request) return;
             Tasks = tasks;
+            RefreshColumns();
             Notify(nameof(Tasks));
             // Refresh keeps what still exists; IDs that disappeared are dropped.
             history.Clear();
             history.AddRange((restoreHistory ?? []).Where(id => tasks.Any(t => t.Id == id)));
-            SelectedTask = tasks.FirstOrDefault(t => t.Id == restoreTask);
+            SelectedTask = tasks.FirstOrDefault(t => t.Id == (nextSelectId ?? restoreTask));
+            nextSelectId = null;
             RaiseCommands();
-            StatusText = tasks.Count == 0 ? "No tasks in this project." : $"{tasks.Count} task{(tasks.Count == 1 ? "" : "s")} · Read-only";
+            StatusText = tasks.Count == 0 ? (workspaceName == null ? "No tasks in this project." : "No tasks in this workspace yet.")
+                : $"{tasks.Count} task{(tasks.Count == 1 ? "" : "s")}" + (workspaceName == null ? " · Read-only" : "");
         }
         catch (Exception ex) when (IsDataError(ex))
         {

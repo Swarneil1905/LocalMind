@@ -11,11 +11,20 @@ public static class Shortcuts
         return new Dictionary<string, KeyGesture>
         {
             ["Open"] = new(Key.O, primary),
+            ["New"] = new(Key.N, primary),
+            ["OpenWorkspace"] = new(Key.O, primary | KeyModifiers.Shift),
             ["Refresh"] = mac ? new(Key.R, primary) : new(Key.F5),
             ["Projects"] = new(Key.B, primary),
             ["Details"] = new(Key.I, primary),
             ["Blocker"] = new(Key.G, primary),
             ["Back"] = new(Key.Back, primary),
+            ["NewTask"] = new(Key.T, primary),
+            ["Assign"] = new(Key.E, primary),
+            ["AddPrerequisite"] = new(Key.D, primary),
+            ["MoveOpen"] = new(Key.D1, primary),
+            ["MoveActive"] = new(Key.D2, primary),
+            ["MoveDone"] = new(Key.D3, primary),
+            ["MoveCancelled"] = new(Key.D4, primary),
         };
     }
 }

@@ -1,0 +1,20 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="LocalMind.AgentHub.NewWorkspaceDialog"
+        Title="New workspace" Width="520" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner" Background="{DynamicResource Pane}">
+  <StackPanel Margin="20" Spacing="12">
+    <TextBlock Text="Workspace name" FontWeight="SemiBold"/>
+    <TextBox x:Name="NameBox" AutomationProperties.Name="Workspace name" MaxLength="80"/>
+    <TextBlock Text="Folder" FontWeight="SemiBold"/>
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+      <TextBox x:Name="FolderBox" AutomationProperties.Name="Workspace folder"/>
+      <Button Grid.Column="1" Content="Browse…" Click="Browse"/>
+    </Grid>
+    <TextBlock x:Name="ErrorText" Foreground="{DynamicResource ErrorText}" TextWrapping="Wrap" IsVisible="False" AutomationProperties.LiveSetting="Assertive"/>
+    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+      <Button x:Name="CancelButton" Content="Cancel" IsCancel="True" Click="Cancel"/>
+      <Button x:Name="CreateButton" Content="Create workspace" IsDefault="True" Click="Create"/>
+    </StackPanel>
+  </StackPanel>
+</Window>

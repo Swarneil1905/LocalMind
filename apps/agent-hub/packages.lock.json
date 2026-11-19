@@ -242,6 +242,19 @@
         "type": "Transitive",
         "resolved": "0.94.1",
         "contentHash": "11YMr7FnAbL83bQmVxlhbIKHvSLxjO81D12Ej0QMSGXMDTxNA9MTOa4MQxx43nv5el/efuPHwzyrj6a5ha2gug=="
+      },
+      "localmind.agenthub.core": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Data.Sqlite": "[10.0.15, )",
+          "SQLitePCLRaw.bundle_e_sqlite3": "[3.0.5, )"
+        }
+      },
+      "localmind.agenthub.worker": {
+        "type": "Project",
+        "dependencies": {
+          "LocalMind.AgentHub.Core": "[1.0.0, )"
+        }
       }
     }
   }

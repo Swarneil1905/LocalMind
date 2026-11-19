@@ -1,48 +1,32 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:vm="using:LocalMind.AgentHub"
+        xmlns:vm="using:LocalMind.AgentHub" xmlns:c="using:LocalMind.AgentHub.Controls"
         x:Class="LocalMind.AgentHub.MainWindow" x:DataType="vm:HubViewModel"
         Title="LocalMind · Agent Hub" Width="1080" Height="670" MinWidth="680" MinHeight="430">
-  <Window.Resources>
-    <!-- Shared shell tokens: change sizes, spacing and colors here only. -->
-    <SolidColorBrush x:Key="Canvas">#111B21</SolidColorBrush>
-    <SolidColorBrush x:Key="Pane">#152127</SolidColorBrush>
-    <SolidColorBrush x:Key="Line">#36474A</SolidColorBrush>
-    <SolidColorBrush x:Key="Text">#EEF5F1</SolidColorBrush>
-    <SolidColorBrush x:Key="Muted">#BDD0CB</SolidColorBrush>
-    <SolidColorBrush x:Key="Badge">#294238</SolidColorBrush>
-    <SolidColorBrush x:Key="BadgeText">#BAE9CE</SolidColorBrush>
-    <SolidColorBrush x:Key="Focus">#7FD6A9</SolidColorBrush>
-    <SolidColorBrush x:Key="Selected">#203A3A</SolidColorBrush>
-    <SolidColorBrush x:Key="Hover">#1A2B30</SolidColorBrush>
-    <x:Double x:Key="ProjectsWidth">200</x:Double>
-    <x:Double x:Key="TaskMinWidth">440</x:Double>
-    <Thickness x:Key="PanePadding">16</Thickness>
-  </Window.Resources>
-  <Window.Styles>
-    <Style Selector="Button:focus-visible, ListBoxItem:focus-visible, MenuItem:focus-visible">
-      <Setter Property="BorderBrush" Value="{StaticResource Focus}"/>
-      <Setter Property="BorderThickness" Value="2"/>
-    </Style>
-    <Style Selector="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/></Style>
-    <Style Selector="ListBox"><Setter Property="Background" Value="Transparent"/></Style>
-    <!-- Selection is a quiet navigation cue (edge + soft fill); dependency text carries the attention. -->
-    <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter"><Setter Property="Background" Value="{StaticResource Hover}"/></Style>
-    <Style Selector="ListBoxItem:selected /template/ ContentPresenter, ListBoxItem:selected:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="{StaticResource Selected}"/>
-      <Setter Property="BorderBrush" Value="{StaticResource Focus}"/>
-      <Setter Property="BorderThickness" Value="3,0,0,0"/>
-    </Style>
-  </Window.Styles>
-  <Grid RowDefinitions="Auto,*,Auto" Background="{StaticResource Canvas}">
-    <Menu x:Name="MainMenu" Background="{StaticResource Pane}">
+  <Grid RowDefinitions="Auto,*,Auto" Background="{DynamicResource Canvas}">
+    <Menu x:Name="MainMenu" Background="{DynamicResource Pane}">
       <MenuItem Header="_File">
-        <MenuItem x:Name="OpenItem" Header="_Open project file…" Command="{Binding OpenCommand}"/>
+        <MenuItem x:Name="NewItem" Header="_New workspace…" Command="{Binding NewWorkspaceCommand}"/>
+        <MenuItem x:Name="OpenWorkspaceItem" Header="Open _workspace…" Command="{Binding OpenWorkspaceCommand}"/>
+        <MenuItem x:Name="OpenItem" Header="_Open legacy file (read-only)…" Command="{Binding OpenCommand}"/>
+        <MenuItem x:Name="ImportItem" Header="_Import legacy file…" Command="{Binding ImportLegacyCommand}"/>
         <MenuItem x:Name="RefreshItem" Header="_Refresh" Command="{Binding RefreshCommand}"/>
       </MenuItem>
       <MenuItem Header="_View">
         <MenuItem x:Name="ProjectsItem" Header="_Projects" Command="{Binding ToggleProjectsCommand}"/>
         <MenuItem x:Name="DetailsItem" Header="Task _details" Command="{Binding ToggleInspectorCommand}"/>
+      </MenuItem>
+      <MenuItem Header="_Task">
+        <MenuItem x:Name="NewTaskItem" Header="_New task…" Command="{Binding NewTaskCommand}"/>
+        <MenuItem x:Name="AssignItem" Header="_Assign owner or role…" Command="{Binding AssignCommand}"/>
+        <MenuItem x:Name="AddPrereqItem" Header="Add _prerequisite…" Command="{Binding AddPrerequisiteCommand}"/>
+        <MenuItem x:Name="RemovePrereqItem" Header="_Remove prerequisite…" Command="{Binding RemovePrerequisiteCommand}"/>
+        <MenuItem Header="_Move to">
+          <MenuItem x:Name="MoveOpenItem" Header="_Open" Command="{Binding MoveTaskCommand}" CommandParameter="open"/>
+          <MenuItem x:Name="MoveActiveItem" Header="_In progress" Command="{Binding MoveTaskCommand}" CommandParameter="in_progress"/>
+          <MenuItem x:Name="MoveDoneItem" Header="_Done" Command="{Binding MoveTaskCommand}" CommandParameter="done"/>
+          <MenuItem x:Name="MoveCancelledItem" Header="_Cancelled" Command="{Binding MoveTaskCommand}" CommandParameter="cancelled"/>
+        </MenuItem>
       </MenuItem>
       <MenuItem Header="_Go">
         <MenuItem x:Name="BlockerItem" Header="_Blocker" Command="{Binding GoToBlockerCommand}"/>
@@ -51,10 +35,10 @@
     </Menu>
 
     <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto">
-      <Border Background="{StaticResource Pane}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0"
-              Width="{StaticResource ProjectsWidth}" Padding="{StaticResource PanePadding}" IsVisible="{Binding ProjectsVisible}">
+      <Border Background="{DynamicResource Pane}" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0"
+              Width="{DynamicResource ProjectsWidth}" Padding="{DynamicResource PanePadding}" IsVisible="{Binding ProjectsVisible}">
         <Grid RowDefinitions="Auto,*" RowSpacing="12">
-          <TextBlock Text="Projects" Foreground="{StaticResource Muted}" FontWeight="SemiBold"/>
+          <TextBlock Text="Projects" Foreground="{DynamicResource Muted}" FontWeight="SemiBold"/>
           <ListBox Grid.Row="1" ItemsSource="{Binding Projects}" SelectedItem="{Binding SelectedProject, Mode=TwoWay}" AutomationProperties.Name="Local projects">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:ProjectItem"><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/></DataTemplate>
@@ -63,62 +47,96 @@
         </Grid>
       </Border>
 
-      <Grid Grid.Column="1" Margin="{StaticResource PanePadding}" MinWidth="{StaticResource TaskMinWidth}" RowDefinitions="Auto,Auto,*" RowSpacing="10"
+      <Grid Grid.Column="1" Margin="{DynamicResource PanePadding}" MinWidth="{DynamicResource TaskMinWidth}" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="10"
             IsVisible="{Binding ListVisible}">
         <TextBlock Text="{Binding ProjectHeading}" FontSize="24" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
-          <Button Command="{Binding OpenCommand}" Content="Open project file…"/>
+          <Button Command="{Binding NewTaskCommand}" Content="New task" IsVisible="{Binding IsWorkspace}"/>
+          <Button Command="{Binding OpenCommand}" Content="Open legacy file…"/>
           <Button Command="{Binding RefreshCommand}" Content="Refresh"/>
           <Button Command="{Binding ToggleInspectorCommand}" Content="Task details" IsVisible="{Binding Narrow}"/>
         </StackPanel>
-        <ListBox x:Name="TaskList" Grid.Row="2" ItemsSource="{Binding Tasks}" SelectedItem="{Binding SelectedTask, Mode=TwoWay}"
-                 AutomationProperties.Name="Tasks and prerequisites">
-          <ListBox.ItemTemplate>
-            <DataTemplate x:DataType="vm:TaskItem">
-              <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="6,10"
-                      AutomationProperties.Name="{Binding Title}">
-                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="6" ColumnSpacing="12">
-                  <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                  <Border Grid.Column="1" CornerRadius="4" Background="{StaticResource Badge}" Padding="8,2">
-                    <TextBlock Foreground="{StaticResource BadgeText}" Text="{Binding Status}"/>
-                  </Border>
-                  <TextBlock Grid.Row="1" Text="{Binding DependencySummary}" Foreground="{StaticResource Muted}" VerticalAlignment="Center" TextWrapping="Wrap"/>
-                  <Button Grid.Row="1" Grid.Column="1" Content="Go to blocker" IsVisible="{Binding HasBlocker}"
-                          AutomationProperties.Name="{Binding Title, StringFormat='Go to blocker for {0}'}" Click="GoToBlocker"/>
-                </Grid>
-              </Border>
-            </DataTemplate>
-          </ListBox.ItemTemplate>
-        </ListBox>
+        <Border Grid.Row="2" CornerRadius="4" Padding="10,8" Background="{DynamicResource ErrorFill}" IsVisible="{Binding HasNotice}">
+          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+            <TextBlock Text="{Binding Notice}" Foreground="{DynamicResource ErrorText}" TextWrapping="Wrap" VerticalAlignment="Center"
+                       AutomationProperties.LiveSetting="Assertive"/>
+            <Button Grid.Column="1" Content="{Binding NoticeActionLabel}" Command="{Binding NoticeCommand}"/>
+            <Button Grid.Column="2" Content="Dismiss" Command="{Binding DismissNoticeCommand}"/>
+          </Grid>
+        </Border>
+        <Grid Grid.Row="3" ColumnSpacing="8">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="{Binding CancelledColumnWidth}"/>
+          </Grid.ColumnDefinitions>
+            <Grid RowDefinitions="Auto,*" MinWidth="0">
+              <TextBlock Text="{Binding OpenHeader}" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" Margin="6,0,0,4"/>
+              <ListBox x:Name="OpenList" Grid.Row="1" ItemsSource="{Binding OpenTasks}" AutomationProperties.Name="Open tasks">
+                <ListBox.ItemTemplate><DataTemplate x:DataType="vm:TaskItem"><c:TaskCard/></DataTemplate></ListBox.ItemTemplate>
+              </ListBox>
+            </Grid>
+            <Grid Grid.Column="1" RowDefinitions="Auto,*" MinWidth="0">
+              <TextBlock Text="{Binding ActiveHeader}" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" Margin="6,0,0,4"/>
+              <ListBox x:Name="ActiveList" Grid.Row="1" ItemsSource="{Binding ActiveTasks}" AutomationProperties.Name="In progress tasks">
+                <ListBox.ItemTemplate><DataTemplate x:DataType="vm:TaskItem"><c:TaskCard/></DataTemplate></ListBox.ItemTemplate>
+              </ListBox>
+            </Grid>
+            <Grid Grid.Column="2" RowDefinitions="Auto,*" MinWidth="0">
+              <TextBlock Text="{Binding DoneHeader}" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" Margin="6,0,0,4"/>
+              <ListBox x:Name="DoneList" Grid.Row="1" ItemsSource="{Binding DoneTasks}" AutomationProperties.Name="Done tasks">
+                <ListBox.ItemTemplate><DataTemplate x:DataType="vm:TaskItem"><c:TaskCard/></DataTemplate></ListBox.ItemTemplate>
+              </ListBox>
+            </Grid>
+            <Grid Grid.Column="3" RowDefinitions="Auto,*" MinWidth="0">
+              <TextBlock Text="{Binding CancelledHeader}" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" Margin="6,0,0,4"/>
+              <ListBox x:Name="CancelledList" Grid.Row="1" ItemsSource="{Binding CancelledTasks}" AutomationProperties.Name="Cancelled tasks">
+                <ListBox.ItemTemplate><DataTemplate x:DataType="vm:TaskItem"><c:TaskCard/></DataTemplate></ListBox.ItemTemplate>
+              </ListBox>
+            </Grid>
+        </Grid>
       </Grid>
 
       <!-- Beside the list when there is room; replaces the list on narrow windows. -->
-      <Border Grid.Column="{Binding InspectorColumn}" Width="{Binding InspectorWidth}" Background="{StaticResource Pane}"
-              BorderBrush="{StaticResource Line}" BorderThickness="1,0,0,0" Padding="{StaticResource PanePadding}"
+      <Border Grid.Column="{Binding InspectorColumn}" Width="{Binding InspectorWidth}" Background="{DynamicResource Pane}"
+              BorderBrush="{DynamicResource Line}" BorderThickness="1,0,0,0" Padding="{DynamicResource PanePadding}"
               IsVisible="{Binding InspectorVisible}">
-        <Grid RowDefinitions="Auto,*" RowSpacing="12">
+        <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
           <Grid ColumnDefinitions="*,Auto">
-            <TextBlock Text="Task details" FontWeight="SemiBold" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>
+            <TextBlock Text="Task details" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" VerticalAlignment="Center"/>
             <Button Grid.Column="1" Command="{Binding ToggleInspectorCommand}" Content="Back to tasks" IsVisible="{Binding Narrow}"/>
             <Button Grid.Column="1" Command="{Binding ToggleInspectorCommand}" Content="×" IsVisible="{Binding Wide}"
                     AutomationProperties.Name="Close task details"/>
           </Grid>
-          <TextBlock Grid.Row="1" Text="Select a task to see its status and prerequisites." Foreground="{StaticResource Muted}"
+          <StackPanel Grid.Row="1" IsVisible="{Binding CanEdit}" Spacing="6">
+            <TextBlock Text="Move to" Foreground="{DynamicResource Muted}"/>
+            <WrapPanel>
+              <Button Margin="0,0,6,6" Content="Open" Command="{Binding MoveTaskCommand}" CommandParameter="open"/>
+              <Button Margin="0,0,6,6" Content="In progress" Command="{Binding MoveTaskCommand}" CommandParameter="in_progress"/>
+              <Button Margin="0,0,6,6" Content="Done" Command="{Binding MoveTaskCommand}" CommandParameter="done"/>
+              <Button Margin="0,0,6,6" Content="Cancelled" Command="{Binding MoveTaskCommand}" CommandParameter="cancelled"/>
+            </WrapPanel>
+            <WrapPanel>
+              <Button Margin="0,0,6,6" Content="Assign…" Command="{Binding AssignCommand}"/>
+              <Button Margin="0,0,6,6" Content="Add prerequisite…" Command="{Binding AddPrerequisiteCommand}"/>
+            </WrapPanel>
+          </StackPanel>
+          <TextBlock Grid.Row="2" Text="Select a task to see its status and prerequisites." Foreground="{DynamicResource Muted}"
                      TextWrapping="Wrap" IsVisible="{Binding !HasTask}"/>
-          <ScrollViewer Grid.Row="1" IsVisible="{Binding HasTask}">
+          <ScrollViewer Grid.Row="2" IsVisible="{Binding HasTask}">
             <StackPanel Spacing="10" DataContext="{Binding SelectedTask}" x:DataType="vm:TaskItem">
               <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
               <TextBlock Text="{Binding Status, StringFormat='Recorded status: {0}'}" TextWrapping="Wrap"/>
-              <TextBlock Text="{Binding OwnerLabel, StringFormat='Owner: {0}'}" Foreground="{StaticResource Muted}"/>
-              <TextBlock Text="{Binding DependencySummary}" TextWrapping="Wrap"/>
-              <TextBlock Text="Prerequisites" FontWeight="SemiBold" Foreground="{StaticResource Muted}" IsVisible="{Binding Dependencies.Count}"/>
+              <TextBlock Text="{Binding OwnerLabel, StringFormat='Owner: {0}'}" Foreground="{DynamicResource Muted}"/>
+              <TextBlock Text="{Binding Outcome, StringFormat='Outcome: {0}'}" TextWrapping="Wrap" IsVisible="{Binding HasOutcome}"/>
+              <TextBlock Text="{Binding MoveNote}" TextWrapping="Wrap"/>
+              <TextBlock Text="Prerequisites" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" IsVisible="{Binding Dependencies.Count}"/>
               <ItemsControl ItemsSource="{Binding Dependencies}" AutomationProperties.Name="Prerequisites">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:Prerequisite">
-                    <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="0,8">
+                    <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" Padding="0,8">
                       <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8">
                         <TextBlock Text="{Binding Title}" TextWrapping="Wrap"/>
-                        <TextBlock Grid.Row="1" Foreground="{StaticResource Muted}" TextWrapping="Wrap">
+                        <TextBlock Grid.Row="1" Foreground="{DynamicResource Muted}" TextWrapping="Wrap">
                           <Run Text="{Binding StatusLabel}"/><Run Text=" · ID "/><Run Text="{Binding Id}"/>
                         </TextBlock>
                         <Button Grid.RowSpan="2" Grid.Column="1" Content="Go" IsVisible="{Binding !IsResolved}"
@@ -134,8 +152,11 @@
       </Border>
     </Grid>
 
-    <Border Grid.Row="2" Background="{StaticResource Pane}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="12,4">
-      <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
+    <Border Grid.Row="2" Background="{DynamicResource Pane}" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="12,4">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+        <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap"/>
+        <TextBlock Grid.Column="1" Text="{Binding ModeLabel}" Foreground="{DynamicResource BadgeText}" FontWeight="SemiBold"/>
+      </Grid>
     </Border>
   </Grid>
 </Window>

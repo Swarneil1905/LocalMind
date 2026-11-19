@@ -1,0 +1,53 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:g="using:LocalMind.AgentHub.Gallery" xmlns:c="using:LocalMind.AgentHub.Controls"
+        x:Class="LocalMind.AgentHub.Gallery.GalleryWindow" x:DataType="g:GalleryViewModel"
+        Title="Agent Hub · control gallery (development only)" Width="900" Height="800" MinWidth="520">
+  <ScrollViewer Background="{DynamicResource Canvas}">
+    <StackPanel Margin="20" Spacing="14">
+      <TextBlock Text="Development gallery. Synthetic data; not part of the product." Foreground="{DynamicResource Muted}"/>
+
+      <TextBlock Text="Task card" FontSize="20" FontWeight="SemiBold"/>
+      <StackPanel x:Name="CardHost" Spacing="10"/>
+
+      <TextBlock Text="Status chip" FontSize="20" FontWeight="SemiBold"/>
+      <ItemsControl ItemsSource="{Binding Chips}">
+        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="g:GalleryChip">
+            <StackPanel Margin="0,0,16,8" Spacing="4">
+              <TextBlock Text="{Binding Label}" Foreground="{DynamicResource Muted}"/>
+              <c:StatusChip Text="{Binding Text}" Tone="{Binding Tone}" IsEnabled="{Binding Enabled}" HorizontalAlignment="Left"/>
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <TextBlock Text="Progress row" FontSize="20" FontWeight="SemiBold"/>
+      <ItemsControl ItemsSource="{Binding Progress}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="g:GalleryProgress">
+            <StackPanel Margin="0,0,0,8"><TextBlock Text="{Binding Label}" Foreground="{DynamicResource Muted}"/><c:ProgressRow DataContext="{Binding Row}"/></StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <TextBlock Text="Decision control" FontSize="20" FontWeight="SemiBold"/>
+      <ItemsControl ItemsSource="{Binding Decisions}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="g:GalleryDecision">
+            <StackPanel Margin="0,0,0,12"><TextBlock Text="{Binding Label}" Foreground="{DynamicResource Muted}"/><c:DecisionControl DataContext="{Binding Decision}"/></StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <TextBlock Text="Agent identity (all fixtures)" FontSize="20" FontWeight="SemiBold"/>
+      <ItemsControl ItemsSource="{Binding Agents}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="g:GalleryAgent">
+            <StackPanel Margin="0,0,0,10"><TextBlock Text="{Binding Label}" Foreground="{DynamicResource Muted}" IsVisible="{Binding Label.Length}"/><c:AgentBadge DataContext="{Binding Identity}"/></StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </ScrollViewer>
+</Window>
