@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "dgSpecHash": "vJVEHibpu0Q=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\Swarneil Pradhan\\LocalMind\\apps\\agent-hub-core\\LocalMind.AgentHub.Core.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\Swarneil Pradhan\\.nuget\\packages\\microsoft.data.sqlite\\10.0.15\\microsoft.data.sqlite.10.0.15.nupkg.sha512",
+    "C:\\Users\\Swarneil Pradhan\\.nuget\\packages\\microsoft.data.sqlite.core\\10.0.15\\microsoft.data.sqlite.core.10.0.15.nupkg.sha512",
+    "C:\\Users\\Swarneil Pradhan\\.nuget\\packages\\sqlite\\3.53.4\\sqlite.3.53.4.nupkg.sha512",
+    "C:\\Users\\Swarneil Pradhan\\.nuget\\packages\\sqlitepclraw.bundle_e_sqlite3\\3.0.5\\sqlitepclraw.bundle_e_sqlite3.3.0.5.nupkg.sha512",
+    "C:\\Users\\Swarneil Pradhan\\.nuget\\packages\\sqlitepclraw.config.e_sqlite3\\3.0.5\\sqlitepclraw.config.e_sqlite3.3.0.5.nupkg.sha512",
+    "C:\\Users\\Swarneil Pradhan\\.nuget\\packages\\sqlitepclraw.core\\3.0.5\\sqlitepclraw.core.3.0.5.nupkg.sha512",
+    "C:\\Users\\Swarneil Pradhan\\.nuget\\packages\\sqlitepclraw.provider.e_sqlite3\\3.0.5\\sqlitepclraw.provider.e_sqlite3.3.0.5.nupkg.sha512"
+  ],
+  "logs": []
+}

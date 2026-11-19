@@ -40,6 +40,20 @@ Thumbs.db
 # Local dev spec (not for public repo)
 LOCALMIND_MASTER_SPEC.md
 
+# Internal implementation briefs, agent instructions and research.
+# Keep new day plans under outputs/agent-hub-planning/ (outputs/ ignored below).
+/apps/agent-hub/CLAUDE.md
+/docs/agent-hub/
+/docs/planning/
+/docs/implementation/
+/docs/research/
+/docs/prototypes/**/RESEARCH.md
+/docs/architecture/**/*.md
+/docs/DESIGN_RESEARCH.md
+/docs/image-research.md
+/docs/PRODUCT_REDESIGN.md
+/docs/SYSTEM_DESIGN.md
+
 # Bundled binaries (downloaded/built by CI, not committed)
 apps/desktop/src-tauri/binaries/ollama*
 apps/desktop/src-tauri/binaries/localmind-sidecar*
