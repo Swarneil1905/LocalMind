@@ -1,0 +1,8 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:LocalMind.AgentHub.Controls" x:Class="LocalMind.AgentHub.Controls.ProgressRow" x:DataType="vm:ProgressRowViewModel">
+  <Grid ColumnDefinitions="140,*,Auto" ColumnSpacing="12" VerticalAlignment="Center">
+    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis"/>
+    <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding Fraction}" IsIndeterminate="{Binding Indeterminate}" Height="8" VerticalAlignment="Center"/>
+    <TextBlock Grid.Column="2" Text="{Binding StateText}" Foreground="{DynamicResource Muted}"/>
+  </Grid>
+</UserControl>

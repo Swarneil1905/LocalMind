@@ -1,0 +1,15 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:LocalMind.AgentHub.Controls" x:Class="LocalMind.AgentHub.Controls.DecisionControl" x:DataType="vm:DecisionViewModel">
+  <StackPanel Spacing="8">
+    <TextBlock Text="{Binding Question}" TextWrapping="Wrap" FontWeight="SemiBold"/>
+    <StackPanel Orientation="Horizontal" Spacing="8">
+      <Button Content="Accept" Command="{Binding AcceptCommand}" AutomationProperties.Name="{Binding Subject, StringFormat='Accept {0}'}"/>
+      <Button Content="Request changes" Command="{Binding RequestChangesCommand}" AutomationProperties.Name="{Binding Subject, StringFormat='Request changes to {0}'}"/>
+    </StackPanel>
+    <TextBlock Text="Recording your decision…" Foreground="{DynamicResource Muted}" IsVisible="{Binding Busy}"/>
+    <Border CornerRadius="4" Padding="8,4" Background="{DynamicResource ErrorFill}" IsVisible="{Binding HasError}">
+      <TextBlock Text="{Binding Error}" Foreground="{DynamicResource ErrorText}" TextWrapping="Wrap"/>
+    </Border>
+    <TextBlock Text="{Binding Outcome}" Foreground="{DynamicResource BadgeText}" IsVisible="{Binding HasOutcome}"/>
+  </StackPanel>
+</UserControl>

@@ -1,0 +1,25 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:LocalMind.AgentHub" xmlns:c="using:LocalMind.AgentHub.Controls"
+             x:Class="LocalMind.AgentHub.Controls.TaskCard" x:DataType="vm:TaskItem">
+  <UserControl.Styles>
+    <Style Selector="Border#NoteBox"><Setter Property="Background" Value="{DynamicResource BusyFill}"/></Style>
+    <Style Selector="Border#NoteBox TextBlock"><Setter Property="Foreground" Value="{DynamicResource Text}"/></Style>
+    <Style Selector="Border#NoteBox.error"><Setter Property="Background" Value="{DynamicResource ErrorFill}"/></Style>
+    <Style Selector="Border#NoteBox.error TextBlock"><Setter Property="Foreground" Value="{DynamicResource ErrorText}"/></Style>
+  </UserControl.Styles>
+  <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" Padding="{DynamicResource CardPadding}">
+    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="{DynamicResource ControlSpacing}" ColumnSpacing="12">
+      <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis"/>
+      <c:StatusChip Grid.Column="1" Text="{Binding Status}"/>
+      <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Outcome}" IsVisible="{Binding HasOutcome}"
+                 Foreground="{DynamicResource Text}" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"/>
+      <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding OwnerLabel, StringFormat='Owner: {0}'}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap"/>
+      <TextBlock Grid.Row="3" Text="{Binding MoveNote}" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+      <Button Grid.Row="3" Grid.Column="1" Content="Go to blocker" IsVisible="{Binding HasBlocker}"
+              AutomationProperties.Name="{Binding Title, StringFormat='Go to blocker for {0}'}" Click="BlockerClicked"/>
+      <Border x:Name="NoteBox" Grid.Row="4" Grid.ColumnSpan="2" CornerRadius="4" Padding="8,4" IsVisible="False">
+        <TextBlock x:Name="NoteText" TextWrapping="Wrap"/>
+      </Border>
+    </Grid>
+  </Border>
+</UserControl>
