@@ -5,6 +5,8 @@ using System.Security.Cryptography;
 // Development-only: write the demo database for the Windows smoke checklist and exit.
 if (args is ["--fixture", var target]) { MakeFixture(Path.GetFullPath(target)); Console.WriteLine($"Wrote {Path.GetFullPath(target)}"); return; }
 
+if (args is ["--atlas-fixture", var atlas]) { Console.WriteLine($"Wrote {CheckpointB.MakeAtlas(Path.GetFullPath(atlas))}"); return; }
+
 var folder = Directory.CreateTempSubdirectory("localmind-hub-check-");
 try
 {
@@ -64,6 +66,9 @@ try
     Check(!File.Exists(missing) && hub.Tasks.Count == 0 && hub.StatusText.StartsWith("Could not open"), "failed open clears stale tasks without creating a file");
     await Workbench(folder.FullName);
     await Regressions(folder.FullName);
+    await CheckpointA.Run(folder.FullName);
+    await CheckpointB.Run(Path.Combine(folder.FullName, "b"));
+    await CheckpointC.Run(Path.Combine(folder.FullName, "c"), LocalMind.AgentHub.Core.ProcessWorker.Locate()!);
 }
 finally { folder.Delete(true); }
 

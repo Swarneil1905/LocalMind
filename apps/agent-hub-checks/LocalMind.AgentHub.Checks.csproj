@@ -5,5 +5,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
-  <ItemGroup><ProjectReference Include="../agent-hub/LocalMind.AgentHub.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../agent-hub/LocalMind.AgentHub.csproj" />
+    <ProjectReference Include="../agent-hub-core/LocalMind.AgentHub.Core.csproj" />
+    <ProjectReference Include="../agent-hub-worker/LocalMind.AgentHub.Worker.csproj" />
+  </ItemGroup>
 </Project>
