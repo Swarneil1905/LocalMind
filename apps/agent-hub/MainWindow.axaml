@@ -2,48 +2,96 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:LocalMind.AgentHub"
         x:Class="LocalMind.AgentHub.MainWindow" x:DataType="vm:HubViewModel"
-        Title="LocalMind · Agent Hub" Width="1080" Height="670" MinWidth="680" MinHeight="430"
-        Background="#111B21" Foreground="#EEF5F1">
-  <Grid RowDefinitions="Auto,*">
-    <Border Background="#18262B" Padding="24,16" BorderBrush="#36474A" BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="*,Auto">
-        <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
-          <Border Background="#BBE5CA" CornerRadius="5" Padding="7,3"><TextBlock Text="LM" FontWeight="Bold" Foreground="#16372A"/></Border>
-          <TextBlock Text="LocalMind  /  Agent Hub" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/>
-        </StackPanel>
-        <Button Grid.Column="1" Click="OpenProfile" Content="Open database…"/>
-      </Grid>
-    </Border>
-    <Grid Grid.Row="1" ColumnDefinitions="220,*">
-      <Border Background="#152127" BorderBrush="#36474A" BorderThickness="0,0,1,0" Padding="18,25">
-        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="14">
-          <TextBlock Text="PROJECTS" Foreground="#A9C6BD" FontSize="12" FontWeight="Bold" />
+        Title="LocalMind · Agent Hub" Width="1080" Height="670" MinWidth="680" MinHeight="430">
+  <Window.Resources>
+    <!-- Shared shell tokens: change sizes, spacing and colors here only. -->
+    <SolidColorBrush x:Key="Canvas">#111B21</SolidColorBrush>
+    <SolidColorBrush x:Key="Pane">#152127</SolidColorBrush>
+    <SolidColorBrush x:Key="Line">#36474A</SolidColorBrush>
+    <SolidColorBrush x:Key="Text">#EEF5F1</SolidColorBrush>
+    <SolidColorBrush x:Key="Muted">#BDD0CB</SolidColorBrush>
+    <SolidColorBrush x:Key="Badge">#294238</SolidColorBrush>
+    <SolidColorBrush x:Key="BadgeText">#BAE9CE</SolidColorBrush>
+    <SolidColorBrush x:Key="Focus">#7FD6A9</SolidColorBrush>
+    <SolidColorBrush x:Key="Selected">#203A3A</SolidColorBrush>
+    <SolidColorBrush x:Key="Hover">#1A2B30</SolidColorBrush>
+    <x:Double x:Key="ProjectsWidth">200</x:Double>
+    <x:Double x:Key="TaskMinWidth">440</x:Double>
+    <Thickness x:Key="PanePadding">16</Thickness>
+  </Window.Resources>
+  <Window.Styles>
+    <Style Selector="Button:focus-visible, ListBoxItem:focus-visible, MenuItem:focus-visible">
+      <Setter Property="BorderBrush" Value="{StaticResource Focus}"/>
+      <Setter Property="BorderThickness" Value="2"/>
+    </Style>
+    <Style Selector="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/></Style>
+    <Style Selector="ListBox"><Setter Property="Background" Value="Transparent"/></Style>
+    <!-- Selection is a quiet navigation cue (edge + soft fill); dependency text carries the attention. -->
+    <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter"><Setter Property="Background" Value="{StaticResource Hover}"/></Style>
+    <Style Selector="ListBoxItem:selected /template/ ContentPresenter, ListBoxItem:selected:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource Selected}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource Focus}"/>
+      <Setter Property="BorderThickness" Value="3,0,0,0"/>
+    </Style>
+  </Window.Styles>
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenCommand}"/>
+    <KeyBinding Gesture="F5" Command="{Binding RefreshCommand}"/>
+    <KeyBinding Gesture="Ctrl+B" Command="{Binding ToggleProjectsCommand}"/>
+    <KeyBinding Gesture="Ctrl+I" Command="{Binding ToggleInspectorCommand}"/>
+    <KeyBinding Gesture="Ctrl+G" Command="{Binding GoToBlockerCommand}"/>
+    <KeyBinding Gesture="Ctrl+Back" Command="{Binding BackCommand}"/>
+  </Window.KeyBindings>
+  <Grid RowDefinitions="Auto,*,Auto" Background="{StaticResource Canvas}">
+    <Menu x:Name="MainMenu" Background="{StaticResource Pane}">
+      <MenuItem Header="_File">
+        <MenuItem Header="_Open project file…" InputGesture="Ctrl+O" Command="{Binding OpenCommand}"/>
+        <MenuItem Header="_Refresh" InputGesture="F5" Command="{Binding RefreshCommand}"/>
+      </MenuItem>
+      <MenuItem Header="_View">
+        <MenuItem Header="_Projects" InputGesture="Ctrl+B" Command="{Binding ToggleProjectsCommand}"/>
+        <MenuItem Header="Task _details" InputGesture="Ctrl+I" Command="{Binding ToggleInspectorCommand}"/>
+      </MenuItem>
+      <MenuItem Header="_Go">
+        <MenuItem Header="_Blocker" InputGesture="Ctrl+G" Command="{Binding GoToBlockerCommand}"/>
+        <MenuItem Header="B_ack" InputGesture="Ctrl+Back" Command="{Binding BackCommand}"/>
+      </MenuItem>
+    </Menu>
+
+    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto">
+      <Border Background="{StaticResource Pane}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0"
+              Width="{StaticResource ProjectsWidth}" Padding="{StaticResource PanePadding}" IsVisible="{Binding ProjectsVisible}">
+        <Grid RowDefinitions="Auto,*" RowSpacing="12">
+          <TextBlock Text="Projects" Foreground="{StaticResource Muted}" FontWeight="SemiBold"/>
           <ListBox Grid.Row="1" ItemsSource="{Binding Projects}" SelectedItem="{Binding SelectedProject, Mode=TwoWay}" AutomationProperties.Name="Local projects">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:ProjectItem"><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/></DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
-          <TextBlock Grid.Row="2" Text="Local workspace · Read-only" Foreground="#A9C6BD" FontSize="12"/>
         </Grid>
       </Border>
-      <Grid Grid.Column="1" Margin="28" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="15">
-        <TextBlock Text="PROJECT WORKSPACE" Foreground="#A3D8BD" FontSize="12" FontWeight="Bold"/>
-        <TextBlock Grid.Row="1" Text="{Binding ProjectHeading}" FontSize="29" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-        <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
-          <TextBlock Text="{Binding StatusText}" Foreground="#BDD0CB" TextWrapping="Wrap" VerticalAlignment="Center"/>
-          <Button Grid.Column="1" Command="{Binding RefreshCommand}" Content="Refresh"/>
-        </Grid>
-        <ListBox x:Name="TaskList" Grid.Row="3" ItemsSource="{Binding Tasks}" AutomationProperties.Name="Tasks and prerequisites">
-          <ListBox.Styles><Style Selector="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/></Style></ListBox.Styles>
+
+      <Grid Grid.Column="1" Margin="{StaticResource PanePadding}" MinWidth="{StaticResource TaskMinWidth}" RowDefinitions="Auto,Auto,*" RowSpacing="10"
+            IsVisible="{Binding ListVisible}">
+        <TextBlock Text="{Binding ProjectHeading}" FontSize="24" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+          <Button Command="{Binding OpenCommand}" Content="Open project file…"/>
+          <Button Command="{Binding RefreshCommand}" Content="Refresh"/>
+          <Button Command="{Binding ToggleInspectorCommand}" Content="Task details" IsVisible="{Binding Narrow}"/>
+        </StackPanel>
+        <ListBox x:Name="TaskList" Grid.Row="2" ItemsSource="{Binding Tasks}" SelectedItem="{Binding SelectedTask, Mode=TwoWay}"
+                 AutomationProperties.Name="Tasks and prerequisites">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:TaskItem">
-              <Border BorderBrush="#3A4A4F" BorderThickness="0,0,0,1" Padding="6,12">
-                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="6" ColumnSpacing="12">
-                  <TextBlock Text="{Binding Title}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                  <Border Grid.Column="1" CornerRadius="4" Background="#294238" Padding="8,3"><TextBlock Foreground="#BAE9CE" Text="{Binding Status}" /></Border>
-                  <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding OwnerLabel, StringFormat='Owner: {0}'}" Foreground="#BDCFCA" TextWrapping="Wrap"/>
-                  <TextBlock Grid.Row="2" Text="{Binding DependencySummary}" Foreground="#D4DDD9" VerticalAlignment="Center" TextWrapping="Wrap"/>
-                  <Button Grid.Row="2" Grid.Column="1" Content="Go to blocker" IsVisible="{Binding HasBlocker}"
+              <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="6,10"
+                      AutomationProperties.Name="{Binding Title}">
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="6" ColumnSpacing="12">
+                  <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                  <Border Grid.Column="1" CornerRadius="4" Background="{StaticResource Badge}" Padding="8,2">
+                    <TextBlock Foreground="{StaticResource BadgeText}" Text="{Binding Status}"/>
+                  </Border>
+                  <TextBlock Grid.Row="1" Text="{Binding DependencySummary}" Foreground="{StaticResource Muted}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                  <Button Grid.Row="1" Grid.Column="1" Content="Go to blocker" IsVisible="{Binding HasBlocker}"
                           AutomationProperties.Name="{Binding Title, StringFormat='Go to blocker for {0}'}" Click="GoToBlocker"/>
                 </Grid>
               </Border>
@@ -51,6 +99,51 @@
           </ListBox.ItemTemplate>
         </ListBox>
       </Grid>
+
+      <!-- Beside the list when there is room; replaces the list on narrow windows. -->
+      <Border Grid.Column="{Binding InspectorColumn}" Width="{Binding InspectorWidth}" Background="{StaticResource Pane}"
+              BorderBrush="{StaticResource Line}" BorderThickness="1,0,0,0" Padding="{StaticResource PanePadding}"
+              IsVisible="{Binding InspectorVisible}">
+        <Grid RowDefinitions="Auto,*" RowSpacing="12">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Text="Task details" FontWeight="SemiBold" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>
+            <Button Grid.Column="1" Command="{Binding ToggleInspectorCommand}" Content="Back to tasks" IsVisible="{Binding Narrow}"/>
+            <Button Grid.Column="1" Command="{Binding ToggleInspectorCommand}" Content="×" IsVisible="{Binding Wide}"
+                    AutomationProperties.Name="Close task details"/>
+          </Grid>
+          <TextBlock Grid.Row="1" Text="Select a task to see its status and prerequisites." Foreground="{StaticResource Muted}"
+                     TextWrapping="Wrap" IsVisible="{Binding !HasTask}"/>
+          <ScrollViewer Grid.Row="1" IsVisible="{Binding HasTask}">
+            <StackPanel Spacing="10" DataContext="{Binding SelectedTask}" x:DataType="vm:TaskItem">
+              <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
+              <TextBlock Text="{Binding Status, StringFormat='Recorded status: {0}'}" TextWrapping="Wrap"/>
+              <TextBlock Text="{Binding OwnerLabel, StringFormat='Owner: {0}'}" Foreground="{StaticResource Muted}"/>
+              <TextBlock Text="{Binding DependencySummary}" TextWrapping="Wrap"/>
+              <TextBlock Text="Prerequisites" FontWeight="SemiBold" Foreground="{StaticResource Muted}" IsVisible="{Binding Dependencies.Count}"/>
+              <ItemsControl ItemsSource="{Binding Dependencies}" AutomationProperties.Name="Prerequisites">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:Prerequisite">
+                    <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="0,8">
+                      <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8">
+                        <TextBlock Text="{Binding Title}" TextWrapping="Wrap"/>
+                        <TextBlock Grid.Row="1" Foreground="{StaticResource Muted}" TextWrapping="Wrap">
+                          <Run Text="{Binding StatusLabel}"/><Run Text=" · ID "/><Run Text="{Binding Id}"/>
+                        </TextBlock>
+                        <Button Grid.RowSpan="2" Grid.Column="1" Content="Go" IsVisible="{Binding !IsResolved}"
+                                AutomationProperties.Name="{Binding Id, StringFormat='Go to prerequisite {0}'}" Click="GoToPrerequisite"/>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </ScrollViewer>
+        </Grid>
+      </Border>
     </Grid>
+
+    <Border Grid.Row="2" Background="{StaticResource Pane}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="12,4">
+      <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
+    </Border>
   </Grid>
 </Window>

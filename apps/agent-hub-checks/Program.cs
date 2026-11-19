@@ -2,6 +2,9 @@ using LocalMind.AgentHub;
 using Microsoft.Data.Sqlite;
 using System.Security.Cryptography;
 
+// Development-only: write the demo database for the Windows smoke checklist and exit.
+if (args is ["--fixture", var target]) { MakeFixture(Path.GetFullPath(target)); Console.WriteLine($"Wrote {Path.GetFullPath(target)}"); return; }
+
 var folder = Directory.CreateTempSubdirectory("localmind-hub-check-");
 try
 {
@@ -59,6 +62,7 @@ try
     string missing = Path.Combine(folder.FullName, "missing.db");
     await hub.OpenAsync(missing);
     Check(!File.Exists(missing) && hub.Tasks.Count == 0 && hub.StatusText.StartsWith("Could not open"), "failed open clears stale tasks without creating a file");
+    await Workbench(folder.FullName);
 }
 finally { folder.Delete(true); }
 
@@ -66,4 +70,133 @@ static void Check(bool ok, string message)
 {
     if (!ok) throw new InvalidOperationException(message);
     Console.WriteLine($"PASS {message}");
+}
+
+static async Task Until(Func<bool> done)
+{
+    for (int i = 0; i < 100 && !done(); i++) await Task.Delay(30);
+}
+
+static void MakeFixture(string file) =>
+    Sql(file, """
+    CREATE TABLE projects(id TEXT PRIMARY KEY, name TEXT);
+    CREATE TABLE tasks(id TEXT PRIMARY KEY, project_id TEXT,title TEXT,status TEXT,created_at TEXT);
+    CREATE TABLE hub_dependencies(task_id TEXT,requires_id TEXT);
+    INSERT INTO projects VALUES ('a','Launch'),('b','Other'),('c','Quiet');
+    INSERT INTO tasks VALUES ('r1','a','Review','open','1'),('r2','a','Review','cancelled','2'),
+        ('s1','a','Approve revision','open','3'),('b1','b','Secret','open','1');
+    INSERT INTO hub_dependencies VALUES ('s1','r1'),('s1','r2');
+    """);
+
+static void Sql(string file, string text)
+{
+    using var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = file, Pooling = false }.ToString());
+    db.Open();
+    using var cmd = db.CreateCommand();
+    cmd.CommandText = text;
+    cmd.ExecuteNonQuery();
+}
+
+// Commands, history, layout and scope. Fixture: Launch (blocked task, two "Review" prerequisites, one cancelled),
+// Other (private task) and Quiet (no tasks).
+static async Task Workbench(string dir)
+{
+    string file = Path.Combine(dir, "workbench.db");
+    MakeFixture(file);
+
+    var cold = new HubViewModel();
+    Check(!cold.OpenCommand.CanExecute(null) && !cold.RefreshCommand.CanExecute(null) &&
+          !cold.GoToBlockerCommand.CanExecute(null) && !cold.BackCommand.CanExecute(null) &&
+          cold.ToggleProjectsCommand.CanExecute(null), "cold start: only layout commands available before a file is open");
+
+    int picks = 0;
+    string? choice = null;
+    var hub = new HubViewModel { PickFile = () => { picks++; return Task.FromResult(choice); } };
+    Check(hub.OpenCommand.CanExecute(null) && !hub.RefreshCommand.CanExecute(null), "open enabled, refresh disabled before a file");
+    await hub.OpenCommand.RunAsync();
+    Check(picks == 1 && hub.Projects.Count == 0, "cancelled picker opens nothing and reads once");
+    choice = file;
+    await hub.OpenCommand.RunAsync();
+    Check(picks == 2 && hub.Projects.Count == 3 && hub.ProjectHeading == "Launch" && hub.RefreshCommand.CanExecute(null),
+          "menu/shortcut command and picker open through one path");
+
+    Check(!hub.GoToBlockerCommand.CanExecute(null), "blocker unavailable without a selected task");
+    await hub.GoToBlockerCommand.RunAsync();
+    Check(hub.SelectedTask == null && !hub.BackCommand.CanExecute(null), "disabled command changes nothing");
+
+    var ship = hub.Tasks.Single(t => t.Id == "s1");
+    hub.SelectedTask = ship;
+    Check(hub.Tasks.Count(t => t.Title == "Review") == 2 && ship.Dependencies.Count == 2 &&
+          ship.Dependencies.Select(d => d.Id).Distinct().Count() == 2, "duplicate titles stay distinct by ID");
+    Check(ship.Status == "open" && ship.Dependencies.Single(d => d.Id == "r2").IsResolved == false,
+          "recorded status shown as stored; cancelled is unresolved");
+    Check(hub.GoToBlockerCommand.CanExecute(null), "blocker available for a selected blocked task");
+    await hub.GoToBlockerCommand.RunAsync();
+    Check(hub.SelectedTask?.Id == "r1" && hub.BackCommand.CanExecute(null), "blocker selects the first unresolved prerequisite");
+    await hub.BackCommand.RunAsync();
+    Check(hub.SelectedTask?.Id == "s1" && !hub.BackCommand.CanExecute(null), "back returns to the exact source task");
+
+    var cancelled = ship.Dependencies.Single(d => d.Id == "r2");
+    await hub.GoToBlockerCommand.RunAsync(cancelled);
+    Check(hub.SelectedTask?.Id == "r2", "following a cancelled duplicate-title prerequisite lands on its own ID");
+    await hub.BackCommand.RunAsync();
+    Check(hub.SelectedTask?.Id == "s1", "back after the second duplicate");
+
+    // Button path: the list passes the task itself, which need not be the selected one.
+    hub.SelectedTask = hub.Tasks.Single(t => t.Id == "r1");
+    await hub.GoToBlockerCommand.RunAsync(ship);
+    Check(hub.SelectedTask?.Id == "r1" && hub.BackCommand.CanExecute(null), "list button navigates through the same command");
+    await hub.BackCommand.RunAsync();
+    Check(hub.SelectedTask?.Id == "s1", "button history records its source task");
+
+    // Refresh keeps what still exists and drops what vanished.
+    await hub.GoToBlockerCommand.RunAsync();
+    Sql(file, "DELETE FROM hub_dependencies WHERE requires_id='r1'; DELETE FROM tasks WHERE id='r1'");
+    await hub.RefreshCommand.RunAsync();
+    Check(hub.SelectedTask == null && hub.BackCommand.CanExecute(null), "refresh clears a deleted target but keeps a surviving source");
+    Sql(file, "DELETE FROM hub_dependencies WHERE task_id='s1'; DELETE FROM tasks WHERE id='s1'");
+    await hub.RefreshCommand.RunAsync();
+    Check(!hub.BackCommand.CanExecute(null) && !hub.GoToBlockerCommand.CanExecute(null), "refresh discards history IDs that disappeared");
+    Sql(file, "INSERT INTO tasks VALUES ('s1','a','Approve revision','open','3'); INSERT INTO hub_dependencies VALUES ('s1','r2')");
+    var hash = SHA256.HashData(File.ReadAllBytes(file));
+
+    // Project isolation while a load is in flight.
+    await hub.RefreshCommand.RunAsync();
+    hub.SelectedTask = hub.Tasks.Single(t => t.Id == "s1");
+    await hub.GoToBlockerCommand.RunAsync();
+    Check(hub.BackCommand.CanExecute(null), "history exists in project A");
+    hub.SelectedProject = hub.Projects.Single(p => p.Id == "b");
+    Check(hub.SelectedTask == null && !hub.BackCommand.CanExecute(null) && hub.Tasks.Count == 0, "switching project clears task and history at once");
+    await Until(() => hub.Tasks.Count > 0);
+    Check(hub.Tasks.Single().Id == "b1" && hub.SelectedTask == null, "project B never shows A's task");
+    hub.SelectedProject = hub.Projects.Single(p => p.Id == "c");
+    await Until(() => hub.StatusText.StartsWith("No tasks"));
+    Check(hub.StatusText == "No tasks in this project.", "empty project is distinct from a load failure");
+
+    // Layout
+    hub.SetWidth(1280);
+    Check(!hub.Narrow && hub.InspectorVisible && hub.ListVisible && hub.InspectorColumn == 2, "wide: inspector beside the list");
+    await hub.ToggleInspectorCommand.RunAsync();
+    Check(!hub.InspectorVisible && hub.ListVisible, "hiding the inspector gives the list the space");
+    await hub.ToggleInspectorCommand.RunAsync();
+    hub.SetWidth(800);
+    Check(hub.Narrow && !hub.InspectorVisible && hub.ListVisible, "narrow: inspector starts closed, list stays");
+    await hub.ToggleInspectorCommand.RunAsync();
+    Check(hub.InspectorVisible && !hub.ListVisible && hub.InspectorColumn == 1, "narrow: inspector replaces the list on request");
+    await hub.ToggleInspectorCommand.RunAsync();
+    await hub.ToggleProjectsCommand.RunAsync();
+    Check(!hub.ProjectsVisible && hub.SelectedProject?.Id == "c", "collapsing projects keeps the selection");
+    hub.SetWidth(1280);
+    Check(hub.InspectorVisible && hub.ListVisible, "widening restores the inspector");
+
+    // Failure
+    string bad = Path.Combine(dir, "bad.db");
+    File.WriteAllText(bad, "not a database");
+    await hub.OpenAsync(bad);
+    Check(hub.Tasks.Count == 0 && hub.SelectedTask == null && !hub.BackCommand.CanExecute(null) &&
+          hub.StatusText.StartsWith("Could not open"), "unreadable file clears details and says so");
+    Check(hash.SequenceEqual(SHA256.HashData(File.ReadAllBytes(file))), "open, refresh, navigation and failure leave the database unchanged");
+    string missing = Path.Combine(dir, "never.db");
+    await hub.OpenAsync(missing);
+    Check(!File.Exists(missing), "opening a missing file does not create it");
 }

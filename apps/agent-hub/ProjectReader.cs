@@ -3,7 +3,12 @@ using Microsoft.Data.Sqlite;
 namespace LocalMind.AgentHub;
 
 public sealed record ProjectItem(string Id, string Name);
-public sealed record Prerequisite(string Id, string Title, string Status);
+public sealed record Prerequisite(string Id, string Title, string Status)
+{
+    // Only "done" satisfies a prerequisite; cancelled work is still unresolved.
+    public bool IsResolved => Status == "done";
+    public string StatusLabel => Status.Replace('_', ' ');
+}
 
 public sealed record TaskItem(string Id, string Title, string Status, IReadOnlyList<Prerequisite> Dependencies)
 {
@@ -11,7 +16,7 @@ public sealed record TaskItem(string Id, string Title, string Status, IReadOnlyL
     public string OwnerLabel => "Unassigned";
     public string Prerequisites => Dependencies.Count == 0 ? "No prerequisites" :
         "Requires: " + string.Join(", ", Dependencies.Select(d => d.Title));
-    private Prerequisite? FirstOpen => Dependencies.FirstOrDefault(d => d.Status != "done");
+    private Prerequisite? FirstOpen => Dependencies.FirstOrDefault(d => !d.IsResolved);
     public string? FirstBlockerId => FirstOpen?.Id;
     public bool HasBlocker => FirstBlockerId != null;
     public string DependencySummary
@@ -20,7 +25,7 @@ public sealed record TaskItem(string Id, string Title, string Status, IReadOnlyL
         {
             if (FirstOpen is not { } pending)
                 return Dependencies.Count == 0 ? "No prerequisites" : "All prerequisites complete";
-            var others = Dependencies.Count(d => d.Status != "done") - 1;
+            var others = Dependencies.Count(d => !d.IsResolved) - 1;
             return $"Requires {pending.Title} ({pending.Status.Replace('_', ' ')})"
                 + (others > 0 ? $" · {others} more unresolved" : "");
         }
