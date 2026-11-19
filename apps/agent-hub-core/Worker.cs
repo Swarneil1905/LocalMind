@@ -29,6 +29,7 @@ public sealed class WorkerHost(string profileId, string token, Func<string> newI
                 "createWorkspace" => ProjectStore.Create(Arg<CreateArgs>(request).Folder, Arg<CreateArgs>(request).Name, newId),
                 "importLegacy" => ProjectStore.Import(Arg<ImportArgs>(request).Source, Arg<ImportArgs>(request).Folder, ct, newId),
                 "rotate" => Rotate(Arg<RotateArgs>(request).NewToken),
+                "commandStatus" => TaskStore.CommandStatus(Arg<StatusArgs>(request).Workspace, Arg<StatusArgs>(request).CommandId) ?? (object)new { },
                 "createTask" => TaskStore.CreateTask(Arg<CreateTaskArgs>(request).Workspace, Arg<CreateTaskArgs>(request).CommandId, Arg<CreateTaskArgs>(request).ProjectId, Arg<CreateTaskArgs>(request).Title, Arg<CreateTaskArgs>(request).Outcome, newId),
                 "updateTask" => TaskStore.UpdateTask(Arg<UpdateTaskArgs>(request).Workspace, Arg<UpdateTaskArgs>(request).CommandId, Arg<UpdateTaskArgs>(request).TaskId, Arg<UpdateTaskArgs>(request).ExpectedRevision, Arg<UpdateTaskArgs>(request).Title, Arg<UpdateTaskArgs>(request).Outcome, Arg<UpdateTaskArgs>(request).Owner),
                 "addDependency" => TaskStore.AddDependency(Arg<DependencyArgs>(request).Workspace, Arg<DependencyArgs>(request).CommandId, Arg<DependencyArgs>(request).TaskId, Arg<DependencyArgs>(request).RequiresId, Arg<DependencyArgs>(request).ExpectedRevision),
@@ -141,6 +142,15 @@ public sealed class WorkerClient(IWorker worker)
     public Task<CommandResult> RunRoleAsync(string workspace, string commandId, string taskId, string role, string? failure = null, CancellationToken ct = default) =>
         CallAsync<CommandResult>("runRole", new RoleArgs(workspace, commandId, taskId, role, failure), ct);
 
+    /// <summary>What a command ID did, or null when it was never applied.</summary>
+    public async Task<CommandResult?> CommandStatusAsync(string workspace, string commandId, CancellationToken ct = default)
+    {
+        var r = await CallAsync("commandStatus", new StatusArgs(workspace, commandId), ct);
+        if (!r.Ok) throw new WorkerException(r.Error!);
+        var result = r.Result!.Value.Deserialize<CommandResult>(Protocol.Json);
+        return result is { Id: not null } ? result : null;
+    }
+
     public async Task RotateAsync(CancellationToken ct = default)
     {
         string next = NewToken();
@@ -168,10 +178,15 @@ public sealed class FakeWorker : IWorker
         host = new(profileId, Token, () => "id" + Interlocked.Increment(ref ids));
     }
 
+    /// <summary>Lets a test lose the answer after the command has been applied (throw WorkerException) to model a crash.</summary>
+    public Func<WorkerRequest, Task>? AfterHandle { get; set; }
+
     public async Task<WorkerResponse> ExchangeAsync(WorkerRequest request, CancellationToken ct)
     {
         if (BeforeHandle is { } hold) await hold(request);
-        return host.Handle(request, ct);
+        var response = host.Handle(request, ct);
+        if (AfterHandle is { } lose) await lose(request);
+        return response;
     }
 
     public void SetToken(string token) => Token = token;

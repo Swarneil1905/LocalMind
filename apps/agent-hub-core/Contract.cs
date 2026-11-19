@@ -7,7 +7,7 @@ public static class Protocol
     public const int Version = 1;
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     /// <summary>Reads can be repeated after a worker dies; anything else might have been applied already.</summary>
-    public static bool IsWrite(string op) => op is not ("identify" or "loadWorkspace");
+    public static bool IsWrite(string op) => op is not ("identify" or "loadWorkspace" or "commandStatus");
 }
 
 /// <summary>Typed failure. Recovery always names something the user can do.</summary>
@@ -27,6 +27,7 @@ public sealed record CreateTaskArgs(string Workspace, string CommandId, string P
 public sealed record UpdateTaskArgs(string Workspace, string CommandId, string TaskId, int ExpectedRevision, string? Title, string? Outcome, string? Owner);
 public sealed record DependencyArgs(string Workspace, string CommandId, string TaskId, string RequiresId, int ExpectedRevision);
 public sealed record MoveArgs(string Workspace, string CommandId, string TaskId, string ToState, int ExpectedRevision);
+public sealed record StatusArgs(string Workspace, string CommandId);
 public sealed record RoleArgs(string Workspace, string CommandId, string TaskId, string Role, string? Failure);
 
 public sealed class WorkerException(WorkerError error) : Exception($"{error.Message} {error.Recovery}")

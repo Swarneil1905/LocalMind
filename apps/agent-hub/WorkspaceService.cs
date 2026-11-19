@@ -31,4 +31,7 @@ public sealed class WorkspaceService(Func<Task<WorkerClient>> connect)
 
     public async Task<CommandResult> MoveTaskAsync(string workspace, string commandId, string taskId, string toState, int revision) =>
         await (await connect()).MoveTaskAsync(workspace, commandId, taskId, toState, revision);
+
+    public async Task<CommandResult?> CommandStatusAsync(string workspace, string commandId) =>
+        await (await connect()).CommandStatusAsync(workspace, commandId);
 }

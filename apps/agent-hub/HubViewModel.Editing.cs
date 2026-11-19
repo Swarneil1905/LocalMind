@@ -135,25 +135,56 @@ public sealed partial class HubViewModel
     public IReadOnlyList<(string Id, string Label)> CurrentPrerequisites() =>
         selectedTask is not { } t ? [] : [.. t.Dependencies.Select(d => (d.Id, $"{d.Title} ({d.StatusLabel})"))];
 
+    // One logical submission = one command ID. Resubmitting identical input after an error reuses it, so a
+    // save whose answer was lost cannot create a second task. A changed request first asks the worker what happened.
+    private sealed record Pending(string Key, string CommandId, bool Uncertain);
+    private Pending? pending;
+
+    private static bool IsUncertain(string code) => code is "outcome_unknown" or "worker_exited" or "protocol_error";
+
+    private async Task<string?> Submit(string key, Func<string, Task<CommandResult>> call, bool selectResult = false)
+    {
+        if (pending is { } old && old.Key != key)
+        {
+            if (old.Uncertain)
+            {
+                try
+                {
+                    // Applied: reload so the board shows it before the changed request goes out.
+                    if (await workspaces!.CommandStatusAsync(path!, old.CommandId) != null) await OpenAsync(path!, workspaceName);
+                }
+                catch (WorkerException e) { return $"{e.Message} Your earlier change may not have been recorded yet, so this one was not sent."; }
+            }
+            pending = null;
+        }
+        string id = pending?.Key == key ? pending.CommandId : Guid.NewGuid().ToString("N");
+        pending = new(key, id, false);
+        var error = await Execute(() => call(id), selectResult);
+        if (error == null) { pending = null; return null; }
+        pending = IsUncertain(error.Error.Code) ? pending with { Uncertain = true } : null;
+        return error.Message;
+    }
+
     /// <summary>Dialog entry points: each returns the message to show in the dialog, or null when the change was saved.</summary>
-    public async Task<string?> CreateTaskAsync(string title, string outcome) =>
-        (await Execute(() => workspaces!.CreateTaskAsync(path!, Guid.NewGuid().ToString("N"), selected!.Id, title, outcome), selectResult: true))?.Message;
+    public Task<string?> CreateTaskAsync(string title, string outcome) =>
+        Submit($"create|{path}|{selected?.Id}|{title.Trim()}|{outcome.Trim()}",
+            id => workspaces!.CreateTaskAsync(path!, id, selected!.Id, title, outcome), selectResult: true);
 
-    public async Task<string?> AssignAsync(string owner)
+    public Task<string?> AssignAsync(string owner)
     {
         var t = selectedTask!;
-        return (await Execute(() => workspaces!.UpdateTaskAsync(path!, Guid.NewGuid().ToString("N"), t.Id, t.Revision, owner: owner)))?.Message;
+        return Submit($"assign|{path}|{t.Id}|{t.Revision}|{owner.Trim()}", id => workspaces!.UpdateTaskAsync(path!, id, t.Id, t.Revision, owner: owner));
     }
 
-    public async Task<string?> AddPrerequisiteAsync(string requiresId)
+    public Task<string?> AddPrerequisiteAsync(string requiresId)
     {
         var t = selectedTask!;
-        return (await Execute(() => workspaces!.AddDependencyAsync(path!, Guid.NewGuid().ToString("N"), t.Id, requiresId, t.Revision)))?.Message;
+        return Submit($"add|{path}|{t.Id}|{t.Revision}|{requiresId}", id => workspaces!.AddDependencyAsync(path!, id, t.Id, requiresId, t.Revision));
     }
 
-    public async Task<string?> RemovePrerequisiteAsync(string requiresId)
+    public Task<string?> RemovePrerequisiteAsync(string requiresId)
     {
         var t = selectedTask!;
-        return (await Execute(() => workspaces!.RemoveDependencyAsync(path!, Guid.NewGuid().ToString("N"), t.Id, requiresId, t.Revision)))?.Message;
+        return Submit($"remove|{path}|{t.Id}|{t.Revision}|{requiresId}", id => workspaces!.RemoveDependencyAsync(path!, id, t.Id, requiresId, t.Revision));
     }
 }

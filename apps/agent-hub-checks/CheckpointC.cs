@@ -69,6 +69,57 @@ internal static class CheckpointC
         Edits(Path.Combine(dir, "ah08"));
         await Roles(Path.Combine(dir, "ah63"), workerExe);
         await Board(Path.Combine(dir, "ah09"));
+        await LostAcknowledgement(Path.Combine(dir, "lost-ack"));
+    }
+
+    // A save that commits but whose answer is lost, driven through the same method the dialogs call. ------------
+    private static async Task LostAcknowledgement(string dir)
+    {
+        static WorkerException Lost() => new(new("outcome_unknown", "The worker stopped while handling “createTask”, so it may or may not have been applied.", "Check the workspace, then repeat the action."));
+        async Task<(LocalMind.AgentHub.HubViewModel Hub, FakeWorker Fake, string Db)> Start(string name)
+        {
+            var fake = new FakeWorker();
+            var hub = new LocalMind.AgentHub.HubViewModel { Workspaces = new LocalMind.AgentHub.WorkspaceService(new WorkerClient(fake)), PickFile = () => Task.FromResult<string?>(null) };
+            string folder = Path.Combine(dir, name);
+            await hub.CreateWorkspaceAsync("Atlas", folder);
+            return (hub, fake, Path.Combine(folder, "agenthub.db"));
+        }
+
+        // Same input again: one task, one event, the original ID.
+        var a = await Start("same");
+        a.Fake.AfterHandle = req => req.Op == "createTask" ? throw Lost() : Task.CompletedTask;
+        string? lost = await a.Hub.CreateTaskAsync("Draft", "A note.");
+        a.Fake.AfterHandle = null;
+        string originalId = One<string>(a.Db, "SELECT id FROM tasks");
+        Check(lost != null && lost.Contains("may or may not") && One<long>(a.Db, "SELECT count(*) FROM tasks") == 1, "the save committed even though its answer was lost");
+        Check(await a.Hub.CreateTaskAsync("Draft", "A note.") is null && One<long>(a.Db, "SELECT count(*) FROM tasks") == 1
+              && One<long>(a.Db, "SELECT count(*) FROM events WHERE kind='task_created'") == 1 && a.Hub.SelectedTask?.Id == originalId && a.Hub.OpenTasks.Count == 1,
+              "resubmitting identical input gives one task, one event and the original task ID");
+
+        // Changed input: the worker is asked what happened first, so the first task is neither lost nor duplicated.
+        var b = await Start("changed");
+        b.Fake.AfterHandle = req => req.Op == "createTask" ? throw Lost() : Task.CompletedTask;
+        await b.Hub.CreateTaskAsync("Draft", "");
+        b.Fake.AfterHandle = null;
+        Check(await b.Hub.CreateTaskAsync("QA", "") is null && One<long>(b.Db, "SELECT count(*) FROM tasks WHERE title='Draft'") == 1
+              && One<long>(b.Db, "SELECT count(*) FROM tasks") == 2 && b.Hub.OpenTasks.Count == 2, "a changed request after a lost answer keeps the first task and adds the new one once");
+
+        // Lost before it committed: a changed request just goes ahead.
+        var c = await Start("never");
+        c.Fake.BeforeHandle = req => req.Op == "createTask" ? throw Lost() : Task.CompletedTask;
+        await c.Hub.CreateTaskAsync("Draft", "");
+        c.Fake.BeforeHandle = null;
+        Check(await c.Hub.CreateTaskAsync("QA", "") is null && One<long>(c.Db, "SELECT count(*) FROM tasks") == 1 && c.Hub.OpenTasks.Single().Title == "QA",
+              "a lost request that never committed leaves nothing behind");
+
+        // The same applies to edits: a retried assignment reuses its command ID and does not conflict with itself.
+        var d = await Start("assign");
+        await d.Hub.CreateTaskAsync("Draft", "");
+        d.Fake.AfterHandle = req => req.Op == "updateTask" ? throw Lost() : Task.CompletedTask;
+        await d.Hub.AssignAsync("Reviewer");
+        d.Fake.AfterHandle = null;
+        Check(await d.Hub.AssignAsync("Reviewer") is null && d.Hub.SelectedTask!.OwnerLabel == "Reviewer" && One<long>(d.Db, "SELECT count(*) FROM events WHERE kind='task_updated'") == 1,
+              "a retried assignment applies once");
     }
 
     // AH09 ------------------------------------------------------------------------------------------------

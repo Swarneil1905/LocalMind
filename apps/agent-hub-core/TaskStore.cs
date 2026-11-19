@@ -128,6 +128,20 @@ public static class TaskStore
         return title;
     }
 
+    /// <summary>Read-only: what a command ID did, or null when it was never applied. Lets a client reconcile after a lost answer.</summary>
+    public static CommandResult? CommandStatus(string workspace, string commandId)
+    {
+        string path = ProjectStore.DatabaseIn(workspace);
+        if (!File.Exists(path)) throw new StoreException("not_found", $"No workspace database at {path}.", "Open the workspace again.");
+        using var db = ProjectStore.Connect(path, SqliteOpenMode.ReadOnly);
+        db.Open();
+        using var c = db.CreateCommand();
+        c.CommandText = "SELECT seq, detail FROM events WHERE command_id=$c";
+        c.Parameters.AddWithValue("$c", commandId);
+        using var r = c.ExecuteReader();
+        return r.Read() ? JsonSerializer.Deserialize<CommandResult>(r.GetString(1), Protocol.Json)! with { Duplicate = true, Seq = r.GetInt64(0) } : null;
+    }
+
     public static CommandResult CreateTask(string workspace, string commandId, string projectId, string title, string? outcome, Func<string> newId) =>
         Run(workspace, commandId, "task_created", db =>
         {

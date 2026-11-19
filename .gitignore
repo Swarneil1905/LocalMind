@@ -75,3 +75,7 @@ htmlcov/
 .local-test-data/
 artifacts/
 outputs/
+
+# .NET build output for the Agent Hub projects
+apps/agent-hub*/bin/
+apps/agent-hub*/obj/

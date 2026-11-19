@@ -4,14 +4,18 @@ import type { Task } from "../hooks/useProjects";
 
 interface Dependency { task_id: string; requires_id: string }
 interface Snapshot { revision: number | string; dependencies: Dependency[] }
-type State = { status: "loading" } | { status: "error" } | { status: "ready"; dependencies: Dependency[] };
+type Result = { status: "error" } | { status: "ready"; dependencies: Dependency[] };
+type State = { status: "loading" } | Result;
 
 export function TaskPrerequisites({ projectId, tasks, tasksLoading }: { projectId: string; tasks: Task[]; tasksLoading: boolean }) {
-  const [state, setState] = useState<State>({ status: "loading" });
+  // A result belongs to the project and attempt that requested it. Any other key means "still loading",
+  // so switching projects shows loading without setting state inside the effect.
   const [attempt, setAttempt] = useState(0);
+  const key = `${projectId}:${attempt}`;
+  const [result, setResult] = useState<{ key: string; value: Result } | null>(null);
+  const state: State = result?.key === key ? result.value : { status: "loading" };
   useEffect(() => {
     let active = true;
-    setState({ status: "loading" });
     invoke<Snapshot>("agent_hub_snapshot", { projectId })
       .then(snapshot => {
         if (!active) return;
@@ -19,11 +23,11 @@ export function TaskPrerequisites({ projectId, tasks, tasksLoading }: { projectI
         if (!Array.isArray(snapshot?.dependencies) || !snapshot.dependencies.every(
           d => typeof d?.task_id === "string" && typeof d?.requires_id === "string",
         )) throw new Error("Malformed snapshot");
-        setState({ status: "ready", dependencies: snapshot.dependencies });
+        setResult({ key, value: { status: "ready", dependencies: snapshot.dependencies } });
       })
-      .catch(() => { if (active) setState({ status: "error" }); });
+      .catch(() => { if (active) setResult({ key, value: { status: "error" } }); });
     return () => { active = false; };
-  }, [projectId, attempt]);
+  }, [projectId, attempt, key]);
 
   const titles = new Map(tasks.filter(task => task.project_id === projectId).map(task => [task.id, task.title]));
   const label = (id: string) => titles.get(id) ?? "Task no longer in this project";

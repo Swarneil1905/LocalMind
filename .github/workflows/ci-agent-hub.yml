@@ -1,0 +1,44 @@
+name: CI – Agent Hub (.NET)
+
+on:
+  workflow_call:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/agent-hub/**'
+      - 'apps/agent-hub-core/**'
+      - 'apps/agent-hub-worker/**'
+      - 'apps/agent-hub-checks/**'
+      - '.github/workflows/ci-agent-hub.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/agent-hub/**'
+      - 'apps/agent-hub-core/**'
+      - 'apps/agent-hub-worker/**'
+      - 'apps/agent-hub-checks/**'
+      - '.github/workflows/ci-agent-hub.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-agent-hub-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-checks:
+    name: build + native checks (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build the desktop app
+        run: dotnet build apps/agent-hub/LocalMind.AgentHub.csproj -c Debug
+      - name: Native checks
+        run: dotnet run --project apps/agent-hub-checks -c Debug
