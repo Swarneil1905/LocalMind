@@ -38,8 +38,8 @@ def main():
     show("CODEX → CLAUDE", assignment)
     show("CODEX", "I own the integration and independent checks.")
     process = subprocess.Popen(
-        [exe, "-p", assignment, "--verbose", "--output-format", "stream-json",
-         "--allowedTools", "Read,Glob,Grep,Edit,Write", "--max-turns", "30"],
+        [exe, "-p", assignment, "--model", "sonnet", "--verbose", "--output-format", "stream-json",
+         "--allowedTools", "Read,Glob,Grep,Edit,Write,Skill", "--max-turns", "12"],
         cwd=ROOT, stdout=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
     for line in process.stdout:
         try:
