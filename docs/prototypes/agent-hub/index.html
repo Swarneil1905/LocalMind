@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'">
+  <title>LocalMind · Agent Hub</title><link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#"><span class="brand-mark">L<span>·</span>M</span><b>LocalMind</b><span class="brand-divider"></span><span class="brand-section">Agent Hub</span></a>
+  <div class="top-center"><span class="local-dot"></span> Your workspace <span class="slash">/</span> Atlas</div>
+  <div class="top-actions"><span class="demo-tag">INTERACTIVE PROTOTYPE</span><button class="icon-button" id="help" aria-label="About this prototype" title="About this prototype">?</button><span class="user-avatar">SP</span></div>
+</header>
+<div class="app-shell">
+  <aside class="sidebar">
+    <button class="project-switch" id="project-info"><span class="project-icon">A</span><span><strong>Atlas workspace</strong><small>Personal project</small></span><span class="chevron">⌄</span></button>
+    <div class="sidebar-label">WORKSPACE</div>
+    <nav class="main-nav" aria-label="Workspace">
+      <button class="active" data-view="overview"><span data-icon="network"></span><span>Overview</span><small>⌘ 1</small></button>
+      <button data-view="chat"><span data-icon="chat"></span><span>Team chat</span><small id="message-count">8</small></button>
+      <button data-view="tasks"><span data-icon="board"></span><span>Task board</span><small>6</small></button>
+      <button data-view="outputs"><span data-icon="files"></span><span>Outputs</span><small id="output-count">1</small></button>
+    </nav>
+    <div class="sidebar-label agent-label">YOUR TEAM <span>6</span></div>
+    <div id="agent-list" aria-label="Agent selection"></div>
+    <button class="add-agent" id="configure"><span>＋</span> Configure team</button>
+    <div class="sidebar-bottom"><div class="budget-label"><span>Demo budget</span><b id="sidebar-cost">$0.42 <em>/ $5.00</em></b></div><div class="budget-track"><i id="budget-bar"></i></div><small>Simulated usage · no API calls</small><button class="research-link" id="research"><span data-icon="book"></span> Design & research <span>↗</span></button><div class="profile"><span class="user-avatar">SP</span><span>Swarneil Pradhan<small>Workspace owner</small></span><span class="owner-badge">YOU</span></div></div>
+  </aside>
+  <main>
+    <section class="project-heading">
+      <div class="breadcrumb">PROJECTS <span>/</span> ATLAS</div>
+      <div class="heading-row"><div><h1>Build something together<span class="title-dot">.</span></h1><p>A project dashboard, from first brief to reviewed handoff.</p></div><button class="button primary" id="run"><span data-icon="play"></span><span>Run demo</span></button></div>
+      <div class="project-meta"><span class="avatar-stack" id="avatar-stack"></span><span>6 agents <i>+</i> you</span><span class="meta-divider"></span><span id="run-status"><i class="status-dot ready"></i> Ready to run</span><span class="meta-divider"></span><button id="open-review" class="review-link"><span data-icon="shield"></span><span id="review-count">1 needs your review</span></button></div>
+    </section>
+    <div class="workspace-tabs" role="tablist" aria-label="Project views"><button class="active" role="tab" aria-selected="true" data-view="overview"><span data-icon="network"></span> Agent flow</button><button role="tab" aria-selected="false" data-view="chat"><span data-icon="chat"></span> Conversation</button><button role="tab" aria-selected="false" data-view="tasks"><span data-icon="board"></span> Tasks</button><button role="tab" aria-selected="false" data-view="outputs"><span data-icon="files"></span> Outputs</button><span class="tabs-spacer"></span><button id="reset" title="Reset demo"><span data-icon="reset"></span><span>Reset</span></button></div>
+    <section id="overview-view" class="view">
+      <div class="flow-canvas" id="flow-canvas" aria-label="Interactive agent workflow">
+        <div class="canvas-caption"><span class="live-signal"></span><b>TEAM TOPOLOGY</b><span>One shared goal. Clear ownership.</span></div>
+        <div class="graph-viewport" id="graph-viewport"><div id="graph-stage" class="graph-stage"><svg id="edges" viewBox="0 0 1000 670" aria-label="Agent handoffs"></svg><div id="nodes"></div></div></div>
+        <div class="canvas-bottom"><div class="legend"><span><i class="line-key active-line"></i> Working</span><span><i class="line-key"></i> Dependency</span><span><i class="legend-human"></i> Human decision</span></div><div class="zoom-tools"><button id="zoom-out" aria-label="Zoom out">−</button><span id="zoom-value">100%</span><button id="zoom-in" aria-label="Zoom in">＋</button><button id="fit" aria-label="Fit graph" title="Fit graph"><span data-icon="fit"></span></button></div></div>
+      </div>
+      <div class="execution-strip"><span class="execution-icon" data-icon="activity"></span><div><b id="execution-title">Your team is ready</b><p id="execution-text">Start the replay to see agents work in parallel and pass results forward.</p></div><button class="text-button" id="next-step">Next step <span>→</span></button></div>
+      <div class="summary-grid"><article><span data-icon="check"></span><div><b id="complete-count">0 of 6</b><small>Tasks completed</small></div><div class="mini-bars"><i></i><i></i><i></i><i></i><i></i><i></i></div></article><article><span data-icon="shield"></span><div><b id="gate-status">Review before handoff</b><small>You decide what moves forward</small></div></article><article><span data-icon="activity"></span><div><b id="spend">$0.42</b><small>Simulated cost · $5.00 limit</small></div></article></div>
+    </section>
+    <section id="chat-view" class="view" hidden><div class="large-chat-header"><div><h2>Team conversation</h2><p>Decisions, tool updates, and handoffs in one place.</p></div><button class="button" id="message-team">Message team ↗</button></div><div id="full-feed" class="full-feed"></div></section>
+    <section id="tasks-view" class="view" hidden><div class="view-intro"><h2>From brief to accepted result</h2><p>Tasks move forward when their prerequisites are accepted.</p></div><div id="task-board" class="task-board"></div></section>
+    <section id="outputs-view" class="view" hidden><div class="view-intro"><h2>Project outputs</h2><p>Sample artifacts tied to the agent and task that produced them.</p></div><div id="output-list"></div></section>
+    <footer class="main-footer"><span><i class="local-dot"></i> Local prototype</span><span>Messages, results and costs are simulated.</span><button id="export">Export demo state ↗</button></footer>
+  </main>
+  <aside class="inspector" aria-label="Conversation and human review">
+    <header class="inspector-heading"><span class="channel-icon" data-icon="chat"></span><div><h2 id="channel-title">Team channel</h2><small id="channel-subtitle">6 agents · you are in the loop</small></div><button id="all-agents" class="icon-button" aria-label="Show entire team" title="Show entire team"><span data-icon="users"></span></button></header>
+    <div class="inspector-tabs" role="tablist" aria-label="Inspector"><button data-panel="chat" class="active" role="tab" aria-selected="true">Chat</button><button data-panel="context" role="tab" aria-selected="false">Context</button><button data-panel="review" role="tab" aria-selected="false">Review <span id="review-badge">1</span></button></div>
+    <div id="chat-panel" class="inspector-panel"><div class="feed" id="feed" role="log" aria-label="Simulated team messages"></div><button id="latest" class="latest" hidden>↓ New messages</button><div id="decision-nudge" class="decision-nudge"><span data-icon="shield"></span><div><strong>A decision needs you</strong><small>Review the API contract to unblock QA.</small></div><button id="review-nudge" aria-label="Open pending review">↗</button></div></div>
+    <div id="context-panel" class="inspector-panel context-panel" hidden></div>
+    <div id="review-panel" class="inspector-panel review-panel" hidden></div>
+    <form class="composer" id="composer"><div class="composer-to"><label for="recipient">To</label><select id="recipient" aria-label="Message recipient"><option value="team">Everyone</option><option value="gpt">GPT · project lead</option><option value="claude">Claude · build</option><option value="gemini">Gemini · research</option><option value="deepseek">DeepSeek · API</option><option value="kimi">Kimi · design</option><option value="local">Local model · QA</option></select><span>DEMO</span></div><textarea id="message" aria-label="Message agents" placeholder="Guide your team, ask a question…" rows="3" maxlength="3000"></textarea><div id="attachment-preview"></div><div class="composer-actions"><button type="button" id="attach" class="icon-button" aria-label="Attach image" title="Attach or paste a screenshot"><span data-icon="clip"></span></button><button type="button" id="mention" class="icon-button" aria-label="Choose an agent">@</button><span>Enter to send</span><button class="send-button" aria-label="Send message" type="submit"><span data-icon="arrow"></span></button></div><input type="file" id="file" accept="image/png,image/jpeg,image/webp" hidden></form>
+    <div class="composer-footnote">You control the next step. No real agents are connected.</div>
+  </aside>
+</div>
+<dialog id="dialog"><div class="dialog-header"><h2 id="dialog-title"></h2><button id="close-dialog" class="icon-button" aria-label="Close dialog">×</button></div><div id="dialog-body"></div></dialog>
+<div id="toast" role="status"></div><script src="app.js"></script>
+</body>
+</html>

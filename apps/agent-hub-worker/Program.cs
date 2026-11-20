@@ -23,6 +23,7 @@ while (Console.In.ReadLine() is { } line)
         ? new(Protocol.Version, "", false, null, new("bad_request", "The request could not be read.", "Update LocalMind Agent Hub so the app and worker match."))
         : host.Handle(request));
 }
+host.Dispose();
 return 0;
 
 static void Send(WorkerResponse r)

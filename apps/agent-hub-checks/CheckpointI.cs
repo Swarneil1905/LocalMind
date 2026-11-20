@@ -304,8 +304,9 @@ internal static class CheckpointI
               && preview.FileNames.SequenceEqual(["change-a.txt"]) && preview.PacketText.Contains("Added dark mode") && preview.Estimate > 0, "the preview names the recipient, model, files, the exact packet text and the estimate");
         await b.W.AddTaskFileAsync(b.Db, C(), task, "change-b.txt", "Fixed crash on export");
         var widened = await b.W.PreviewDispatchAsync(b.Db, task, "builder");
+        int requestsBefore = b.Gateway.Requests;
         var refused = await Refused(() => b.W.DispatchAsync(b.Db, C(), task, "builder"));
-        Check(widened.ConsentStatus == "files_not_covered" && widened.Blocker!.Contains("change-b.txt") && refused.Code == "consent_required" && b.Gateway.Requests == 2,
+        Check(widened.ConsentStatus == "files_not_covered" && widened.Blocker!.Contains("change-b.txt") && refused.Code == "consent_required" && b.Gateway.Requests == requestsBefore,
               "a new file outside the consent blocks the dispatch in the worker, before any request is made");
         await b.W.GrantConsentAsync(b.Db, C(), b.Project, b.GatewayConn!, "vendor/model-x", ["change-a.txt", "change-b.txt"]);
         var shown = await b.W.PreviewDispatchAsync(b.Db, task, "builder");

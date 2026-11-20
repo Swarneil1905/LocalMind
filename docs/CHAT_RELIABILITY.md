@@ -31,7 +31,7 @@ This follows the preference for simple, composable workflows in [Anthropic's age
 
 ## Interface decisions
 
-- Cool blue-gray surfaces, a restrained blue accent, and the original LocalMind mark replace the previous purple chat styling. See PRODUCT_REDESIGN.md for the complete workspace redesign.
+- Cool blue-gray surfaces, a restrained blue accent, and the original LocalMind mark replace the previous purple chat styling.
 - Assistant responses use a readable document layout; user messages retain a modest contrasting surface.
 - Typography, paragraph spacing, lists, code blocks, tables, focus indicators, and reduced-motion behavior are centralized in CSS.
 - Sources belong to the response that used them and survive reopening the conversation. Publication dates are labeled separately from retrieval time.
@@ -61,7 +61,7 @@ Freshness checks intentionally sacrifice coverage: a relevant article without re
 
 Before choosing a different model, compare candidates on the same fixed prompts and evidence: date attribution, ambiguous follow-ups, missing evidence, conflicting reports, local-file questions, and instruction following. Score supported claims and correct abstentions, alongside response latency and memory use. The two local checks here establish that Qwen3 can handle the specific corrected paths; they do not establish that it is the best model for every task.
 
-The subsequent workspace redesign and independent-installation audit are documented in PRODUCT_REDESIGN.md and DESKTOP_RUNTIME.md. Broader model evaluation, stronger semantic retrieval, credential-vault storage, and genuine voice capability remain future work.
+The independent-installation audit is documented in [Desktop runtime](DESKTOP_RUNTIME.md). Broader model evaluation, stronger semantic retrieval, credential-vault storage, and genuine voice capability remain future work.
 
 ## Model readiness and response diagnostics
 

@@ -57,7 +57,7 @@ Once models are installed, local chat and retrieval can work offline. Exact-text
 | **MCP and plugins** | An explicitly enabled, owned MCP test server, built-in planner and synthetic repair recipe. No arbitrary third-party code or automatic chat tool execution. |
 | **WhatsApp / iMessage** | Unavailable pending provider acceptance. |
 
-Setup and limitations: [Media](media.md) · [Voice](voice.md) · [Connections and tools](connections.md) · [Image research](image-research.md).
+Setup and limitations: [Media](media.md) · [Voice](voice.md) · [Connections and tools](connections.md).
 
 Version 1.0.0 also includes optional OpenAI, Anthropic, Gemini and DeepSeek API
 connections, screenshot paste and upload, and recovery of interrupted replies.
