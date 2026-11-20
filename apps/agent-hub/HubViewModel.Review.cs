@@ -55,6 +55,34 @@ public sealed partial class HubViewModel
     /// <summary>The review of the selected task. It is empty from the moment the selection changes until that task's own review has been read.</summary>
     public ReviewInfo? Review => reviewFor != null && reviewFor == selectedTask?.Id ? review : null;
 
+    // The revision the user has open stays open when a newer one arrives, until they choose to move to it.
+    private bool releasePlace;
+    // An inbox row opens the revision it names, once.
+    private (string Task, int Revision)? openAt;
+    private sealed record Evidence(OutputView? View, OutputDiff? Diff, IReadOnlyList<string> Effects, IReadOnlyList<(string Name, string Status, string? Detail)> Checks, RunPacket? Packet);
+    private string packetLine = "";
+    public string PacketLine => packetLine;
+    public bool HasPacketLine => packetLine.Length > 0;
+    private Evidence? evidence;
+    public WorkspaceCommand OpenLatestRevisionCommand { get; private set; } = null!;
+    public bool IsStale => Review is { IsStale: true };
+    public string StaleNotice => Review is { IsStale: true } r ? $"Revision {r.LatestRevision} has arrived. Revision {r.Revision} can no longer be accepted." : "";
+
+    public bool HasChange => Review is { HasOutput: true } && evidence != null;
+    public string ChangeHeading => Review is { HasOutput: true, PreviousOutputId: not null } r ? $"What changed since revision {r.Revision - 1}" : "What changed";
+    public string ChangeSummary => Review is not { HasOutput: true } ? "" : Review.PreviousOutputId == null ? "This is the first revision, so there is nothing to compare it with." : evidence?.Diff?.Summary ?? "";
+    public IReadOnlyList<string> ChangeLines => evidence?.Diff is { } d ? [.. d.Lines.Select(l => $"{l.Op} {l.Text}")] : [];
+    public string ChecksText => evidence == null ? "" : evidence.Checks.Count == 0
+        ? "No checks were run for this revision. Fixture agents do not run any, so nothing here says it works."
+        : "Checks: " + string.Join("; ", evidence.Checks.Select(c => $"{c.Name} {c.Status.Replace('_', ' ')}" + (c.Detail != null ? $" ({c.Detail})" : "")));
+    public string EffectText => evidence is { Effects.Count: > 0 } e && Review is { HasOutput: true, Decided: false } r ? $"If you accept revision {r.Revision}: " + string.Join(" ", e.Effects) : "";
+    public string OutputNote => evidence?.View is { } v && (!v.Verified || v.Kind != "text") ? v.Note : "";
+    public bool HasOutputNote => OutputNote.Length > 0;
+    public bool ShowOutputText => HasOutput && OutputText.Length > 0;
+    private Avalonia.Media.Imaging.Bitmap? outputImage;
+    public Avalonia.Media.Imaging.Bitmap? OutputImage => outputImage;
+    public bool HasOutputImage => outputImage != null;
+
     public Func<Task>? PromptRequestChanges { get; set; }
     public Func<Task>? PromptSetPolicy { get; set; }
     /// <summary>Raised so the window can put keyboard focus on the Accept button, where the task and revision are on screen.</summary>
@@ -71,7 +99,7 @@ public sealed partial class HubViewModel
     public WorkspaceCommand SetPolicyCommand { get; private set; } = null!;
 
     public bool ReviewVisible => IsWorkspace && selectedTask != null;
-    public bool CanDecide => CanEdit && selectedTask!.ReviewRequired && Review is { HasOutput: true, Decided: false };
+    public bool CanDecide => CanEdit && selectedTask!.ReviewRequired && Review is { HasOutput: true, Decided: false, IsStale: false };
     public string DecisionSubject => CanDecide ? $"Deciding on “{selectedTask!.Title}” · revision {Review!.Revision}" : "";
     public string ReviewToggleLabel => selectedTask?.ReviewRequired == true ? "Review required: on" : "Require review";
     public string PolicyLine => policy is not var (name, rev) ? ""
@@ -79,7 +107,7 @@ public sealed partial class HubViewModel
         : $"Policy: reviewer approval (revision {rev}). A reviewer’s approval counts after it recommends approval; you can always decide.";
     public bool HasOutput => Review is { HasOutput: true };
     public string OutputHeading => Review is { HasOutput: true } r ? $"Revision {r.Revision} · {r.Author}" + (r.RunId != null ? $" · run {r.RunId[..Math.Min(8, r.RunId.Length)]}" : "") : "";
-    public string OutputText => Review?.Text ?? "";
+    public string OutputText => evidence?.View is { } v ? (v.Verified || v.Integrity == "malformed_data" ? v.Text ?? "" : "") : Review?.Text ?? "";
     public bool HasFeedback => Review?.Feedback != null;
     public string FeedbackText => Review is { Feedback: { } f } r
         ? $"{r.FeedbackBy} {(r.FeedbackBy == "owner" ? "asked for changes" : "recommends " + r.Recommendation!.Replace('_', ' '))}: {f}" + (r.FeedbackBy == "owner" ? "" : " (a recommendation, not a decision)") : "";
@@ -90,6 +118,7 @@ public sealed partial class HubViewModel
             if (selectedTask is not { } t) return "";
             if (!t.ReviewRequired) return "This task does not need review.";
             if (Review is not { HasOutput: true } r) return "No draft yet. Ask the builder for one.";
+            if (r.IsStale) return $"Revision {r.Revision} is no longer current. Revision {r.LatestRevision} is waiting for review.";
             if (r.AcceptedBy != null)
                 return $"Accepted by {r.AcceptedBy} · revision {r.Revision}" + (t.Status != "done" && t.FirstOpen is { } wait ? $". Waiting on “{wait.Title}” before Done." : "");
             if (r.Decision == "changes_requested") return $"Changes requested on revision {r.Revision}. Ask the builder for the next revision.";
@@ -99,7 +128,8 @@ public sealed partial class HubViewModel
 
     private void InitReview()
     {
-        AskBuilderCommand = new(_ => CanEdit, _ => Role("builder"));
+        OpenLatestRevisionCommand = new(_ => IsStale, _ => { releasePlace = true; return LoadReviewAsync(); });
+        AskBuilderCommand = new(_ => CanEdit, _ => { releasePlace = true; return Role("builder"); });
         AskReviewerCommand = new(_ => CanEdit && Review is { HasOutput: true }, _ => Role("reviewer"));
         AcceptOutputCommand = new(_ => CanDecide, _ => Decide("accepted", null));
         ReviewDecisionCommand = new(_ => CanDecide, _ => { DecisionFocusRequested?.Invoke(); return Task.CompletedTask; });
@@ -113,7 +143,7 @@ public sealed partial class HubViewModel
                 id => workspaces!.UpdateTaskAsync(ws, id, t.Id, t.Revision, reviewRequired: !t.ReviewRequired)));
         });
         SetPolicyCommand = new(_ => CanWrite && policy != null && PromptSetPolicy != null, _ => PromptSetPolicy!());
-        commands = [.. commands, AskBuilderCommand, AskReviewerCommand, AcceptOutputCommand, ReviewDecisionCommand, RequestChangesCommand, ToggleReviewCommand, SetPolicyCommand];
+        commands = [.. commands, OpenLatestRevisionCommand, AskBuilderCommand, AskReviewerCommand, AcceptOutputCommand, ReviewDecisionCommand, RequestChangesCommand, ToggleReviewCommand, SetPolicyCommand];
     }
 
     /// <summary>Runs one write. A refusal offers a reload; an answer that was lost offers Try again, which resubmits the same frozen request.</summary>
@@ -154,10 +184,17 @@ public sealed partial class HubViewModel
     public Func<string, Task<string?>> FreezeRequestChanges()
     {
         string ws = path!;
+        string? key = workspaceKey; // the workspace this dialog belongs to, whatever is open when it is sent
         var t = selectedTask!;
         var r = Review!;
-        return comment => Submit($"decide|{ws}|{t.Id}|{r.OutputId}|{r.Revision}|{r.PolicyRevision}|changes_requested|{comment}", ws,
-            id => workspaces!.DecideOutputAsync(ws, id, t.Id, r.OutputId!, r.Revision, r.PolicyRevision, "changes_requested", comment));
+        return async comment =>
+        {
+            string? error = await Submit($"decide|{ws}|{t.Id}|{r.OutputId}|{r.Revision}|{r.PolicyRevision}|changes_requested|{comment}", ws,
+                id => workspaces!.DecideOutputAsync(ws, id, t.Id, r.OutputId!, r.Revision, r.PolicyRevision, "changes_requested", comment));
+            // Sent: the draft has done its job. Not sent, or not known: it stays.
+            if (error == null) EditDrafts(key, f => ClearDraft(f, t.Id, r.OutputId!));
+            return error;
+        };
     }
 
     public string RequestChangesLabel => selectedTask != null && Review is { HasOutput: true } r ? $"What should change in revision {r.Revision} of “{selectedTask.Title}”?" : "What should change?";
@@ -174,29 +211,63 @@ public sealed partial class HubViewModel
         int v = ++reviewVersion;
         var task = selectedTask;
         string? file = path;
+        // Same task as the one already shown: keep the revision the user is looking at. A new task, or a deliberate move, shows the latest.
+        int? keep = task != null && openAt is { } want && want.Task == task.Id ? want.Revision
+            : task != null && reviewFor == task.Id && !releasePlace ? review?.Revision : null;
+        releasePlace = false;
         (string, int)? pol = null;
         ReviewInfo? info = null;
+        Evidence? found = null;
         if (IsWorkspace && file != null)
         {
             try
             {
-                (pol, info) = await Task.Run(() =>
+                (pol, info, found) = await Task.Run(() =>
                 {
                     var reader = new ProjectReader(file);
-                    return (reader.Policy(), task == null ? null : reader.Review(task.Id));
+                    var p = reader.Policy();
+                    var r = task == null ? null : reader.Review(task.Id, keep);
+                    Evidence? e = null;
+                    if (r is { HasOutput: true } && task != null)
+                    {
+                        try
+                        {
+                            e = new(Outputs.Inspect(file, r.OutputId!), r.PreviousOutputId == null ? null : Outputs.Compare(file, r.PreviousOutputId, r.OutputId!),
+                                    Decisions.Effects(file, task.Id), reader.Checks(r.OutputId!), r.RunId == null ? null : Runs.Packet(file, r.RunId));
+                        }
+                        catch (Exception ex) when (IsDataError(ex) || ex is StoreException) { }
+                    }
+                    return (p, r, e);
                 });
             }
             catch (Exception ex) when (IsDataError(ex)) { }
         }
         if (v != reviewVersion) return; // a newer selection or project superseded this read
-        (policy, review, reviewFor) = (pol, info, task?.Id);
+        (policy, review, reviewFor, evidence) = (pol, info, task?.Id, found);
+        if (openAt is { } landed && landed.Task == task?.Id) openAt = null;
+        packetLine = found?.Packet is { Recorded: true } rp
+            ? $"Written from a packet for project {Projects.FirstOrDefault(p => p.Id == rp.ProjectId)?.Name ?? rp.ProjectId}: about {rp.Tokens} of {rp.Limit} tokens"
+              + (rp.Sources.Count > 0 ? "; sources " + string.Join(", ", rp.Sources.Select(x => $"output {x.Id[..Math.Min(8, x.Id.Length)]} revision {x.Revision}")) : "; no upstream sources") + "."
+            : "";
+        outputImage = null;
+        RefreshDraft();
+        ApplyReanchor();
+        if (found?.View is { Verified: true, Image: { } bytes })
+        {
+            try { outputImage = new(new MemoryStream(bytes)); }
+            catch (Exception) { evidence = found with { View = found.View with { Integrity = "undecodable", Note = "The image header is valid but the file could not be decoded, so it was not shown.", Image = null } }; }
+        }
         NotifyReview();
     }
 
     private void NotifyReview()
     {
+        RefreshDraft();
+        NotifyDraft();
         foreach (var n in new[] { nameof(Review), nameof(ReviewVisible), nameof(CanDecide), nameof(DecisionSubject), nameof(ReviewToggleLabel), nameof(PolicyLine), nameof(HasOutput),
-                                  nameof(OutputHeading), nameof(OutputText), nameof(HasFeedback), nameof(FeedbackText), nameof(StateLine), nameof(RequestChangesLabel) })
+                                  nameof(OutputHeading), nameof(OutputText), nameof(HasFeedback), nameof(FeedbackText), nameof(StateLine), nameof(RequestChangesLabel),
+                                  nameof(IsStale), nameof(StaleNotice), nameof(HasChange), nameof(ChangeHeading), nameof(ChangeSummary), nameof(ChangeLines), nameof(ChecksText),
+                                  nameof(EffectText), nameof(OutputNote), nameof(HasOutputNote), nameof(PacketLine), nameof(HasPacketLine), nameof(ShowOutputText), nameof(OutputImage), nameof(HasOutputImage) })
             Notify(n);
         RaiseCommands();
     }

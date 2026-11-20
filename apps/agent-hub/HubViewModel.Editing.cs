@@ -116,6 +116,12 @@ public sealed partial class HubViewModel
 
         async Task Attempt()
         {
+            if (path != ws)
+            {
+                // A retry from another workspace never writes: ask what happened to the original move, read-only.
+                if (await SettleAway(ws, commandId, uncertain: true) is { } message) ShowNotice(message, "Dismiss", DismissNoticeCommand);
+                return;
+            }
             var e = await Execute(() => workspaces!.MoveTaskAsync(ws, commandId, task.Id, target, task.Revision), ws);
             if (e == null) return;
             switch (e.Error.Code)
@@ -149,6 +155,22 @@ public sealed partial class HubViewModel
 
     private static bool IsUncertain(string code) => code is "outcome_unknown" or "worker_exited" or "protocol_error";
 
+    /// <summary>
+    /// The user has left this workspace, and this window only owns the one it shows. Never write to the other one:
+    /// settle an uncertain earlier write with the read-only status lookup, and otherwise send nothing. Null means it is settled.
+    /// </summary>
+    private async Task<string?> SettleAway(string workspace, string? commandId, bool uncertain)
+    {
+        bool applied = false;
+        if (uncertain && commandId != null)
+        {
+            try { applied = await workspaces!.CommandStatusAsync(workspace, commandId) != null; }
+            catch (WorkerException e) { return $"{e.Message} The earlier change may not have been recorded, so nothing was sent."; }
+        }
+        if (applied) { ClearNotice(); return null; }
+        return "That workspace is no longer open in this window, so nothing was sent. Reopen it, check the board, then make the change again.";
+    }
+
     private async Task<string?> Submit(string key, string workspace, Func<string, Task<CommandResult>> call, bool selectResult = false)
     {
         if (pending is { } old && old.Key != key)
@@ -163,6 +185,13 @@ public sealed partial class HubViewModel
                 catch (WorkerException e) { return $"{e.Message} Your earlier change may not have been recorded yet, so this one was not sent."; }
             }
             pending = null;
+        }
+        if (path != workspace)
+        {
+            bool uncertain = pending is { Uncertain: true } p && p.Key == key;
+            string? commandId = pending?.CommandId;
+            pending = null;
+            return await SettleAway(workspace, commandId, uncertain);
         }
         string id = pending?.Key == key ? pending.CommandId : Guid.NewGuid().ToString("N");
         pending = new(key, id, false, workspace);
