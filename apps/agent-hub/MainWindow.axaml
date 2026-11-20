@@ -28,6 +28,14 @@
           <MenuItem x:Name="MoveCancelledItem" Header="_Cancelled" Command="{Binding MoveTaskCommand}" CommandParameter="cancelled"/>
         </MenuItem>
       </MenuItem>
+      <MenuItem Header="_Review">
+        <MenuItem x:Name="AskBuilderItem" Header="Ask the _builder for a draft" Command="{Binding AskBuilderCommand}"/>
+        <MenuItem x:Name="AskReviewerItem" Header="Ask the _reviewer to review" Command="{Binding AskReviewerCommand}"/>
+        <MenuItem x:Name="AcceptItem" Header="Go to the _decision…" Command="{Binding ReviewDecisionCommand}"/>
+        <MenuItem x:Name="RequestChangesItem" Header="Request _changes…" Command="{Binding RequestChangesCommand}"/>
+        <MenuItem x:Name="RequireReviewItem" Header="Re_quire review for this task" Command="{Binding ToggleReviewCommand}"/>
+        <MenuItem x:Name="PolicyItem" Header="Review _policy…" Command="{Binding SetPolicyCommand}"/>
+      </MenuItem>
       <MenuItem Header="_Go">
         <MenuItem x:Name="BlockerItem" Header="_Blocker" Command="{Binding GoToBlockerCommand}"/>
         <MenuItem x:Name="BackItem" Header="B_ack" Command="{Binding BackCommand}"/>
@@ -56,14 +64,19 @@
           <Button Command="{Binding RefreshCommand}" Content="Refresh"/>
           <Button Command="{Binding ToggleInspectorCommand}" Content="Task details" IsVisible="{Binding Narrow}"/>
         </StackPanel>
-        <Border Grid.Row="2" CornerRadius="4" Padding="10,8" Background="{DynamicResource ErrorFill}" IsVisible="{Binding HasNotice}">
+        <StackPanel Grid.Row="2" Spacing="8">
+        <Border CornerRadius="4" Padding="10,8" Background="{DynamicResource ErrorFill}" IsVisible="{Binding HasNotice}">
           <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
             <TextBlock Text="{Binding Notice}" Foreground="{DynamicResource ErrorText}" TextWrapping="Wrap" VerticalAlignment="Center"
                        AutomationProperties.LiveSetting="Assertive"/>
             <Button Grid.Column="1" Content="{Binding NoticeActionLabel}" Command="{Binding NoticeCommand}"/>
-            <Button Grid.Column="2" Content="Dismiss" Command="{Binding DismissNoticeCommand}"/>
+            <Button Grid.Column="2" Content="Dismiss" Command="{Binding DismissNoticeCommand}" IsVisible="{Binding ShowDismiss}"/>
           </Grid>
         </Border>
+          <Border CornerRadius="4" Padding="10,8" Background="{DynamicResource BusyFill}" IsVisible="{Binding HasReadOnlyReason}">
+            <TextBlock Text="{Binding ReadOnlyReason}" Foreground="{DynamicResource Text}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+          </Border>
+        </StackPanel>
         <Grid Grid.Row="3" ColumnSpacing="8">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
@@ -107,22 +120,10 @@
             <Button Grid.Column="1" Command="{Binding ToggleInspectorCommand}" Content="×" IsVisible="{Binding Wide}"
                     AutomationProperties.Name="Close task details"/>
           </Grid>
-          <StackPanel Grid.Row="1" IsVisible="{Binding CanEdit}" Spacing="6">
-            <TextBlock Text="Move to" Foreground="{DynamicResource Muted}"/>
-            <WrapPanel>
-              <Button Margin="0,0,6,6" Content="Open" Command="{Binding MoveTaskCommand}" CommandParameter="open"/>
-              <Button Margin="0,0,6,6" Content="In progress" Command="{Binding MoveTaskCommand}" CommandParameter="in_progress"/>
-              <Button Margin="0,0,6,6" Content="Done" Command="{Binding MoveTaskCommand}" CommandParameter="done"/>
-              <Button Margin="0,0,6,6" Content="Cancelled" Command="{Binding MoveTaskCommand}" CommandParameter="cancelled"/>
-            </WrapPanel>
-            <WrapPanel>
-              <Button Margin="0,0,6,6" Content="Assign…" Command="{Binding AssignCommand}"/>
-              <Button Margin="0,0,6,6" Content="Add prerequisite…" Command="{Binding AddPrerequisiteCommand}"/>
-            </WrapPanel>
-          </StackPanel>
           <TextBlock Grid.Row="2" Text="Select a task to see its status and prerequisites." Foreground="{DynamicResource Muted}"
                      TextWrapping="Wrap" IsVisible="{Binding !HasTask}"/>
           <ScrollViewer Grid.Row="2" IsVisible="{Binding HasTask}">
+            <StackPanel Spacing="16">
             <StackPanel Spacing="10" DataContext="{Binding SelectedTask}" x:DataType="vm:TaskItem">
               <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
               <TextBlock Text="{Binding Status, StringFormat='Recorded status: {0}'}" TextWrapping="Wrap"/>
@@ -146,6 +147,42 @@
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
+            </StackPanel>
+            <StackPanel Spacing="8" IsVisible="{Binding ReviewVisible}">
+              <Border Height="1" Background="{DynamicResource Line}"/>
+              <TextBlock Text="Review · offline demo" FontWeight="SemiBold" Foreground="{DynamicResource Muted}"/>
+              <TextBlock Text="Fixture agents write and review text on this computer. No network, no model, no keys." Foreground="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap"/>
+              <TextBlock Text="{Binding PolicyLine}" TextWrapping="Wrap"/>
+              <TextBlock Text="{Binding StateLine}" FontWeight="SemiBold" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+              <TextBlock Text="{Binding DecisionSubject}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" IsVisible="{Binding CanDecide}" AutomationProperties.Name="Decision subject"/>
+              <WrapPanel IsVisible="{Binding CanDecide}">
+                <Button x:Name="AcceptButton" Margin="0,0,6,6" Content="Accept this revision" Command="{Binding AcceptOutputCommand}"/>
+                <Button Margin="0,0,6,6" Content="Request changes…" Command="{Binding RequestChangesCommand}"/>
+              </WrapPanel>
+              <WrapPanel>
+                <Button Margin="0,0,6,6" Content="Ask builder" Command="{Binding AskBuilderCommand}"/>
+                <Button Margin="0,0,6,6" Content="Ask reviewer" Command="{Binding AskReviewerCommand}"/>
+                <Button Margin="0,0,6,6" Content="{Binding ReviewToggleLabel}" Command="{Binding ToggleReviewCommand}"/>
+              </WrapPanel>
+              <TextBlock Text="{Binding OutputHeading}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" IsVisible="{Binding HasOutput}"/>
+              <Border Background="{DynamicResource Canvas}" BorderBrush="{DynamicResource Line}" BorderThickness="1" Padding="8" IsVisible="{Binding HasOutput}">
+                <TextBlock Text="{Binding OutputText}" TextWrapping="Wrap" AutomationProperties.Name="Output text"/>
+              </Border>
+              <TextBlock Text="{Binding FeedbackText}" TextWrapping="Wrap" IsVisible="{Binding HasFeedback}" AutomationProperties.Name="Reviewer feedback"/>
+            </StackPanel>
+          <StackPanel IsVisible="{Binding CanEdit}" Spacing="6">
+            <TextBlock Text="Move to" Foreground="{DynamicResource Muted}"/>
+            <WrapPanel>
+              <Button Margin="0,0,6,6" Content="Open" Command="{Binding MoveTaskCommand}" CommandParameter="open"/>
+              <Button Margin="0,0,6,6" Content="In progress" Command="{Binding MoveTaskCommand}" CommandParameter="in_progress"/>
+              <Button Margin="0,0,6,6" Content="Done" Command="{Binding MoveTaskCommand}" CommandParameter="done"/>
+              <Button Margin="0,0,6,6" Content="Cancelled" Command="{Binding MoveTaskCommand}" CommandParameter="cancelled"/>
+            </WrapPanel>
+            <WrapPanel>
+              <Button Margin="0,0,6,6" Content="Assign…" Command="{Binding AssignCommand}"/>
+              <Button Margin="0,0,6,6" Content="Add prerequisite…" Command="{Binding AddPrerequisiteCommand}"/>
+            </WrapPanel>
+          </StackPanel>
             </StackPanel>
           </ScrollViewer>
         </Grid>
