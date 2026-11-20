@@ -5,37 +5,123 @@ using System.Text.Json;
 
 namespace LocalMind.AgentHub.Core;
 
-/// <summary>Runs inside the worker. Validates version and credentials before any command touches a store.</summary>
-public sealed class WorkerHost(string profileId, string token, Func<string> newId)
+/// <summary>
+/// Runs inside the worker. Who is calling comes from the credential, never from the request body: the owner's credential is the app's,
+/// and a fixture role gets a credential of its own that can run that role and, where the policy allows, decide. Writes need this process
+/// to own the workspace.
+/// </summary>
+public sealed class WorkerHost(string profileId, string token, Func<string> newId, ICredentialVault? vaultOverride = null) : IDisposable
 {
-    private byte[] tokenHash = SHA256.HashData(Encoding.UTF8.GetBytes(token));
+    private const string Owner = "owner";
+    private byte[] ownerHash = Hash(token);
+    private readonly List<(byte[] Hash, string Identity)> roleTokens = [];
+    private readonly Dictionary<string, WorkspaceLock> locks = new(StringComparer.OrdinalIgnoreCase);
 
     public WorkerInfo Info => new("LocalMind.AgentHub.Worker", Protocol.Version, profileId);
+
+    private static byte[] Hash(string s) => SHA256.HashData(Encoding.UTF8.GetBytes(s));
+
+    private string? Caller(string? presented)
+    {
+        if (presented is null) return null;
+        var h = Hash(presented);
+        if (CryptographicOperations.FixedTimeEquals(ownerHash, h)) return Owner;
+        foreach (var (roleHash, identity) in roleTokens)
+            if (CryptographicOperations.FixedTimeEquals(roleHash, h)) return identity;
+        return null;
+    }
+
+    private static string FolderOf(string workspace) => Path.GetDirectoryName(ProjectStore.DatabaseIn(Path.GetFullPath(workspace)))!;
+
+    /// <summary>Holds the workspace for this process or says who does. Every write goes through here.</summary>
+    private void RequireOwnership(string workspace)
+    {
+        var o = Acquire(workspace);
+        if (!o.Held)
+            throw new StoreException("workspace_owned", $"This workspace is open for editing in another Agent Hub window (process {o.OwnerProcessId}).",
+                "Close that window, then try again. This window can still read the board.");
+    }
+
+    private OwnershipResult Acquire(string workspace)
+    {
+        string folder = FolderOf(workspace);
+        if (locks.TryGetValue(folder, out var held) && held.Held) return new(true, Environment.ProcessId);
+        var attempt = WorkspaceLock.TryAcquire(folder);
+        if (attempt.Held) locks[folder] = attempt;
+        return new(attempt.Held, attempt.OwnerProcessId);
+    }
 
     public WorkerResponse Handle(WorkerRequest request, CancellationToken ct = default)
     {
         if (request.Version != Protocol.Version)
             return Fail(request, new("incompatible_version", $"The app speaks protocol {request.Version}; the worker speaks {Protocol.Version}.",
                 "Update LocalMind Agent Hub so the app and its worker come from the same build, then restart it."));
-        if (request.Token is null || !CryptographicOperations.FixedTimeEquals(tokenHash, SHA256.HashData(Encoding.UTF8.GetBytes(request.Token))))
+        string? who = Caller(request.Token);
+        if (who is null)
             return Fail(request, new("unauthorized", request.Token is null ? "The request carried no credentials." : "The request credentials were not accepted.",
                 "Restart Agent Hub so it can start a new worker with fresh credentials."));
         try
         {
+            if (who != Owner && request.Op is not ("identify" or "commandStatus" or "runRole" or "decideOutput" or "fixtureSay"))
+                throw new StoreException("not_authorized", $"{who} cannot do “{request.Op}”.", "Only the workspace owner can.");
             object result = request.Op switch
             {
                 "identify" => Info,
-                "loadWorkspace" => ProjectStore.Load(Arg<FolderArgs>(request).Folder),
-                "createWorkspace" => ProjectStore.Create(Arg<CreateArgs>(request).Folder, Arg<CreateArgs>(request).Name, newId),
+                "loadWorkspace" => Load(Arg<FolderArgs>(request).Folder),
+                "createWorkspace" => Created(ProjectStore.Create(Arg<CreateArgs>(request).Folder, Arg<CreateArgs>(request).Name, newId)),
                 "importLegacy" => ProjectStore.Import(Arg<ImportArgs>(request).Source, Arg<ImportArgs>(request).Folder, ct, newId),
                 "rotate" => Rotate(Arg<RotateArgs>(request).NewToken),
+                "issueRoleToken" => IssueRoleToken(Arg<RoleTokenArgs>(request).Role),
+                "acquireWorkspace" => Acquire(Arg<WorkspaceArgs>(request).Workspace),
+                "releaseWorkspace" => Release(Arg<WorkspaceArgs>(request).Workspace),
                 "commandStatus" => TaskStore.CommandStatus(Arg<StatusArgs>(request).Workspace, Arg<StatusArgs>(request).CommandId) ?? (object)new { },
-                "createTask" => TaskStore.CreateTask(Arg<CreateTaskArgs>(request).Workspace, Arg<CreateTaskArgs>(request).CommandId, Arg<CreateTaskArgs>(request).ProjectId, Arg<CreateTaskArgs>(request).Title, Arg<CreateTaskArgs>(request).Outcome, newId),
-                "updateTask" => TaskStore.UpdateTask(Arg<UpdateTaskArgs>(request).Workspace, Arg<UpdateTaskArgs>(request).CommandId, Arg<UpdateTaskArgs>(request).TaskId, Arg<UpdateTaskArgs>(request).ExpectedRevision, Arg<UpdateTaskArgs>(request).Title, Arg<UpdateTaskArgs>(request).Outcome, Arg<UpdateTaskArgs>(request).Owner),
-                "addDependency" => TaskStore.AddDependency(Arg<DependencyArgs>(request).Workspace, Arg<DependencyArgs>(request).CommandId, Arg<DependencyArgs>(request).TaskId, Arg<DependencyArgs>(request).RequiresId, Arg<DependencyArgs>(request).ExpectedRevision),
-                "removeDependency" => TaskStore.RemoveDependency(Arg<DependencyArgs>(request).Workspace, Arg<DependencyArgs>(request).CommandId, Arg<DependencyArgs>(request).TaskId, Arg<DependencyArgs>(request).RequiresId, Arg<DependencyArgs>(request).ExpectedRevision),
-                "moveTask" => TaskStore.MoveTask(Arg<MoveArgs>(request).Workspace, Arg<MoveArgs>(request).CommandId, Arg<MoveArgs>(request).TaskId, Arg<MoveArgs>(request).ToState, Arg<MoveArgs>(request).ExpectedRevision),
-                "runRole" => TaskStore.RunRole(Arg<RoleArgs>(request).Workspace, Arg<RoleArgs>(request).CommandId, Arg<RoleArgs>(request).TaskId, Arg<RoleArgs>(request).Role, Arg<RoleArgs>(request).Failure, newId),
+                "createTask" => Write(Arg<CreateTaskArgs>(request).Workspace, () => TaskStore.CreateTask(Arg<CreateTaskArgs>(request).Workspace, Arg<CreateTaskArgs>(request).CommandId, Arg<CreateTaskArgs>(request).ProjectId, Arg<CreateTaskArgs>(request).Title, Arg<CreateTaskArgs>(request).Outcome, newId)),
+                "updateTask" => Write(Arg<UpdateTaskArgs>(request).Workspace, () => TaskStore.UpdateTask(Arg<UpdateTaskArgs>(request).Workspace, Arg<UpdateTaskArgs>(request).CommandId, Arg<UpdateTaskArgs>(request).TaskId, Arg<UpdateTaskArgs>(request).ExpectedRevision, Arg<UpdateTaskArgs>(request).Title, Arg<UpdateTaskArgs>(request).Outcome, Arg<UpdateTaskArgs>(request).Owner, Arg<UpdateTaskArgs>(request).ReviewRequired)),
+                "addDependency" => Write(Arg<DependencyArgs>(request).Workspace, () => TaskStore.AddDependency(Arg<DependencyArgs>(request).Workspace, Arg<DependencyArgs>(request).CommandId, Arg<DependencyArgs>(request).TaskId, Arg<DependencyArgs>(request).RequiresId, Arg<DependencyArgs>(request).ExpectedRevision)),
+                "removeDependency" => Write(Arg<DependencyArgs>(request).Workspace, () => TaskStore.RemoveDependency(Arg<DependencyArgs>(request).Workspace, Arg<DependencyArgs>(request).CommandId, Arg<DependencyArgs>(request).TaskId, Arg<DependencyArgs>(request).RequiresId, Arg<DependencyArgs>(request).ExpectedRevision)),
+                "moveTask" => Write(Arg<MoveArgs>(request).Workspace, () => TaskStore.MoveTask(Arg<MoveArgs>(request).Workspace, Arg<MoveArgs>(request).CommandId, Arg<MoveArgs>(request).TaskId, Arg<MoveArgs>(request).ToState, Arg<MoveArgs>(request).ExpectedRevision)),
+                "setPolicy" => Write(Arg<PolicyArgs>(request).Workspace, () => TaskStore.SetPolicy(Arg<PolicyArgs>(request).Workspace, Arg<PolicyArgs>(request).CommandId, Arg<PolicyArgs>(request).Name, Arg<PolicyArgs>(request).ExpectedRevision, who)),
+                "decideOutput" => Write(Arg<DecideArgs>(request).Workspace, () => TaskStore.DecideOutput(Arg<DecideArgs>(request).Workspace, Arg<DecideArgs>(request).CommandId, Arg<DecideArgs>(request).TaskId, Arg<DecideArgs>(request).OutputId, Arg<DecideArgs>(request).ContentRevision, Arg<DecideArgs>(request).PolicyRevision, Arg<DecideArgs>(request).Decision, Arg<DecideArgs>(request).Comment, who, newId)),
+                "runRole" => Write(Arg<RoleArgs>(request).Workspace, () =>
+                {
+                    var a = Arg<RoleArgs>(request);
+                    if (who != Owner && !who.StartsWith(a.Role))
+                        throw new StoreException("not_authorized", $"{who} cannot run the {a.Role} role.", "Each fixture role runs only as itself.");
+                    return TaskStore.RunRole(a.Workspace, a.CommandId, a.TaskId, a.Role, a.Failure, newId);
+                }),
+                "fixtureSay" => Write(Arg<SayArgs>(request).Workspace, () =>
+                {
+                    var a = Arg<SayArgs>(request);
+                    if (who != Owner && !who.StartsWith("builder"))
+                        throw new StoreException("not_authorized", $"{who} cannot speak for the builder fixture.", "Only the builder fixture or the owner can.");
+                    return TaskStore.FixtureSay(a.Workspace, a.CommandId, a.TaskId, a.Kind, a.Text, newId);
+                }),
+                "answerQuestion" => Write(Arg<AnswerArgs>(request).Workspace, () => TaskStore.AnswerQuestion(Arg<AnswerArgs>(request).Workspace, Arg<AnswerArgs>(request).CommandId, Arg<AnswerArgs>(request).QuestionId, Arg<AnswerArgs>(request).Text, who)),
+                "addConnection" => Write(Arg<AddConnectionArgs>(request).Workspace, () => { var a = Arg<AddConnectionArgs>(request); return Team.AddConnection(a.Workspace, a.CommandId, a.Provider, a.Endpoint, a.Label, newId); }),
+                "removeConnection" => Write(Arg<ConnectionArgs>(request).Workspace, () => { var a = Arg<ConnectionArgs>(request); DropSecret(a.Workspace, a.ConnectionId); return Team.RemoveConnection(a.Workspace, a.CommandId, a.ConnectionId); }),
+                "probeConnection" => Probe(Arg<ConnectionArgs>(request)),
+                "setCredential" => Write(Arg<CredentialArgs>(request).Workspace, () => Credential(Arg<CredentialArgs>(request))),
+                "assignRole" => Write(Arg<AssignArgs>(request).Workspace, () => { var a = Arg<AssignArgs>(request); return Team.SetAssignment(a.Workspace, a.CommandId, a.ProjectId, a.Role, a.ConnectionId, a.ModelId); }),
+                "setProjectSettings" => Write(Arg<SettingsArgs>(request).Workspace, () => { var a = Arg<SettingsArgs>(request); return Team.SetProjectSettings(a.Workspace, a.CommandId, a.Settings); }),
+                "grantConsent" => Write(Arg<ConsentArgs>(request).Workspace, () => { var a = Arg<ConsentArgs>(request); return Team.GrantConsent(a.Workspace, a.CommandId, a.ProjectId, a.ConnectionId, a.ModelId, a.Files, newId); }),
+                "revokeConsent" => Write(Arg<RevokeArgs>(request).Workspace, () => { var a = Arg<RevokeArgs>(request); return Team.RevokeConsent(a.Workspace, a.CommandId, a.ConsentId); }),
+                "setPrice" => Write(Arg<PriceArgs>(request).Workspace, () => { var a = Arg<PriceArgs>(request); return Team.SetPrice(a.Workspace, a.CommandId, a.ConnectionId, a.ModelId, a.Currency, a.InputPerMTok, a.OutputPerMTok, a.Source, a.Effective, newId); }),
+                "addTaskFile" => Write(Arg<FileArgs>(request).Workspace, () => { var a = Arg<FileArgs>(request); return Team.AddTaskFile(a.Workspace, a.CommandId, a.TaskId, a.Name, a.Content); }),
+                "previewDispatch" => Engine.Preview(Arg<PreviewArgs>(request).Workspace, Arg<PreviewArgs>(request).TaskId, Arg<PreviewArgs>(request).Role, Arg<PreviewArgs>(request).Instruction),
+                "dispatch" => Write(Arg<DispatchArgs>(request).Workspace, () => { var a = Arg<DispatchArgs>(request); return Engine.Dispatch(a.Workspace, a.CommandId, a.TaskId, a.Role, new(a.AcceptPriceRisk, a.AcceptRepeatCost)); }),
+                "cancelAttempt" => Write(Arg<AttemptArgs>(request).Workspace, () => { var a = Arg<AttemptArgs>(request); return Engine.Cancel(a.Workspace, a.CommandId, a.AttemptId); }),
+                "pauseAttempt" => Write(Arg<AttemptArgs>(request).Workspace, () => { var a = Arg<AttemptArgs>(request); return Engine.Pause(a.Workspace, a.CommandId, a.AttemptId); }),
+                "resumeAttempt" => Write(Arg<AttemptArgs>(request).Workspace, () => { var a = Arg<AttemptArgs>(request); return Engine.Resume(a.Workspace, a.CommandId, a.AttemptId, a.AcceptRepeatCost); }),
+                "smokeTest" => Write(Arg<SmokeArgs>(request).Workspace, () => { var a = Arg<SmokeArgs>(request); return Engine.SmokeTest(a.Workspace, a.CommandId, a.ConnectionId, a.ModelId, a.Prompt); }),
+                "previewInstruction" => Engine.PreviewInstruction(Arg<InstructionPreviewArgs>(request).Workspace, Arg<InstructionPreviewArgs>(request).TaskId, Arg<InstructionPreviewArgs>(request).Roles, Arg<InstructionPreviewArgs>(request).Text),
+                "sendInstruction" => Write(Arg<InstructionArgs>(request).Workspace, () =>
+                {
+                    var a = Arg<InstructionArgs>(request);
+                    var (ins, attempts) = Engine.SendInstruction(a.Workspace, a.CommandId, a.TaskId, a.Roles, a.Text);
+                    return new InstructionResult(ins, [.. attempts.Select(x => new InstructionAttempt(x.Role, x.Attempt, x.Error))]);
+                }),
+                "recoverRuns" => Write(Arg<WorkspaceArgs>(request).Workspace, () => new { recovered = Engine.Recover(Arg<WorkspaceArgs>(request).Workspace) }),
+                "exportDiagnostics" => Diagnostics(Arg<DiagnosticsArgs>(request)),
                 _ => throw new StoreException("unknown_operation", $"The worker does not know “{request.Op}”.", "Update LocalMind Agent Hub so the app and worker match."),
             };
             return new(Protocol.Version, request.RequestId, true, JsonSerializer.SerializeToElement(result, Protocol.Json), null);
@@ -48,10 +134,97 @@ public sealed class WorkerHost(string profileId, string token, Func<string> newI
         }
     }
 
+    // --- Models, keys and runs ---------------------------------------------------------------------------------
+    private RunEngine? engine;
+    private RunEngine Engine => engine ??= new RunEngine(vault, newId);
+    private readonly ICredentialVault vault = vaultOverride ?? Vaults.ForPlatform();
+
+    /// <summary>The vault reference for one connection's key, unique to this profile.</summary>
+    private string SecretRef(string connectionId) => $"LocalMind.AgentHub/{profileId}/{connectionId}";
+
+    private object Probe(ConnectionArgs a)
+    {
+        var models = Engine.Probe(a.Workspace, a.ConnectionId, CancellationToken.None).GetAwaiter().GetResult();
+        return new { models = models.Count };
+    }
+
+    /// <summary>The key goes into the vault and never into the store, the events or any reply; the store records only where it is and its status.</summary>
+    private object Credential(CredentialArgs a)
+    {
+        string reference = SecretRef(a.ConnectionId);
+        string status;
+        try
+        {
+            if (string.IsNullOrEmpty(a.Secret)) { vault.Delete(reference); status = "deleted"; }
+            else
+            {
+                if (a.Secret.Length > 512 || a.Secret.Any(char.IsWhiteSpace)) throw new StoreException("invalid_key", "That does not look like an API key.", "Paste the key again, without spaces.");
+                bool had = vault.Read(reference) != null;
+                vault.Write(reference, a.Secret);
+                status = had ? "rotated" : "stored";
+            }
+        }
+        catch (VaultUnavailableException e) { throw new StoreException("vault_unavailable", e.Message, "Unlock the credential store, then try again."); }
+        return Team.RecordCredential(a.Workspace, a.CommandId, a.ConnectionId, status, status == "deleted" ? null : reference);
+    }
+
+    private void DropSecret(string workspace, string connectionId)
+    {
+        try { vault.Delete(SecretRef(connectionId)); } catch (VaultUnavailableException) { }
+    }
+
+    /// <summary>A diagnostics file for support: settings, connections and attempts, never a key.</summary>
+    private object Diagnostics(DiagnosticsArgs a)
+    {
+        var db = ProjectStore.DatabaseIn(a.Workspace);
+        string project = Reader.Rows(Reader.Open(a.Workspace), "SELECT id FROM projects LIMIT 1")[0][0] as string ?? "";
+        var view = Team.Read(a.Workspace, project);
+        var dump = new { exported = DateTime.UtcNow, schema = ProjectStore.CurrentSchema, connections = view.Connections, assignments = view.Assignments, settings = view.Settings, budget = view.Budget,
+                         attempts = RunEngine.ForTask(a.Workspace, "%").Count };
+        File.WriteAllText(a.Target, JsonSerializer.Serialize(dump, new JsonSerializerOptions(Protocol.Json) { WriteIndented = true }));
+        return new { path = a.Target };
+    }
+
+    private object Write(string workspace, Func<object> run)
+    {
+        RequireOwnership(workspace);
+        return run();
+    }
+
+    // An open that has to migrate the store writes to it, so it needs ownership too.
+    private object Load(string folder)
+    {
+        string db = ProjectStore.DatabaseIn(folder);
+        if (File.Exists(db) && ProjectStore.NeedsMigration(db)) RequireOwnership(folder);
+        return ProjectStore.Load(folder);
+    }
+
+    private object Created(WorkspaceInfo info)
+    {
+        Acquire(info.DatabasePath); // the window that creates a workspace owns it
+        return info;
+    }
+
+    private OwnershipResult Release(string workspace)
+    {
+        string folder = FolderOf(workspace);
+        if (locks.Remove(folder, out var held)) held.Dispose();
+        return new(false, 0);
+    }
+
+    private object IssueRoleToken(string role)
+    {
+        if (role is not ("builder" or "reviewer")) throw new StoreException("unknown_role", $"There is no “{role}” fixture.", "Use builder or reviewer.");
+        string t = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        roleTokens.Add((Hash(t), $"{role} (fixture)"));
+        return new TokenResult(t);
+    }
+
     private object Rotate(string next)
     {
         if (string.IsNullOrEmpty(next)) throw new StoreException("bad_request", "A new credential is required.", "Try rotating again.");
-        tokenHash = SHA256.HashData(Encoding.UTF8.GetBytes(next));
+        ownerHash = Hash(next);
+        roleTokens.Clear(); // role credentials were issued under the old owner credential
         return new { rotated = true };
     }
 
@@ -61,6 +234,12 @@ public sealed class WorkerHost(string profileId, string token, Func<string> newI
     private static StoreException Bad() => new("bad_request", "The request arguments were missing or malformed.", "Update LocalMind Agent Hub so the app and worker match.");
 
     private static WorkerResponse Fail(WorkerRequest r, WorkerError e) => new(Protocol.Version, r.RequestId, false, null, e);
+
+    public void Dispose()
+    {
+        foreach (var l in locks.Values) l.Dispose();
+        locks.Clear();
+    }
 }
 
 /// <summary>A running worker the client can talk to. The in-process fake and the real process both implement it.</summary>
@@ -127,8 +306,8 @@ public sealed class WorkerClient(IWorker worker)
     public Task<CommandResult> CreateTaskAsync(string workspace, string commandId, string projectId, string title, string? outcome, CancellationToken ct = default) =>
         CallAsync<CommandResult>("createTask", new CreateTaskArgs(workspace, commandId, projectId, title, outcome), ct);
 
-    public Task<CommandResult> UpdateTaskAsync(string workspace, string commandId, string taskId, int expectedRevision, string? title = null, string? outcome = null, string? owner = null, CancellationToken ct = default) =>
-        CallAsync<CommandResult>("updateTask", new UpdateTaskArgs(workspace, commandId, taskId, expectedRevision, title, outcome, owner), ct);
+    public Task<CommandResult> UpdateTaskAsync(string workspace, string commandId, string taskId, int expectedRevision, string? title = null, string? outcome = null, string? owner = null, bool? reviewRequired = null, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("updateTask", new UpdateTaskArgs(workspace, commandId, taskId, expectedRevision, title, outcome, owner, reviewRequired), ct);
 
     public Task<CommandResult> AddDependencyAsync(string workspace, string commandId, string taskId, string requiresId, int expectedRevision, CancellationToken ct = default) =>
         CallAsync<CommandResult>("addDependency", new DependencyArgs(workspace, commandId, taskId, requiresId, expectedRevision), ct);
@@ -139,8 +318,74 @@ public sealed class WorkerClient(IWorker worker)
     public Task<CommandResult> MoveTaskAsync(string workspace, string commandId, string taskId, string toState, int expectedRevision, CancellationToken ct = default) =>
         CallAsync<CommandResult>("moveTask", new MoveArgs(workspace, commandId, taskId, toState, expectedRevision), ct);
 
+    public Task<CommandResult> SetPolicyAsync(string workspace, string commandId, string name, int expectedRevision, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("setPolicy", new PolicyArgs(workspace, commandId, name, expectedRevision), ct);
+
+    /// <summary>Owner only: a credential that acts as one fixture role.</summary>
+    public async Task<string> IssueRoleTokenAsync(string role, CancellationToken ct = default) =>
+        (await CallAsync<TokenResult>("issueRoleToken", new RoleTokenArgs(role), ct)).Token;
+
+    /// <summary>Takes the workspace for this worker, or reports which process has it.</summary>
+    public Task<OwnershipResult> AcquireWorkspaceAsync(string workspace, CancellationToken ct = default) =>
+        CallAsync<OwnershipResult>("acquireWorkspace", new WorkspaceArgs(workspace), ct);
+
+    public Task<OwnershipResult> ReleaseWorkspaceAsync(string workspace, CancellationToken ct = default) =>
+        CallAsync<OwnershipResult>("releaseWorkspace", new WorkspaceArgs(workspace), ct);
+
+    public Task<CommandResult> DecideOutputAsync(string workspace, string submissionId, string taskId, string outputId, int contentRevision, int policyRevision,
+                                                 string decision, string? comment, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("decideOutput", new DecideArgs(workspace, submissionId, taskId, outputId, contentRevision, policyRevision, decision, comment), ct);
+
     public Task<CommandResult> RunRoleAsync(string workspace, string commandId, string taskId, string role, string? failure = null, CancellationToken ct = default) =>
         CallAsync<CommandResult>("runRole", new RoleArgs(workspace, commandId, taskId, role, failure), ct);
+
+    public Task<CommandResult> FixtureSayAsync(string workspace, string commandId, string taskId, string kind, string text, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("fixtureSay", new SayArgs(workspace, commandId, taskId, kind, text), ct);
+
+    public Task<CommandResult> AnswerQuestionAsync(string workspace, string commandId, string questionId, string text, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("answerQuestion", new AnswerArgs(workspace, commandId, questionId, text), ct);
+
+    public Task<CommandResult> AddConnectionAsync(string ws, string cmd, string provider, string endpoint, string label, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("addConnection", new AddConnectionArgs(ws, cmd, provider, endpoint, label), ct);
+    public Task<CommandResult> RemoveConnectionAsync(string ws, string cmd, string connectionId, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("removeConnection", new ConnectionArgs(ws, cmd, connectionId), ct);
+    public Task<JsonElement> ProbeConnectionAsync(string ws, string connectionId, CancellationToken ct = default) =>
+        CallAsync<JsonElement>("probeConnection", new ConnectionArgs(ws, "", connectionId), ct);
+    /// <summary>Hands a key to the worker once. Null or empty deletes it.</summary>
+    public Task<CommandResult> SetCredentialAsync(string ws, string cmd, string connectionId, string? secret, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("setCredential", new CredentialArgs(ws, cmd, connectionId, secret), ct);
+    public Task<CommandResult> AssignRoleAsync(string ws, string cmd, string project, string role, string connectionId, string model, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("assignRole", new AssignArgs(ws, cmd, project, role, connectionId, model), ct);
+    public Task<CommandResult> SetProjectSettingsAsync(string ws, string cmd, ProjectSettings settings, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("setProjectSettings", new SettingsArgs(ws, cmd, settings), ct);
+    public Task<CommandResult> GrantConsentAsync(string ws, string cmd, string project, string connectionId, string model, string[] files, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("grantConsent", new ConsentArgs(ws, cmd, project, connectionId, model, files), ct);
+    public Task<CommandResult> RevokeConsentAsync(string ws, string cmd, string consentId, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("revokeConsent", new RevokeArgs(ws, cmd, consentId), ct);
+    public Task<CommandResult> SetPriceAsync(string ws, string cmd, string connectionId, string model, string currency, double input, double output, string source, DateTime effective, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("setPrice", new PriceArgs(ws, cmd, connectionId, model, currency, input, output, source, effective), ct);
+    public Task<CommandResult> AddTaskFileAsync(string ws, string cmd, string taskId, string name, string content, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("addTaskFile", new FileArgs(ws, cmd, taskId, name, content), ct);
+    public Task<DispatchPreview> PreviewDispatchAsync(string ws, string taskId, string role, string? instruction = null, CancellationToken ct = default) =>
+        CallAsync<DispatchPreview>("previewDispatch", new PreviewArgs(ws, taskId, role, instruction), ct);
+    public Task<CommandResult> DispatchAsync(string ws, string cmd, string taskId, string role, bool acceptPriceRisk = false, bool acceptRepeatCost = false, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("dispatch", new DispatchArgs(ws, cmd, taskId, role, acceptPriceRisk, acceptRepeatCost), ct);
+    public Task<CommandResult> CancelAttemptAsync(string ws, string cmd, string attemptId, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("cancelAttempt", new AttemptArgs(ws, cmd, attemptId, false), ct);
+    public Task<CommandResult> PauseAttemptAsync(string ws, string cmd, string attemptId, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("pauseAttempt", new AttemptArgs(ws, cmd, attemptId, false), ct);
+    public Task<CommandResult> ResumeAttemptAsync(string ws, string cmd, string attemptId, bool acceptRepeatCost = false, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("resumeAttempt", new AttemptArgs(ws, cmd, attemptId, acceptRepeatCost), ct);
+    public Task<CommandResult> SmokeTestAsync(string ws, string cmd, string connectionId, string model, string prompt, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("smokeTest", new SmokeArgs(ws, cmd, connectionId, model, prompt), ct);
+    public Task<List<DispatchPreview>> PreviewInstructionAsync(string ws, string taskId, string[] roles, string text, CancellationToken ct = default) =>
+        CallAsync<List<DispatchPreview>>("previewInstruction", new InstructionPreviewArgs(ws, taskId, roles, text), ct);
+    public Task<InstructionResult> SendInstructionAsync(string ws, string cmd, string taskId, string[] roles, string text, CancellationToken ct = default) =>
+        CallAsync<InstructionResult>("sendInstruction", new InstructionArgs(ws, cmd, taskId, roles, text), ct);
+    public Task<JsonElement> RecoverRunsAsync(string ws, CancellationToken ct = default) =>
+        CallAsync<JsonElement>("recoverRuns", new WorkspaceArgs(ws), ct);
+    public Task<JsonElement> ExportDiagnosticsAsync(string ws, string target, CancellationToken ct = default) =>
+        CallAsync<JsonElement>("exportDiagnostics", new DiagnosticsArgs(ws, target), ct);
 
     /// <summary>What a command ID did, or null when it was never applied.</summary>
     public async Task<CommandResult?> CommandStatusAsync(string workspace, string commandId, CancellationToken ct = default)
@@ -171,11 +416,18 @@ public sealed class FakeWorker : IWorker
     /// <summary>Lets a test hold a request open to force overlapping calls.</summary>
     public Func<WorkerRequest, Task>? BeforeHandle { get; set; }
 
-    public FakeWorker(string profileId = "fake-profile")
+    private readonly string prefix;
+    /// <summary>The OS vault stand-in. It outlives a worker restart, as the real one does.</summary>
+    public ICredentialVault Vault { get; }
+
+    public FakeWorker(string profileId = "fake-profile", ICredentialVault? vault = null)
     {
         ProfileId = profileId;
         Token = "fake-token-1";
-        host = new(profileId, Token, () => "id" + Interlocked.Increment(ref ids));
+        // Sequential, and unique across instances so two in-process windows never mint the same ID.
+        prefix = "id" + Guid.NewGuid().ToString("N")[..4] + "-";
+        Vault = vault ?? new MemoryVault();
+        host = new(profileId, Token, () => prefix + Interlocked.Increment(ref ids), Vault);
     }
 
     /// <summary>Lets a test lose the answer after the command has been applied (throw WorkerException) to model a crash.</summary>
@@ -193,10 +445,11 @@ public sealed class FakeWorker : IWorker
     public Task RestartAsync()
     {
         Token = "fake-token-" + (ids + 2);
-        host = new(ProfileId, Token, () => "id" + Interlocked.Increment(ref ids));
+        host.Dispose(); // a restarted worker has lost whatever workspaces it owned
+        host = new(ProfileId, Token, () => prefix + Interlocked.Increment(ref ids), Vault);
         return Task.CompletedTask;
     }
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync() { host.Dispose(); return ValueTask.CompletedTask; }
 }
 
 /// <summary>Real worker child process. The credential travels over its stdin, never its command line or environment.</summary>
@@ -254,6 +507,7 @@ public sealed class ProcessWorker : IWorker
 
     /// <summary>How many request lines this object has written to worker processes. Lets tests prove nothing was replayed.</summary>
     public int RequestsSent { get; private set; }
+    public int ProcessId => process?.Id ?? 0;
     /// <summary>Test seam: runs after a request is written and before its answer is read.</summary>
     public Func<Process, Task>? AfterSend { get; set; }
     /// <summary>Test seam: ends the current worker process.</summary>
