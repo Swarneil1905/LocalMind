@@ -5,7 +5,36 @@ using System.Security.Cryptography;
 // Development-only: write the demo database for the Windows smoke checklist and exit.
 if (args is ["--fixture", var target]) { MakeFixture(Path.GetFullPath(target)); Console.WriteLine($"Wrote {Path.GetFullPath(target)}"); return; }
 
+if (args is ["--handoff-c-fixture", var hc]) { Console.WriteLine($"Wrote {CheckpointH.MakeHandoffC(Path.GetFullPath(hc))}"); return; }
+
+if (args is ["--stream", var sw, var st, var sc, var sd]) { await CheckpointH.Stream(sw, st, int.Parse(sc), int.Parse(sd)); return; }
+
+if (args is ["--only-h", var oh]) { await CheckpointH.Run(Path.GetFullPath(oh)); return; }
+
+if (args is ["--g-image", var gi]) { await CheckpointG.Image(Path.GetFullPath(gi)); return; }
+
+if (args is ["--handoff-b-fixture", var hb]) { Console.WriteLine($"Wrote {CheckpointG.MakeHandoffB(Path.GetFullPath(hb))}"); return; }
+
 if (args is ["--atlas-fixture", var atlas]) { Console.WriteLine($"Wrote {CheckpointB.MakeAtlas(Path.GetFullPath(atlas))}"); return; }
+
+// Development-only: act as a second client, e.g. have the offline builder add a revision while the app shows an older one.
+if (args is ["--role", var workspace, var title, var role])
+{
+    string db = Directory.Exists(workspace) ? Path.Combine(Path.GetFullPath(workspace), "agenthub.db") : Path.GetFullPath(workspace);
+    string? taskId;
+    using (var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = db, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString()))
+    {
+        c.Open();
+        using var q = c.CreateCommand();
+        q.CommandText = "SELECT id FROM tasks WHERE title=$t";
+        q.Parameters.AddWithValue("$t", title);
+        taskId = q.ExecuteScalar() as string;
+    }
+    if (taskId == null) { Console.WriteLine($"No task titled {title}"); return; }
+    var result = await new LocalMind.AgentHub.Core.WorkerClient(new LocalMind.AgentHub.Core.FakeWorker()).RunRoleAsync(db, "cli-" + Guid.NewGuid().ToString("N"), taskId, role);
+    Console.WriteLine($"{role} -> revision {result.Revision}");
+    return;
+}
 
 var folder = Directory.CreateTempSubdirectory("localmind-hub-check-");
 try
@@ -69,8 +98,18 @@ try
     await CheckpointA.Run(folder.FullName);
     await CheckpointB.Run(Path.Combine(folder.FullName, "b"));
     await CheckpointC.Run(Path.Combine(folder.FullName, "c"), LocalMind.AgentHub.Core.ProcessWorker.Locate()!);
+    await CheckpointD.Run(Path.Combine(folder.FullName, "d"));
+    await CheckpointE.Run(Path.Combine(folder.FullName, "e"), LocalMind.AgentHub.Core.ProcessWorker.Locate()!);
+    CheckpointF.Run(Path.Combine(folder.FullName, "f"));
+    await CheckpointG.Run(Path.Combine(folder.FullName, "g"));
+    await CheckpointH.Run(Path.Combine(folder.FullName, "h"));
 }
-finally { folder.Delete(true); }
+finally
+{
+    GC.Collect();
+    GC.WaitForPendingFinalizers(); // view models in the checks are not disposed; their lock files close when collected
+    try { folder.Delete(true); } catch (IOException) { }
+}
 
 static void Check(bool ok, string message)
 {
