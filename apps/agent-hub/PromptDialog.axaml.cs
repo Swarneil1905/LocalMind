@@ -40,6 +40,15 @@ public partial class PromptDialog : Window
         Opened += (_, _) => (choices != null ? Choices : (Control)Field1).Focus();
     }
 
+    /// <summary>Raised as the first field changes, so the caller can keep an unsent draft.</summary>
+    public event Action<string>? FirstChanged;
+
+    protected override void OnOpened(EventArgs e)
+    {
+        base.OnOpened(e);
+        Field1.TextChanged += (_, _) => FirstChanged?.Invoke(Field1.Text ?? "");
+    }
+
     private void Cancel(object? sender, RoutedEventArgs e) => Close(false);
 
     private async void Ok(object? sender, RoutedEventArgs e)
