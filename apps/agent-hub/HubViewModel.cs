@@ -111,6 +111,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
         commands = [OpenCommand, RefreshCommand, ToggleProjectsCommand, ToggleInspectorCommand, GoToBlockerCommand, BackCommand];
         InitEditing();
         InitReview();
+        InitEvidence();
     }
 
     /// <summary>Creates a workspace and opens it. Returns an error message to show, or null on success; a failure leaves the current selection alone.</summary>
@@ -166,6 +167,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
         {
             if (selectedTask == value) return;
             selectedTask = value;
+            InvalidateHandoff();
             Notify(); Notify(nameof(HasTask)); Notify(nameof(CanEdit));
             RaiseCommands();
             NotifyReview(); // the previous task's review must not stay on screen
@@ -212,13 +214,14 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
     private void Layout()
     {
         foreach (var name in new[] { nameof(ProjectsVisible), nameof(InspectorVisible), nameof(Narrow), nameof(Wide),
-                                     nameof(ListVisible), nameof(InspectorColumn), nameof(InspectorWidth) })
+                                     nameof(ListVisible), nameof(InspectorColumn), nameof(InspectorWidth), nameof(BoardVisible), nameof(InboxVisible), nameof(ChannelVisible) })
             Notify(name);
     }
 
     private void SetSelection(ProjectItem? value)
     {
         selected = value;
+        InvalidateHandoff();
         Tasks = [];
         selectedTask = null;
         history.Clear();
@@ -241,6 +244,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
         path = file;
         workspaceName = workspace;
         await UpdateWriteOwnershipAsync(file, workspace);
+        await LoadWorkspaceKeyAsync(file, workspace != null);
         Notify(nameof(ModeLabel)); Notify(nameof(IsWorkspace)); Notify(nameof(CanEdit));
         SetSelection(null);
         // A refresh keeps the project list so a switch made mid-refresh still has projects to land on.
@@ -290,6 +294,9 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
             SelectedTask = tasks.FirstOrDefault(t => t.Id == (nextSelectId ?? restoreTask));
             nextSelectId = null;
             RaiseCommands();
+            _ = LoadChannelAsync();
+            _ = LoadInboxAsync(request);
+            _ = LoadQuestionsAsync();
             StatusText = tasks.Count == 0 ? (workspaceName == null ? "No tasks in this project." : "No tasks in this workspace yet.")
                 : $"{tasks.Count} task{(tasks.Count == 1 ? "" : "s")}" + (workspaceName == null ? " · Read-only" : "");
         }
