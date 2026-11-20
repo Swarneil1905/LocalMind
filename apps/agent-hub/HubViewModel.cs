@@ -50,7 +50,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
     private Func<Task<string?>>? pickFolder;
     private void NotifyWorkspaceCommands() { NewWorkspaceCommand?.Changed(); OpenWorkspaceCommand?.Changed(); ImportLegacyCommand?.Changed(); }
 
-    public string ModeLabel => path == null ? "" : workspaceName == null ? "Legacy file · Read-only" : $"{workspaceName} · Agent Hub workspace";
+    public string ModeLabel => path == null ? "" : workspaceName == null ? "Legacy file · Read-only" : ReadOnlyReason != null ? $"{workspaceName} · read-only (open in another window)" : $"{workspaceName} · Agent Hub workspace";
 
     public WorkspaceCommand NewWorkspaceCommand { get; }
     public WorkspaceCommand OpenWorkspaceCommand { get; }
@@ -110,6 +110,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
         });
         commands = [OpenCommand, RefreshCommand, ToggleProjectsCommand, ToggleInspectorCommand, GoToBlockerCommand, BackCommand];
         InitEditing();
+        InitReview();
     }
 
     /// <summary>Creates a workspace and opens it. Returns an error message to show, or null on success; a failure leaves the current selection alone.</summary>
@@ -167,6 +168,8 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
             selectedTask = value;
             Notify(); Notify(nameof(HasTask)); Notify(nameof(CanEdit));
             RaiseCommands();
+            NotifyReview(); // the previous task's review must not stay on screen
+            _ = LoadReviewAsync();
         }
     }
     public bool HasTask => selectedTask != null;
@@ -237,6 +240,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
         bool sameFile = path == file;
         path = file;
         workspaceName = workspace;
+        await UpdateWriteOwnershipAsync(file, workspace);
         Notify(nameof(ModeLabel)); Notify(nameof(IsWorkspace)); Notify(nameof(CanEdit));
         SetSelection(null);
         // A refresh keeps the project list so a switch made mid-refresh still has projects to land on.
