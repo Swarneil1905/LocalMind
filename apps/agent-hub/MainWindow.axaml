@@ -15,6 +15,11 @@
       <MenuItem Header="_View">
         <MenuItem x:Name="ProjectsItem" Header="_Projects" Command="{Binding ToggleProjectsCommand}"/>
         <MenuItem x:Name="DetailsItem" Header="Task _details" Command="{Binding ToggleInspectorCommand}"/>
+        <Separator/>
+        <MenuItem x:Name="BoardItem" Header="_Board" Command="{Binding ShowBoardCommand}"/>
+        <MenuItem x:Name="InboxItem" Header="_Inbox" Command="{Binding ShowInboxCommand}"/>
+        <MenuItem x:Name="ChannelItem" Header="Team _channel" Command="{Binding ShowChannelCommand}"/>
+        <MenuItem x:Name="QuestionsItem" Header="_Questions" Command="{Binding ShowQuestionsCommand}"/>
       </MenuItem>
       <MenuItem Header="_Task">
         <MenuItem x:Name="NewTaskItem" Header="_New task…" Command="{Binding NewTaskCommand}"/>
@@ -39,6 +44,7 @@
       <MenuItem Header="_Go">
         <MenuItem x:Name="BlockerItem" Header="_Blocker" Command="{Binding GoToBlockerCommand}"/>
         <MenuItem x:Name="BackItem" Header="B_ack" Command="{Binding BackCommand}"/>
+        <MenuItem x:Name="BackInboxItem" Header="Back to _inbox" Command="{Binding BackToInboxCommand}"/>
       </MenuItem>
     </Menu>
 
@@ -56,14 +62,17 @@
       </Border>
 
       <Grid Grid.Column="1" Margin="{DynamicResource PanePadding}" MinWidth="{DynamicResource TaskMinWidth}" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="10"
-            IsVisible="{Binding ListVisible}">
+            IsVisible="{Binding BoardVisible}">
         <TextBlock Text="{Binding ProjectHeading}" FontSize="24" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+        <WrapPanel Grid.Row="1" ItemSpacing="8" LineSpacing="8">
           <Button Command="{Binding NewTaskCommand}" Content="New task" IsVisible="{Binding IsWorkspace}"/>
           <Button Command="{Binding OpenCommand}" Content="Open legacy file…"/>
           <Button Command="{Binding RefreshCommand}" Content="Refresh"/>
+          <Button Command="{Binding ShowInboxCommand}" Content="{Binding InboxLabel}" IsVisible="{Binding IsWorkspace}"/>
+          <Button Command="{Binding ShowChannelCommand}" Content="Team channel" IsVisible="{Binding IsWorkspace}"/>
+          <Button Command="{Binding ShowQuestionsCommand}" Content="{Binding QuestionsLabel}" IsVisible="{Binding IsWorkspace}"/>
           <Button Command="{Binding ToggleInspectorCommand}" Content="Task details" IsVisible="{Binding Narrow}"/>
-        </StackPanel>
+        </WrapPanel>
         <StackPanel Grid.Row="2" Spacing="8">
         <Border CornerRadius="4" Padding="10,8" Background="{DynamicResource ErrorFill}" IsVisible="{Binding HasNotice}">
           <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
@@ -107,6 +116,101 @@
               </ListBox>
             </Grid>
         </Grid>
+      </Grid>
+
+      <Grid Grid.Column="1" Margin="{DynamicResource PanePadding}" MinWidth="{DynamicResource TaskMinWidth}" RowDefinitions="Auto,Auto,*" RowSpacing="10"
+            IsVisible="{Binding InboxVisible}">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <TextBlock Text="{Binding InboxLabel}" FontSize="24" FontWeight="SemiBold"/>
+          <Button Command="{Binding ShowBoardCommand}" Content="Back to board" VerticalAlignment="Center"/>
+        </StackPanel>
+        <TextBlock Grid.Row="1" Text="Nothing is waiting for your decision." Foreground="{DynamicResource Muted}" IsVisible="{Binding InboxEmpty}"/>
+        <ScrollViewer Grid.Row="2">
+          <ItemsControl ItemsSource="{Binding InboxRows}" AutomationProperties.Name="Decisions waiting for you">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:InboxRow">
+                <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" Padding="0,10">
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <StackPanel Spacing="2">
+                      <TextBlock Text="{Binding Heading}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                      <TextBlock Text="{Binding Where}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap"/>
+                      <TextBlock Text="{Binding Unlocks}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="Open evidence" VerticalAlignment="Top" Click="OpenInboxItem"
+                            AutomationProperties.Name="{Binding AutomationName, StringFormat='Open evidence for {0}'}"/>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Grid>
+
+      <Grid Grid.Column="1" Margin="{DynamicResource PanePadding}" MinWidth="{DynamicResource TaskMinWidth}" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="8"
+            IsVisible="{Binding ChannelVisible}">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <TextBlock Text="Team channel" FontSize="24" FontWeight="SemiBold"/>
+          <Button Command="{Binding ShowBoardCommand}" Content="Back to board" VerticalAlignment="Center"/>
+        </StackPanel>
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+          <TextBlock Text="{Binding ProjectHeading, StringFormat='Everything that has happened in {0}, oldest first.'}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+          <ComboBox Grid.Column="1" SelectedIndex="{Binding ChannelFilterIndex, Mode=TwoWay}" AutomationProperties.Name="Channel filter" MinWidth="200">
+            <ComboBoxItem Content="All activity"/>
+            <ComboBoxItem Content="Hide progress"/>
+            <ComboBoxItem Content="Decisions and questions"/>
+          </ComboBox>
+        </Grid>
+        <TextBlock Grid.Row="2" Text="{Binding ChannelFilterNote}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap"/>
+        <Grid Grid.Row="3">
+          <ListBox x:Name="ChannelList" ItemsSource="{Binding ChannelRows}" SelectionMode="Multiple" AutomationProperties.Name="Team channel messages">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:ChannelRow">
+                <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" Padding="0,6">
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <StackPanel Spacing="2">
+                      <TextBlock Foreground="{DynamicResource Muted}" TextWrapping="Wrap"><Run Text="{Binding Who}"/><Run Text=" · "/><Run Text="{Binding When}"/></TextBlock>
+                      <Border Background="{DynamicResource Badge}" CornerRadius="4" Padding="6,2" HorizontalAlignment="Left" IsVisible="{Binding HasBadge}">
+                        <TextBlock Text="{Binding Badge}" Foreground="{DynamicResource BadgeText}" FontWeight="SemiBold" AutomationProperties.Name="Decision badge"/>
+                      </Border>
+                      <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="Go to card" VerticalAlignment="Top" Click="OpenChannelTask"
+                            AutomationProperties.Name="{Binding Task, StringFormat='Go to the card for {0}'}"/>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <Button Command="{Binding FollowLatestCommand}" Content="{Binding FollowLabel}" IsVisible="{Binding ShowFollowButton}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,16,8"/>
+        </Grid>
+      </Grid>
+
+      <Grid Grid.Column="1" Margin="{DynamicResource PanePadding}" MinWidth="{DynamicResource TaskMinWidth}" RowDefinitions="Auto,Auto,*" RowSpacing="10"
+            IsVisible="{Binding QuestionsVisible}">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <TextBlock Text="{Binding QuestionsLabel}" FontSize="24" FontWeight="SemiBold"/>
+          <Button Command="{Binding ShowBoardCommand}" Content="Back to board" VerticalAlignment="Center"/>
+        </StackPanel>
+        <TextBlock Grid.Row="1" Text="No agent has asked you anything." Foreground="{DynamicResource Muted}" IsVisible="{Binding QuestionsEmpty}"/>
+        <ScrollViewer Grid.Row="2">
+          <ItemsControl ItemsSource="{Binding QuestionRows}" AutomationProperties.Name="Questions for you">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:QuestionRow">
+                <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" Padding="0,10">
+                  <StackPanel Spacing="4">
+                    <TextBlock Text="{Binding Heading}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding Asked}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding Status}" TextWrapping="Wrap"/>
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" IsVisible="{Binding IsOpen}">
+                      <TextBox Text="{Binding ReplyText, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="48" AutomationProperties.Name="{Binding AutomationName, StringFormat='Your reply to: {0}'}"/>
+                      <Button Grid.Column="1" Content="Send reply" VerticalAlignment="Top" Click="SendReply" AutomationProperties.Name="{Binding AutomationName, StringFormat='Send reply to: {0}'}"/>
+                    </Grid>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
       </Grid>
 
       <!-- Beside the list when there is room; replaces the list on narrow windows. -->
@@ -154,21 +258,72 @@
               <TextBlock Text="Fixture agents write and review text on this computer. No network, no model, no keys." Foreground="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap"/>
               <TextBlock Text="{Binding PolicyLine}" TextWrapping="Wrap"/>
               <TextBlock Text="{Binding StateLine}" FontWeight="SemiBold" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+              <Border Background="{DynamicResource Badge}" CornerRadius="4" Padding="8,4" HorizontalAlignment="Left" IsVisible="{Binding HasDecisionBadge}">
+                <TextBlock Text="{Binding DecisionBadge}" Foreground="{DynamicResource BadgeText}" FontWeight="SemiBold" TextWrapping="Wrap" AutomationProperties.Name="Decision"/>
+              </Border>
+              <Border CornerRadius="4" Padding="8" Background="{DynamicResource BusyFill}" IsVisible="{Binding HasDraft}">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="{Binding DraftNotice}" TextWrapping="Wrap" AutomationProperties.Name="Unsent comment"/>
+                  <Button Margin="0,0,6,6" Content="Discard the draft" Command="{Binding DiscardDraftCommand}" HorizontalAlignment="Left"/>
+                </StackPanel>
+              </Border>
+              <Border CornerRadius="4" Padding="8" Background="{DynamicResource BusyFill}" IsVisible="{Binding HasOlderDraft}">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="{Binding OlderDraftNotice}" TextWrapping="Wrap" AutomationProperties.Name="Unsent comment for another revision"/>
+                  <WrapPanel>
+                    <Button Margin="0,0,6,6" Content="Move it to this revision" Command="{Binding ReanchorDraftCommand}"/>
+                    <Button Margin="0,0,6,6" Content="Discard it" Command="{Binding DiscardOlderDraftCommand}"/>
+                  </WrapPanel>
+                </StackPanel>
+              </Border>
+              <Button Content="Back to inbox" Command="{Binding BackToInboxCommand}" IsVisible="{Binding CameFromInbox}" HorizontalAlignment="Left"/>
+              <Border CornerRadius="4" Padding="8" Background="{DynamicResource BusyFill}" IsVisible="{Binding IsStale}">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="{Binding StaleNotice}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                  <Button Content="Open the newest revision" Command="{Binding OpenLatestRevisionCommand}" HorizontalAlignment="Left"/>
+                </StackPanel>
+              </Border>
+              <WrapPanel>
+                <Button Margin="0,0,6,6" Content="Ask builder" Command="{Binding AskBuilderCommand}"/>
+                <Button Margin="0,0,6,6" Content="Ask reviewer" Command="{Binding AskReviewerCommand}"/>
+                <Button Margin="0,0,6,6" Content="Fixture says it is done" Command="{Binding FixtureClaimCommand}"/>
+                <Button Margin="0,0,6,6" Content="Fixture asks a question" Command="{Binding FixtureAskCommand}"/>
+                <Button Margin="0,0,6,6" Content="{Binding ReviewToggleLabel}" Command="{Binding ToggleReviewCommand}"/>
+              </WrapPanel>
+              <TextBlock Text="{Binding OutputHeading}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" IsVisible="{Binding HasOutput}"/>
+              <Border Background="{DynamicResource Canvas}" BorderBrush="{DynamicResource Line}" BorderThickness="1" Padding="8" IsVisible="{Binding ShowOutputText}">
+                <TextBlock Text="{Binding OutputText}" TextWrapping="Wrap" AutomationProperties.Name="Output text"/>
+              </Border>
+              <TextBlock Text="{Binding PacketLine}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" IsVisible="{Binding HasPacketLine}" AutomationProperties.Name="Handoff packet this run used"/>
+              <TextBlock Text="{Binding OutputNote}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" IsVisible="{Binding HasOutputNote}" AutomationProperties.Name="Output details"/>
+              <Image Source="{Binding OutputImage}" MaxHeight="200" Stretch="Uniform" HorizontalAlignment="Left" IsVisible="{Binding HasOutputImage}" AutomationProperties.Name="Output image"/>
+              <TextBlock Text="{Binding FeedbackText}" TextWrapping="Wrap" IsVisible="{Binding HasFeedback}" AutomationProperties.Name="Reviewer feedback"/>
+              <StackPanel Spacing="4" IsVisible="{Binding HasChange}">
+                <TextBlock Text="{Binding ChangeHeading}" FontWeight="SemiBold" Foreground="{DynamicResource Muted}"/>
+                <TextBlock Text="{Binding ChangeSummary}" TextWrapping="Wrap" AutomationProperties.Name="Change summary"/>
+                <ItemsControl ItemsSource="{Binding ChangeLines}" AutomationProperties.Name="Changed lines">
+                  <ItemsControl.ItemTemplate><DataTemplate x:DataType="x:String"><TextBlock Text="{Binding}" FontFamily="Consolas, Menlo, monospace" TextWrapping="Wrap"/></DataTemplate></ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="{Binding ChecksText}" TextWrapping="Wrap" Foreground="{DynamicResource Muted}" AutomationProperties.Name="Check results"/>
+                <TextBlock Text="{Binding EffectText}" TextWrapping="Wrap" AutomationProperties.Name="What accepting does"/>
+              </StackPanel>
               <TextBlock Text="{Binding DecisionSubject}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" IsVisible="{Binding CanDecide}" AutomationProperties.Name="Decision subject"/>
               <WrapPanel IsVisible="{Binding CanDecide}">
                 <Button x:Name="AcceptButton" Margin="0,0,6,6" Content="Accept this revision" Command="{Binding AcceptOutputCommand}"/>
                 <Button Margin="0,0,6,6" Content="Request changes…" Command="{Binding RequestChangesCommand}"/>
               </WrapPanel>
               <WrapPanel>
-                <Button Margin="0,0,6,6" Content="Ask builder" Command="{Binding AskBuilderCommand}"/>
-                <Button Margin="0,0,6,6" Content="Ask reviewer" Command="{Binding AskReviewerCommand}"/>
-                <Button Margin="0,0,6,6" Content="{Binding ReviewToggleLabel}" Command="{Binding ToggleReviewCommand}"/>
+                <Button Margin="0,0,6,6" Content="Preview builder packet" Command="{Binding PreviewHandoffCommand}" CommandParameter="builder"/>
+                <Button Margin="0,0,6,6" Content="Preview reviewer packet" Command="{Binding PreviewHandoffCommand}" CommandParameter="reviewer"/>
               </WrapPanel>
-              <TextBlock Text="{Binding OutputHeading}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" IsVisible="{Binding HasOutput}"/>
-              <Border Background="{DynamicResource Canvas}" BorderBrush="{DynamicResource Line}" BorderThickness="1" Padding="8" IsVisible="{Binding HasOutput}">
-                <TextBlock Text="{Binding OutputText}" TextWrapping="Wrap" AutomationProperties.Name="Output text"/>
-              </Border>
-              <TextBlock Text="{Binding FeedbackText}" TextWrapping="Wrap" IsVisible="{Binding HasFeedback}" AutomationProperties.Name="Reviewer feedback"/>
+              <StackPanel Spacing="4" IsVisible="{Binding HasHandoff}">
+                <TextBlock Text="{Binding HandoffSummary}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding HandoffOmitted}" TextWrapping="Wrap" IsVisible="{Binding HasHandoffOmitted}" AutomationProperties.Name="Left out of the packet"/>
+                <Border Background="{DynamicResource Canvas}" BorderBrush="{DynamicResource Line}" BorderThickness="1" Padding="8">
+                  <TextBlock Text="{Binding HandoffText}" TextWrapping="Wrap" FontFamily="Consolas, Menlo, monospace" AutomationProperties.Name="Handoff packet"/>
+                </Border>
+                <Button Content="Close preview" Command="{Binding CloseHandoffCommand}" HorizontalAlignment="Left"/>
+              </StackPanel>
             </StackPanel>
           <StackPanel IsVisible="{Binding CanEdit}" Spacing="6">
             <TextBlock Text="Move to" Foreground="{DynamicResource Muted}"/>

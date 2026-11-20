@@ -1,5 +1,8 @@
+using Avalonia.Input.Platform;
 using System.Windows.Input;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.VisualTree;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
@@ -22,9 +25,14 @@ public partial class MainWindow : Window
         hub.PickFile = PickFileAsync;
         hub.PickFolder = PickFolderAsync;
         hub.Workspaces = new WorkspaceService(ConnectAsync);
-        hub.ShowNewWorkspace = () => new NewWorkspaceDialog(hub.CreateWorkspaceAsync, PickFolderAsync).ShowDialog<bool>(this);
-        Closed += async (_, _) => { if (worker != null) await worker.DisposeAsync(); };
+        hub.ShowNewWorkspace = () => new NewWorkspaceDialog(hub.CreateWorkspaceAsync, PickFolderAsync).ShowDialog<bool>(this).ContinueWith(_ => RestoreFocus(), TaskScheduler.FromCurrentSynchronizationContext());
+        Closed += async (_, _) => { hub.StopPolling(); await hub.ReleaseWriteLockAsync(); if (worker != null) await worker.DisposeAsync(); };
         DataContext = hub;
+        // Another window may be writing: look for new events every couple of seconds, without any action from the user.
+        hub.StartPolling(TimeSpan.FromSeconds(2));
+        hub.Drafts = new DraftStore(DraftStore.DefaultFolder);
+        hub.Clipboard = text => TopLevel.GetTopLevel(this)?.Clipboard?.SetTextAsync(text) ?? Task.CompletedTask;
+        WireChannel();
         var keys = Shortcuts.For(OperatingSystem.IsMacOS());
         Bind(NewItem, hub.NewWorkspaceCommand, keys["New"]);
         Bind(OpenWorkspaceItem, hub.OpenWorkspaceCommand, keys["OpenWorkspace"]);
@@ -32,6 +40,12 @@ public partial class MainWindow : Window
         ImportItem.InputGesture = null;
         Bind(RefreshItem, hub.RefreshCommand, keys["Refresh"]);
         Bind(NewTaskItem, hub.NewTaskCommand, keys["NewTask"]);
+        Bind(AskBuilderItem, hub.AskBuilderCommand, keys["AskBuilder"]);
+        Bind(AskReviewerItem, hub.AskReviewerCommand, keys["AskReviewer"]);
+        Bind(AcceptItem, hub.ReviewDecisionCommand, keys["Accept"]);
+        Bind(RequestChangesItem, hub.RequestChangesCommand, keys["RequestChanges"]);
+        Bind(RequireReviewItem, hub.ToggleReviewCommand, keys["RequireReview"]);
+        PolicyItem.InputGesture = null;
         Bind(AssignItem, hub.AssignCommand, keys["Assign"]);
         Bind(AddPrereqItem, hub.AddPrerequisiteCommand, keys["AddPrerequisite"]);
         RemovePrereqItem.InputGesture = null;
@@ -43,6 +57,11 @@ public partial class MainWindow : Window
         Bind(DetailsItem, hub.ToggleInspectorCommand, keys["Details"]);
         Bind(BlockerItem, hub.GoToBlockerCommand, keys["Blocker"]);
         Bind(BackItem, hub.BackCommand, keys["Back"]);
+        BackInboxItem.InputGesture = null;
+        Bind(BoardItem, hub.ShowBoardCommand, keys["ShowBoard"]);
+        Bind(InboxItem, hub.ShowInboxCommand, keys["ShowInbox"]);
+        Bind(ChannelItem, hub.ShowChannelCommand, keys["ShowChannel"]);
+        Bind(QuestionsItem, hub.ShowQuestionsCommand, keys["ShowQuestions"]);
         hub.TaskRevealed += Reveal;
         columns = [OpenList, ActiveList, DoneList, CancelledList];
         foreach (var list in columns)
@@ -51,15 +70,37 @@ public partial class MainWindow : Window
             list.SelectionChanged += (_, _) => OnColumnSelection(list);
         }
         // Tasks live in four lists but there is one selection: the view model's.
-        hub.PropertyChanged += (_, e) => { if (e.PropertyName is nameof(HubViewModel.SelectedTask) or nameof(HubViewModel.Tasks)) SyncSelection(); };
+        hub.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is not (nameof(HubViewModel.SelectedTask) or nameof(HubViewModel.Tasks))) return;
+            bool inList = lastFocus is ListBoxItem;
+            SyncSelection();
+            if (inList && e.PropertyName == nameof(HubViewModel.SelectedTask)) RestoreFocus();
+        };
+        hub.PromptRequestChanges = () =>
+        {
+            var submit = hub.FreezeRequestChanges(); // bound to the task and revision shown now
+            var keep = hub.FreezeDraftSaver();       // what is typed is kept, anchored to that same revision
+            var dialog = new PromptDialog("Request changes", hub.RequestChangesLabel, hub.RequestChangesInitialText, null, null, "Request changes", (comment, _) => submit(comment));
+            dialog.FirstChanged += keep;
+            return dialog.ShowDialog<bool>(this).ContinueWith(_ => RestoreFocus(), TaskScheduler.FromCurrentSynchronizationContext());
+        };
+        hub.DecisionFocusRequested += () => Dispatcher.UIThread.Post(() => { AcceptButton.IsVisible = true; AcceptButton.Focus(); }, DispatcherPriority.Loaded);
+        hub.PromptSetPolicy = () =>
+        {
+            var submit = hub.FreezePolicyChange();
+            return new PromptDialog("Review policy", "Who decides on an agent's work?", "", null,
+                [("human", "Human acceptance: only you decide; agents recommend"), ("reviewer", "Reviewer approval: a reviewer's approval counts")], "Use this policy",
+                (name, _) => submit(name)).ShowDialog<bool>(this).ContinueWith(_ => RestoreFocus(), TaskScheduler.FromCurrentSynchronizationContext());
+        };
         hub.PromptNewTask = () => new PromptDialog("New task", "Title", "", "Requested outcome (optional)", null, "Create task",
-            (title, outcome) => hub.CreateTaskAsync(title, outcome)).ShowDialog<bool>(this);
+            (title, outcome) => hub.CreateTaskAsync(title, outcome)).ShowDialog<bool>(this).ContinueWith(_ => RestoreFocus(), TaskScheduler.FromCurrentSynchronizationContext());
         hub.PromptAssign = () => new PromptDialog("Assign owner or role", "Owner or role (leave empty to unassign)", hub.SelectedTask?.Owner ?? "", null, null, "Assign",
-            (owner, _) => hub.AssignAsync(owner)).ShowDialog<bool>(this);
+            (owner, _) => hub.AssignAsync(owner)).ShowDialog<bool>(this).ContinueWith(_ => RestoreFocus(), TaskScheduler.FromCurrentSynchronizationContext());
         hub.PromptAddPrerequisite = () => new PromptDialog("Add prerequisite", "This task cannot start until this one is done:", "", null, hub.PrerequisiteCandidates(), "Add",
-            (id, _) => hub.AddPrerequisiteAsync(id)).ShowDialog<bool>(this);
+            (id, _) => hub.AddPrerequisiteAsync(id)).ShowDialog<bool>(this).ContinueWith(_ => RestoreFocus(), TaskScheduler.FromCurrentSynchronizationContext());
         hub.PromptRemovePrerequisite = () => new PromptDialog("Remove prerequisite", "Stop waiting for:", "", null, hub.CurrentPrerequisites(), "Remove",
-            (id, _) => hub.RemovePrerequisiteAsync(id)).ShowDialog<bool>(this);
+            (id, _) => hub.RemovePrerequisiteAsync(id)).ShowDialog<bool>(this).ContinueWith(_ => RestoreFocus(), TaskScheduler.FromCurrentSynchronizationContext());
         SizeChanged += (_, e) => hub.SetWidth(e.NewSize.Width);
         // Closing a menu (Escape or after an action) hands focus back to where the user was working.
         AddHandler(GotFocusEvent, (_, e) => { if (e.Source is Control c and not (MenuItem or Menu)) lastFocus = c; });
@@ -100,11 +141,65 @@ public partial class MainWindow : Window
         finally { syncing = false; }
     }
 
-    private void RestoreFocus() =>
-        (lastFocus is { IsEffectivelyVisible: true, IsEnabled: true } ? lastFocus : columns.FirstOrDefault(l => l.ItemCount > 0) ?? columns[0]).Focus();
+    // Cards are rebuilt after every write, so focus goes back to the selected card once the new ones exist.
+    private void RestoreFocus()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (hub.SelectedTask is { } t && ColumnWith(t) is { } list && list.ContainerFromItem(t) is { } card) { card.Focus(); return; }
+            (lastFocus is { IsEffectivelyVisible: true, IsEnabled: true } ? lastFocus : columns.FirstOrDefault(l => l.ItemCount > 0) ?? columns[0]).Focus();
+        }, DispatcherPriority.Loaded);
+    }
 
     private void GoToBlocker(object? sender, RoutedEventArgs args) =>
         hub.GoToBlockerCommand.Execute((args.Source as Control)?.DataContext);
+
+    private void SendReply(object? sender, RoutedEventArgs args) => hub.ReplyQuestionCommand.Execute((sender as Button)?.DataContext);
+
+    // The channel list is virtualized. Streaming adds rows at the end and never moves what the reader is doing: selection stays,
+    // the viewport stays unless the reader chose to follow, and scrolling away from the end turns following off.
+    private void WireChannel()
+    {
+        ScrollViewer? scroll = null;
+        ScrollViewer? Scroll() => scroll ??= ChannelList.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+        ChannelList.SelectionChanged += (_, _) => hub.ChannelSelection = [.. ChannelList.SelectedItems!.Cast<ChannelRow>()];
+        ChannelList.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.C && e.KeyModifiers.HasFlag(OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control) && hub.CopyChannelCommand.CanExecute(null))
+            {
+                hub.CopyChannelCommand.Execute(null);
+                e.Handled = true;
+            }
+        };
+        ChannelList.LayoutUpdated += (_, _) =>
+        {
+            if (Scroll() is not { } sv || scroll == null || sv.Tag != null) return;
+            sv.Tag = "wired";
+            sv.ScrollChanged += (_, e) =>
+            {
+                bool atEnd = sv.Offset.Y + sv.Viewport.Height >= sv.Extent.Height - 4;
+                if (e.OffsetDelta.Y < 0 && !atEnd) hub.FollowLatest = false;
+                else if (atEnd && e.OffsetDelta.Y > 0) hub.FollowLatest = true;
+                if (ChannelList.ItemsPanelRoot is VirtualizingStackPanel panel && panel.FirstRealizedIndex is >= 0 and var first && first < hub.ChannelRows.Count)
+                    hub.ChannelAnchorSeq = hub.ChannelRows[first].Message.Seq;
+            };
+        };
+        hub.ChannelScrollToEnd += () => Dispatcher.UIThread.Post(() =>
+        {
+            if (hub.ChannelRows.Count > 0 && hub.ChannelVisible) ChannelList.ScrollIntoView(hub.ChannelRows[^1]);
+        }, DispatcherPriority.Loaded);
+        hub.ChannelAnchorRestore += seq => Dispatcher.UIThread.Post(() =>
+        {
+            if (hub.ChannelRows.FirstOrDefault(r => r.Message.Seq == seq) is { } row) ChannelList.ScrollIntoView(row);
+        }, DispatcherPriority.Loaded);
+        hub.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(HubViewModel.ChannelVisible) && hub.ChannelVisible) { hub.FollowLatest = true; hub.ChannelScrollToEndRequested(); }
+        };
+    }
+
+    private void OpenInboxItem(object? sender, RoutedEventArgs args) => hub.OpenInboxItemCommand.Execute((sender as Button)?.DataContext);
+    private void OpenChannelTask(object? sender, RoutedEventArgs args) => hub.OpenChannelTaskCommand.Execute((sender as Button)?.DataContext);
 
     private void GoToPrerequisite(object? sender, RoutedEventArgs args) =>
         hub.GoToBlockerCommand.Execute((sender as Button)?.DataContext);
