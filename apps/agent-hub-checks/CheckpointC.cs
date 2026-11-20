@@ -152,8 +152,7 @@ internal static class CheckpointC
         hub.SelectedTask = hub.Tasks.Single(t => t.Id == qaId);
         // A second client edits QA first, so this view is stale.
         string db = Path.Combine(folder, "agenthub.db");
-        var other = new WorkerClient(new FakeWorker());
-        await other.UpdateTaskAsync(db, "other-1", qaId, hub.SelectedTask!.Revision, outcome: "Changed elsewhere");
+        TaskStore.UpdateTask(db, "other-1", qaId, hub.SelectedTask!.Revision, null, "Changed elsewhere", null); // another writer, bypassing this window
         await hub.MoveTaskCommand.RunAsync("in_progress");
         Check(hub.Notice is { } stale && stale.Contains("changed by someone else") && hub.NoticeActionLabel == "Reload board" && hub.OpenTasks.Any(t => t.Id == qaId),
               "a stale move shows the conflict, keeps the stored column and offers a reload");
@@ -236,6 +235,7 @@ internal static class CheckpointC
         var a = new WorkerClient(new FakeWorker());
         var b = new WorkerClient(new FakeWorker());
         var won = a.UpdateTaskAsync(db, "a1", draft.Id, 0, title: "Draft the launch note").GetAwaiter().GetResult();
+        a.ReleaseWorkspaceAsync(db).GetAwaiter().GetResult(); // one writer at a time: the first client hands the workspace over
         string afterWin = Graph(db);
         var lost = ExpectWorker(() => b.UpdateTaskAsync(db, "b1", draft.Id, 0, title: "Other title").GetAwaiter().GetResult());
         Check(won.Revision == 1 && lost.Code == "conflict" && lost.Message.Contains("now revision 1") && Graph(db) == afterWin
