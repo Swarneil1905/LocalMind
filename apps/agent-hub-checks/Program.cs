@@ -9,6 +9,8 @@ if (args is ["--handoff-c-fixture", var hc]) { Console.WriteLine($"Wrote {Checkp
 
 if (args is ["--stream", var sw, var st, var sc, var sd]) { await CheckpointH.Stream(sw, st, int.Parse(sc), int.Parse(sd)); return; }
 
+if (args is ["--only-i", var oi]) { await CheckpointI.Run(Path.GetFullPath(oi)); return; }
+
 if (args is ["--only-h", var oh]) { await CheckpointH.Run(Path.GetFullPath(oh)); return; }
 
 if (args is ["--g-image", var gi]) { await CheckpointG.Image(Path.GetFullPath(gi)); return; }
@@ -103,6 +105,7 @@ try
     CheckpointF.Run(Path.Combine(folder.FullName, "f"));
     await CheckpointG.Run(Path.Combine(folder.FullName, "g"));
     await CheckpointH.Run(Path.Combine(folder.FullName, "h"));
+    await CheckpointI.Run(Path.Combine(folder.FullName, "i"));
 }
 finally
 {
