@@ -9,6 +9,7 @@ on:
       - 'apps/agent-hub-core/**'
       - 'apps/agent-hub-worker/**'
       - 'apps/agent-hub-checks/**'
+      - 'apps/Directory.Build.props'
       - '.github/workflows/ci-agent-hub.yml'
   pull_request:
     branches: [main]
@@ -17,6 +18,7 @@ on:
       - 'apps/agent-hub-core/**'
       - 'apps/agent-hub-worker/**'
       - 'apps/agent-hub-checks/**'
+      - 'apps/Directory.Build.props'
       - '.github/workflows/ci-agent-hub.yml'
 
 permissions:
@@ -28,17 +30,38 @@ concurrency:
 
 jobs:
   native-checks:
-    name: build + native checks (Windows)
-    runs-on: windows-latest
-    timeout-minutes: 20
+    name: build + native checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: '10.0.x'
-      - name: Build the desktop app
-        run: dotnet build apps/agent-hub/LocalMind.AgentHub.csproj -c Debug
+      # Restoring the checks project restores the app, core and worker too. A drifted lock file fails here.
+      - name: Locked restore
+        run: dotnet restore apps/agent-hub-checks/LocalMind.AgentHub.Checks.csproj --locked-mode
+      - name: Build (Debug)
+        run: dotnet build apps/agent-hub-checks/LocalMind.AgentHub.Checks.csproj -c Debug --no-restore -m:1
       - name: Native checks
-        run: dotnet run --project apps/agent-hub-checks -c Debug
+        run: dotnet run --project apps/agent-hub-checks -c Debug --no-build
+      - name: Build the production app (Release)
+        run: dotnet build apps/agent-hub/LocalMind.AgentHub.csproj -c Release --no-restore -m:1
+      - name: The debug-only gallery is not in the Release build
+        run: |
+          if grep -aq "GalleryWindow" apps/agent-hub/bin/Release/net10.0/LocalMind.AgentHub.dll; then
+            echo "GalleryWindow is present in the Release assembly" >&2
+            exit 1
+          fi
+      - name: The worker sits next to the app on this platform
+        run: |
+          ls apps/agent-hub/bin/Release/net10.0 | grep -E '^LocalMind\.AgentHub\.Worker(\.exe)?$'
