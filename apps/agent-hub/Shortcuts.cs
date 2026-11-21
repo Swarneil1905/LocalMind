@@ -11,6 +11,7 @@ public static class Shortcuts
         return new Dictionary<string, KeyGesture>
         {
             ["Open"] = new(Key.O, primary),
+            ["Menu"] = new(Key.K, primary),
             ["New"] = new(Key.N, primary),
             ["OpenWorkspace"] = new(Key.O, primary | KeyModifiers.Shift),
             ["Refresh"] = mac ? new(Key.R, primary) : new(Key.F5),

@@ -11,7 +11,7 @@ public sealed record Prerequisite(string Id, string Title, string Status, bool A
 }
 
 public sealed record TaskItem(string Id, string Title, string Status, IReadOnlyList<Prerequisite> Dependencies, string? Outcome = null, string? Owner = null, int Revision = 0,
-                              bool ReviewRequired = false, bool ReviewAccepted = false)
+                              bool ReviewRequired = false, bool ReviewAccepted = false, long LastSeq = 0)
 {
     // Legacy databases have no assignee or outcome; only recorded values are shown.
     public string OwnerLabel => string.IsNullOrWhiteSpace(Owner) ? "Unassigned" : Owner;
@@ -72,11 +72,7 @@ public sealed class ProjectReader(string path)
 {
     private SqliteConnection Open()
     {
-        var db = new SqliteConnection(new SqliteConnectionStringBuilder {
-            DataSource = path, Mode = SqliteOpenMode.ReadOnly, Pooling = false, DefaultTimeout = 3
-        }.ToString());
-        db.Open();
-        return db;
+        return LocalMind.AgentHub.Core.ProjectStore.OpenRead(path);
     }
 
     public List<ProjectItem> Projects()
@@ -102,14 +98,16 @@ public sealed class ProjectReader(string path)
         bool hasEdges = Convert.ToInt64(q.ExecuteScalar()) != 0;
         q.CommandText = "SELECT count(*) FROM pragma_table_info('tasks') WHERE name IN ('outcome','owner','revision','review_required')";
         bool hasDetail = Convert.ToInt64(q.ExecuteScalar()) == 4;
+        q.CommandText = "SELECT count(*) FROM sqlite_schema WHERE type='table' AND name='events'";
+        string seq = Convert.ToInt64(q.ExecuteScalar()) != 0 ? "COALESCE((SELECT max(seq) FROM events WHERE task_id=t.id),0)" : "0";
         string detail = hasDetail ? $"t.outcome,t.owner,t.revision,t.review_required,{string.Format(Accepted, "t")}<>''" : "NULL,NULL,0,0,0";
         string awaiting = hasDetail ? $"(p.review_required=1 AND {string.Format(Accepted, "p")}='')" : "0";
         q.CommandText = hasEdges ? $"""
-            SELECT t.title,t.status,p.title,t.id,p.id,p.status,{detail},{awaiting} FROM tasks t
+            SELECT t.title,t.status,p.title,t.id,p.id,p.status,{detail},{awaiting},{seq} FROM tasks t
             LEFT JOIN hub_dependencies e ON e.task_id=t.id
             LEFT JOIN tasks p ON p.id=e.requires_id AND p.project_id=t.project_id
             WHERE t.project_id=$id ORDER BY t.created_at,t.id,p.title,p.id
-            """ : "SELECT title,status,NULL,id,NULL,NULL,NULL,NULL,0,0,0,0 FROM tasks WHERE project_id=$id ORDER BY created_at,id";
+            """ : "SELECT title,status,NULL,id,NULL,NULL,NULL,NULL,0,0,0,0,0 FROM tasks WHERE project_id=$id ORDER BY created_at,id";
         q.Parameters.AddWithValue("$id", project);
         using var r = q.ExecuteReader();
         List<TaskItem> result = [];
@@ -119,7 +117,8 @@ public sealed class ProjectReader(string path)
         string? outcome = null, owner = null;
         int revision = 0;
         bool gated = false, accepted = false;
-        void Finish() => result.Add(new(last!, title, status, needs.ToArray(), outcome, owner, revision, gated, accepted));
+        long lastSeq = 0;
+        void Finish() => result.Add(new(last!, title, status, needs.ToArray(), outcome, owner, revision, gated, accepted, lastSeq));
         while (r.Read())
         {
             var id = r.GetString(3);
@@ -130,6 +129,7 @@ public sealed class ProjectReader(string path)
                 (last, title, status) = (id, r.GetString(0), r.GetString(1).Replace('_', ' '));
                 (outcome, owner, revision) = (r.IsDBNull(6) ? null : r.GetString(6), r.IsDBNull(7) ? null : r.GetString(7), r.IsDBNull(8) ? 0 : r.GetInt32(8));
                 (gated, accepted) = (!r.IsDBNull(9) && r.GetInt32(9) != 0, !r.IsDBNull(10) && r.GetInt32(10) != 0);
+                lastSeq = r.IsDBNull(12) ? 0 : r.GetInt64(12);
             }
             if (!r.IsDBNull(4)) needs.Add(new(r.GetString(4), r.GetString(2), r.GetString(5), !r.IsDBNull(11) && r.GetInt32(11) != 0));
         }
