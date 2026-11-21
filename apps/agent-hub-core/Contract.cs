@@ -7,7 +7,7 @@ public static class Protocol
     public const int Version = 1;
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     /// <summary>Reads can be repeated after a worker dies; anything else might have been applied already.</summary>
-    public static bool IsWrite(string op) => op is not ("identify" or "loadWorkspace" or "commandStatus" or "previewDispatch" or "previewInstruction" or "probeConnection");
+    public static bool IsWrite(string op) => op is not ("identify" or "loadWorkspace" or "commandStatus" or "previewDispatch" or "previewInstruction" or "probeConnection" or "readPlans" or "planStatus" or "planEstimate" or "planActuals" or "planHandoffs" or "readDocuments" or "readAnswers" or "openPassage" or "replayTimeline" or "replayState" or "runDiagnostics");
 }
 
 /// <summary>Typed failure. Recovery always names something the user can do.</summary>
@@ -46,11 +46,34 @@ public sealed record RevokeArgs(string Workspace, string CommandId, string Conse
 public sealed record PriceArgs(string Workspace, string CommandId, string ConnectionId, string ModelId, string Currency, double InputPerMTok, double OutputPerMTok, string Source, DateTime Effective);
 public sealed record FileArgs(string Workspace, string CommandId, string TaskId, string Name, string Content);
 public sealed record PreviewArgs(string Workspace, string TaskId, string Role, string? Instruction);
-public sealed record DispatchArgs(string Workspace, string CommandId, string TaskId, string Role, bool AcceptPriceRisk, bool AcceptRepeatCost);
+public sealed record DispatchArgs(string Workspace, string CommandId, string TaskId, string Role, bool AcceptPriceRisk, bool AcceptRepeatCost, string? Binding = null);
 public sealed record AttemptArgs(string Workspace, string CommandId, string AttemptId, bool AcceptRepeatCost);
 public sealed record SmokeArgs(string Workspace, string CommandId, string ConnectionId, string ModelId, string Prompt);
-public sealed record InstructionArgs(string Workspace, string CommandId, string TaskId, string[] Roles, string Text);
-public sealed record InstructionPreviewArgs(string Workspace, string TaskId, string[] Roles, string Text);
+public sealed record ImageArg(string Name, string Base64);
+public sealed record InstructionArgs(string Workspace, string CommandId, string TaskId, string[] Roles, string Text, Dictionary<string, string>? Bindings = null, ImageArg[]? Images = null, Dictionary<string, string>? ImageConfirms = null);
+public sealed record InstructionPreviewArgs(string Workspace, string TaskId, string[] Roles, string Text, ImageArg[]? Images = null, Dictionary<string, string>? ImageConfirms = null);
+public sealed record ReconcileArgs(string Workspace, string CommandId, string AttemptId, double Amount);
+public sealed record PlanProposeArgs(string Workspace, string CommandId, string ProjectId, string Brief, PlanTask[]? Tasks = null, PlanEdge[]? Edges = null);
+public sealed record PlanEditArgs(string Workspace, string CommandId, string PlanId, int Version, PlanTask[] Tasks, PlanEdge[] Edges);
+public sealed record PlanDecideArgs(string Workspace, string CommandId, string PlanId, int Version);
+public sealed record PlanArgs(string Workspace, string PlanId);
+public sealed record PlanStartArgs(string Workspace, string CommandId, string PlanId, Dictionary<string, string> Bindings);
+public sealed record ProjectArgs(string Workspace, string ProjectId, long After = 0);
+public sealed record DocAddArgs(string Workspace, string CommandId, string ProjectId, string Name, string Text);
+public sealed record DocImageArgs(string Workspace, string CommandId, string ProjectId, ImageArg Image);
+public sealed record DocEditArgs(string Workspace, string CommandId, string DocId, string Text);
+public sealed record DocIdArgs(string Workspace, string CommandId, string DocId);
+public sealed record AskArgs(string Workspace, string CommandId, string ProjectId, string Question, string Role);
+public sealed record PassageArgs(string Workspace, string DocId, int Revision, int Start, int Length);
+public sealed record ForgetResult(CommandResult Result, ForgetReport Report);
+public sealed record ResolveArgs(string Workspace, string CommandId, string AttemptId, string Choice, double? Amount);
+public sealed record LifecycleArgs(string Workspace, string Kind);
+public sealed record ShutdownArgs(string Workspace, string Policy, int MaxMs);
+public sealed record RunDiagArgs(string Workspace, string? AttemptId, bool IncludeContent, string? Target);
+public sealed record ReplayArgs(string Workspace, string ProjectId, long Seq);
+public sealed record PackageArgs(string Workspace, string Target);
+public sealed record RestoreArgs(string Package, string Target);
+public sealed record EraseResult(ErasureReport Report);
 public sealed record DiagnosticsArgs(string Workspace, string Target);
 public sealed record InstructionResult(CommandResult Instruction, IReadOnlyList<InstructionAttempt> Attempts);
 public sealed record InstructionAttempt(string Role, CommandResult? Attempt, string? Error);

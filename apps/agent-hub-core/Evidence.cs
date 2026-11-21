@@ -24,8 +24,7 @@ internal static class Reader
     {
         string path = ProjectStore.DatabaseIn(workspace);
         if (!File.Exists(path)) throw new StoreException("not_found", $"No workspace database at {path}.", "Open the workspace again.");
-        var db = ProjectStore.Connect(path, SqliteOpenMode.ReadOnly);
-        db.Open();
+        var db = ProjectStore.OpenRead(path);
         if (ProjectStore.ReadVersion(db) != ProjectStore.CurrentSchema)
         {
             db.Dispose();
@@ -39,15 +38,18 @@ internal static class Reader
         using var c = db.CreateCommand();
         c.CommandText = sql;
         foreach (var (k, v) in args) c.Parameters.AddWithValue(k, v ?? DBNull.Value);
-        using var r = c.ExecuteReader();
-        List<object?[]> rows = [];
-        while (r.Read())
+        return ProjectStore.ReadRetry(db, () =>
         {
-            var row = new object?[r.FieldCount];
-            for (int i = 0; i < row.Length; i++) row[i] = r.IsDBNull(i) ? null : r.GetValue(i);
-            rows.Add(row);
-        }
-        return rows;
+            using var r = c.ExecuteReader();
+            List<object?[]> rows = [];
+            while (r.Read())
+            {
+                var row = new object?[r.FieldCount];
+                for (int i = 0; i < row.Length; i++) row[i] = r.IsDBNull(i) ? null : r.GetValue(i);
+                rows.Add(row);
+            }
+            return rows;
+        });
     }
 
     public static string S(object? v) => v?.ToString() ?? "";
@@ -382,6 +384,8 @@ public static class Channel
             case "attempt_failed" or "attempt_interrupted" or "attempt_stopped" or "attempt_cancelled" or "attempt_paused" or "attempt_finished" when recordId != null && Reader.Rows(db, "SELECT role, requested_model, status, stop_reason, run_id FROM attempts WHERE id=$i", ("$i", recordId)).FirstOrDefault() is { } af:
                 return Make(Reader.S(af[4]), kind is "attempt_cancelled" or "attempt_paused" ? "human" : "agent", kind is "attempt_cancelled" or "attempt_paused" ? "You (workspace owner)" : $"{Reader.S(af[0])} · {Reader.S(af[1])}",
                     $"The {Reader.S(af[0])}'s attempt is {Reader.S(af[2]).Replace('_', ' ')}. {Reader.S(af[3])}", null, "work");
+            case "attempt_queued": return Make(null, "agent", "Scheduler", $"The attempt for “{title}” is waiting for a free project slot ({detail.Replace("queued: ", "")})", null, "work");
+            case "attempt_queue_dropped": return Make(null, "agent", "Scheduler", $"A queued attempt for “{title}” was dropped: {detail}", null, "work");
             case "instruction_sent" when recordId != null && Reader.Rows(db, "SELECT recipients, text FROM instructions WHERE id=$i", ("$i", recordId)).FirstOrDefault() is { } ins:
                 return Make(null, "human", "You (workspace owner)", $"To {string.Join(", ", JsonSerializer.Deserialize<string[]>(Reader.S(ins[0])) ?? [])}: {Reader.S(ins[1])}", null, "question");
             case "task_moved": return Plain($"“{title}” moved from {from.Replace('_', ' ')} to {to.Replace('_', ' ')}.");
