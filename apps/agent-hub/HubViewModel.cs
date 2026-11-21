@@ -112,6 +112,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
         InitEditing();
         InitReview();
         InitEvidence();
+        InitModels();
     }
 
     /// <summary>Creates a workspace and opens it. Returns an error message to show, or null on success; a failure leaves the current selection alone.</summary>
@@ -168,6 +169,8 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
             if (selectedTask == value) return;
             selectedTask = value;
             InvalidateHandoff();
+            ClearRunsForSelection();
+            _ = RefreshRunsAsync();
             Notify(); Notify(nameof(HasTask)); Notify(nameof(CanEdit));
             RaiseCommands();
             NotifyReview(); // the previous task's review must not stay on screen
@@ -214,7 +217,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
     private void Layout()
     {
         foreach (var name in new[] { nameof(ProjectsVisible), nameof(InspectorVisible), nameof(Narrow), nameof(Wide),
-                                     nameof(ListVisible), nameof(InspectorColumn), nameof(InspectorWidth), nameof(BoardVisible), nameof(InboxVisible), nameof(ChannelVisible) })
+                                     nameof(ListVisible), nameof(InspectorColumn), nameof(InspectorWidth), nameof(BoardVisible), nameof(InboxVisible), nameof(ChannelVisible), nameof(QuestionsVisible), nameof(ConnectionsVisible), nameof(TeamVisible) })
             Notify(name);
     }
 
@@ -245,6 +248,8 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
         workspaceName = workspace;
         await UpdateWriteOwnershipAsync(file, workspace);
         await LoadWorkspaceKeyAsync(file, workspace != null);
+        // Attempts left behind by a crash are sorted out once this window owns the workspace: unsent ones freed, sent ones kept for a check.
+        if (CanWrite) { try { await (await workspaces!.Client()).RecoverRunsAsync(file); } catch (WorkerException) { } }
         Notify(nameof(ModeLabel)); Notify(nameof(IsWorkspace)); Notify(nameof(CanEdit));
         SetSelection(null);
         // A refresh keeps the project list so a switch made mid-refresh still has projects to land on.
@@ -297,6 +302,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
             _ = LoadChannelAsync();
             _ = LoadInboxAsync(request);
             _ = LoadQuestionsAsync();
+            _ = LoadTeamAsync();
             StatusText = tasks.Count == 0 ? (workspaceName == null ? "No tasks in this project." : "No tasks in this workspace yet.")
                 : $"{tasks.Count} task{(tasks.Count == 1 ? "" : "s")}" + (workspaceName == null ? " · Read-only" : "");
         }
