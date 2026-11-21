@@ -25,7 +25,7 @@ public sealed partial class HubViewModel
         savedLayout = Layouts != null && workspaceKey != null ? Layouts.Load(workspaceKey) : null;
         projectsWidth = savedLayout?.ProjectsWidth ?? 240;
         inspectorSetting = savedLayout?.InspectorWidth ?? 280;
-        if (savedLayout?.View is { } view && view is "board" or "plan" or "inbox" or "channel" or "questions" or "team" or "connections") center = view;
+        if (savedLayout?.View is { } view && view is "board" or "plan" or "inbox" or "channel" or "questions" or "team" or "connections" or "docs" or "data") center = view;
         Layout(); // the restored view and widths reach the window
         Notify(nameof(ProjectsWidth));
         savedViews = savedLayout?.Views ?? [];
@@ -396,7 +396,7 @@ public sealed partial class HubViewModel
         OpenNodeBlockerCommand = new(p => (p as PlanNodeRow ?? SelectedNode)?.Node.Blockers.Count > 0, p =>
         {
             var row = p as PlanNodeRow ?? SelectedNode!;
-            if (Tasks.FirstOrDefault(t => t.Id == row.Node.TaskId) is { } source) { history.Add(source.Id); if (history.Count > MaxHistory) history.RemoveAt(0); }
+            if (Tasks.FirstOrDefault(t => t.Id == row.Node.TaskId) is { } source) { history.Add(source.Id); if (history.Count > MaxHistory) history.RemoveAt(0); PlaceCapture?.Invoke(source.Id); }
             if (Tasks.FirstOrDefault(t => t.Id == row.Node.Blockers[0].TaskId) is { } target) { arrivedViaBlocker = true; Select(target); }
             RaiseCommands();
             return Task.CompletedTask;
