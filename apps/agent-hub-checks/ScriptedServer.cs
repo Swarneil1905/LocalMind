@@ -10,7 +10,11 @@ internal sealed record ScriptedRequest(string Method, string Path, string Body, 
     public JsonNode? Json => Body.Length == 0 ? null : JsonNode.Parse(Body);
     public string Model => Json?["model"]?.GetValue<string>() ?? "";
     /// <summary>The last user message: the handoff packet the model received.</summary>
-    public string Packet => Json?["messages"]?.AsArray().LastOrDefault(m => m?["role"]?.GetValue<string>() == "user")?["content"]?.GetValue<string>() ?? "";
+    public string Packet => Json?["messages"]?.AsArray().LastOrDefault(m => m?["role"]?.GetValue<string>() == "user") is { } m
+        ? (m["content"] is JsonArray parts ? string.Concat(parts.Select(x => x?["text"]?.GetValue<string>())) : m["content"]?.GetValue<string>() ?? "") : "";
+    /// <summary>The raw image payloads on the last user message, as the recipient received them (base64 strings, Ollama or gateway shape).</summary>
+    public IReadOnlyList<string> Images => Json?["messages"]?.AsArray().LastOrDefault(m => m?["role"]?.GetValue<string>() == "user") is { } m
+        ? [.. (m["images"]?.AsArray().Select(x => x!.GetValue<string>()) ?? []), .. (m["content"] is JsonArray parts ? parts.Select(x => x?["image_url"]?["url"]?.GetValue<string>()).Where(u => u != null).Select(u => u![(u!.IndexOf(',') + 1)..]) : [])] : [];
 }
 
 /// <summary>What the endpoint sends back. Chunks are written one at a time with a delay; DropAfter closes the socket after that many chunks.</summary>
@@ -27,8 +31,10 @@ internal sealed class ScriptedServer : IDisposable
     private readonly CancellationTokenSource stop = new();
     public string Url { get; }
     public int Port { get; }
-    private int requests;
+    private int requests, active, peak;
     public int Requests => requests;
+    /// <summary>The most chat requests this endpoint ever had open at once.</summary>
+    public int Peak => peak;
     public ConcurrentQueue<ScriptedRequest> Seen { get; } = new();
     public Func<ScriptedRequest, ScriptedReply> Handle { get; set; } = _ => new(404, "{\"error\":\"not scripted\"}");
 
@@ -54,6 +60,7 @@ internal sealed class ScriptedServer : IDisposable
 
     private async Task Serve(TcpClient client)
     {
+        bool counted = false;
         using (client)
         {
             try
@@ -76,6 +83,7 @@ internal sealed class ScriptedServer : IDisposable
                 var request = new ScriptedRequest(first[0], first[1], Encoding.UTF8.GetString(body, 0, read), headers);
                 Interlocked.Increment(ref requests);
                 Seen.Enqueue(request);
+                if (request.Path is "/api/chat" or "/chat/completions") { counted = true; int now = Interlocked.Increment(ref active); int seen; while ((seen = peak) < now && Interlocked.CompareExchange(ref peak, now, seen) != seen) { } }
                 var reply = Handle(request);
                 var top = new StringBuilder($"HTTP/1.1 {reply.Status} {(reply.Status == 200 ? "OK" : "Scripted")}\r\nContent-Type: {reply.ContentType}\r\nConnection: close\r\n");
                 foreach (var (k, v) in reply.Headers ?? []) top.Append($"{k}: {v}\r\n");
@@ -92,6 +100,7 @@ internal sealed class ScriptedServer : IDisposable
                 }
             }
             catch (Exception e) when (e is IOException or SocketException or OperationCanceledException or ObjectDisposedException) { }
+            finally { if (counted) Interlocked.Decrement(ref active); }
         }
     }
 

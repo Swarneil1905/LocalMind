@@ -11,6 +11,22 @@ if (args is ["--stream", var sw, var st, var sc, var sd]) { await CheckpointH.St
 
 if (args is ["--day4-fixture", var d4, var d4url, var d4b, var d4r]) { Console.WriteLine($"Wrote {await CheckpointI.MakeDay4(Path.GetFullPath(d4), d4url, d4b, d4r)}"); return; }
 
+if (args is ["--only-j", var oj]) { await CheckpointJ.Run(Path.GetFullPath(oj)); return; }
+
+if (args is ["--day5-bench", var bf, var bu, var bb, var br, var bn]) { Console.WriteLine(await CheckpointL.Measure(Path.GetFullPath(bf), bu, bb, br, int.Parse(bn))); return; }
+
+if (args is ["--day5-fixture", var d5, var d5u, var d5b, var d5r, var d5p]) { Console.WriteLine($"Wrote {await CheckpointJ.MakeDay5(Path.GetFullPath(d5), d5u, d5b, d5r, d5p)}"); return; }
+
+if (args is ["--day6-fixture", var d6, var d6u, var d6b, var d6r, var d6p]) { Console.WriteLine($"Wrote {await CheckpointO.MakeDay6(Path.GetFullPath(d6), d6u, d6b, d6r, d6p)}"); return; }
+
+if (args is ["--only-o", var oo]) { await CheckpointO.Run(Path.GetFullPath(oo)); return; }
+
+if (args is ["--only-n", var on]) { await CheckpointN.Run(Path.GetFullPath(on)); return; }
+
+if (args is ["--only-l", var ol]) { await CheckpointL.Run(Path.GetFullPath(ol)); return; }
+
+if (args is ["--only-k", var ok]) { await CheckpointK.Run(Path.GetFullPath(ok)); return; }
+
 if (args is ["--only-i", var oi]) { await CheckpointI.Run(Path.GetFullPath(oi)); return; }
 
 if (args is ["--only-h", var oh]) { await CheckpointH.Run(Path.GetFullPath(oh)); return; }
@@ -108,6 +124,11 @@ try
     await CheckpointG.Run(Path.Combine(folder.FullName, "g"));
     await CheckpointH.Run(Path.Combine(folder.FullName, "h"));
     await CheckpointI.Run(Path.Combine(folder.FullName, "i"));
+    await CheckpointJ.Run(Path.Combine(folder.FullName, "j"));
+    await CheckpointK.Run(Path.Combine(folder.FullName, "k"));
+    await CheckpointL.Run(Path.Combine(folder.FullName, "l"));
+    await CheckpointN.Run(Path.Combine(folder.FullName, "n"));
+    await CheckpointO.Run(Path.Combine(folder.FullName, "o"));
 }
 finally
 {
