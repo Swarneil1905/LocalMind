@@ -19,7 +19,7 @@ public sealed record ModelCapabilities(bool? Text, bool? Streaming, bool? Tools,
 
 public sealed record DiscoveredModel(string Id, ModelCapabilities Capabilities);
 
-public sealed record ChatMessage(string Role, string Content, string? ToolCallId = null, IReadOnlyList<ToolCall>? ToolCalls = null);
+public sealed record ChatMessage(string Role, string Content, string? ToolCallId = null, IReadOnlyList<ToolCall>? ToolCalls = null, IReadOnlyList<ImageData>? Images = null);
 public sealed record ToolCall(string Id, string Name, string Arguments);
 
 /// <summary>One request. <see cref="OnlyProviders"/> pins a gateway to named providers with no fallback.</summary>
@@ -122,6 +122,7 @@ public sealed class OllamaClient(string endpoint) : IModelClient
         foreach (var m in request.Messages)
         {
             var o = new JsonObject { ["role"] = m.Role, ["content"] = m.Content };
+            if (m.Images is { Count: > 0 } pics) o["images"] = new JsonArray([.. pics.Select(i => (JsonNode)Convert.ToBase64String(i.Bytes))]);
             if (m.ToolCalls is { Count: > 0 } calls)
                 o["tool_calls"] = new JsonArray([.. calls.Select(c => (JsonNode)new JsonObject { ["function"] = new JsonObject { ["name"] = c.Name, ["arguments"] = JsonNode.Parse(c.Arguments) } })]);
             messages.Add(o);
@@ -231,6 +232,9 @@ public sealed class GatewayClient(string endpoint, Func<string?> key) : IModelCl
         foreach (var m in request.Messages)
         {
             var o = new JsonObject { ["role"] = m.Role, ["content"] = m.Content };
+            if (m.Images is { Count: > 0 } pics)
+                o["content"] = new JsonArray([(JsonNode)new JsonObject { ["type"] = "text", ["text"] = m.Content },
+                    .. pics.Select(i => (JsonNode)new JsonObject { ["type"] = "image_url", ["image_url"] = new JsonObject { ["url"] = $"data:{i.Mime};base64,{Convert.ToBase64String(i.Bytes)}" } })]);
             if (m.ToolCallId != null) o["tool_call_id"] = m.ToolCallId;
             if (m.ToolCalls is { Count: > 0 } calls)
                 o["tool_calls"] = new JsonArray([.. calls.Select(c => (JsonNode)new JsonObject { ["id"] = c.Id, ["type"] = "function", ["function"] = new JsonObject { ["name"] = c.Name, ["arguments"] = c.Arguments } })]);
