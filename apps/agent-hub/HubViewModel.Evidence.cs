@@ -48,7 +48,8 @@ public sealed partial class HubViewModel
     private void SetCenter(string mode)
     {
         center = mode;
-        foreach (var n in new[] { nameof(BoardVisible), nameof(InboxVisible), nameof(ChannelVisible), nameof(QuestionsVisible), nameof(ConnectionsVisible), nameof(TeamVisible) }) Notify(n);
+        foreach (var n in new[] { nameof(BoardVisible), nameof(InboxVisible), nameof(ChannelVisible), nameof(QuestionsVisible), nameof(ConnectionsVisible), nameof(TeamVisible), nameof(PlanVisible) }) Notify(n);
+        SaveLayout();
         RaiseCommands();
     }
 
@@ -246,6 +247,7 @@ public sealed partial class HubViewModel
         await LoadChannelAsync();
         await LoadInboxAsync(0);
         await LoadQuestionsAsync();
+        await RefreshPlanAsync(true);
     }
 }
 

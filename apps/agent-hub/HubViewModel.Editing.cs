@@ -58,10 +58,13 @@ public sealed partial class HubViewModel
 
     private void RefreshColumns()
     {
-        OpenTasks = Tasks.Where(t => ColumnOf(t.Status) == "Open").ToList();
-        ActiveTasks = Tasks.Where(t => ColumnOf(t.Status) == "In progress").ToList();
-        DoneTasks = Tasks.Where(t => ColumnOf(t.Status) == "Done").ToList();
-        CancelledTasks = Tasks.Where(t => ColumnOf(t.Status) == "Cancelled").ToList();
+        steady.Update([.. Tasks.Select(t => t.Id)]);
+        var shown = ShownTasks.ToList();
+        OpenTasks = shown.Where(t => ColumnOf(t.Status) == "Open").ToList();
+        ActiveTasks = shown.Where(t => ColumnOf(t.Status) == "In progress").ToList();
+        DoneTasks = shown.Where(t => ColumnOf(t.Status) == "Done").ToList();
+        CancelledTasks = shown.Where(t => ColumnOf(t.Status) == "Cancelled").ToList();
+        Notify(nameof(PendingNote)); Notify(nameof(HasPending)); Notify(nameof(FilterLine));
         foreach (var n in new[] { nameof(OpenTasks), nameof(ActiveTasks), nameof(DoneTasks), nameof(CancelledTasks),
                                   nameof(CancelledColumnWidth), nameof(OpenHeader), nameof(ActiveHeader), nameof(DoneHeader), nameof(CancelledHeader) })
             Notify(n);
