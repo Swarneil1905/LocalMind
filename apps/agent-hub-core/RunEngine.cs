@@ -289,15 +289,16 @@ public sealed class RunEngine(ICredentialVault vault, Func<string> newId)
         catch (OperationCanceledException) { return; } // the owner cancelled or paused; their command already recorded it
         catch (ModelException e)
         {
-            Finish(path, attemptId, e.BeforeGeneration ? "failed" : "interrupted", e.Message
-                + (e.BeforeGeneration ? " Nothing was generated, so nothing was charged." : " What arrived is kept; another request could cost again."),
-                e.Code, e.Partial.Length > 0 ? e.Partial : text.ToString(), messages, steps, toolCalls, null, null, reportedModel, reportedProvider, null, e.BeforeGeneration, a);
             if (e.Code == "model_unavailable")
             {
+                // Recorded first, so anyone who sees the failure also sees the model marked gone.
                 using var db = ProjectStore.Connect(path, SqliteOpenMode.ReadWrite);
                 db.Open();
                 Team.MarkUnavailable(db, a.ConnectionId, a.RequestedModel);
             }
+            Finish(path, attemptId, e.BeforeGeneration ? "failed" : "interrupted", e.Message
+                + (e.BeforeGeneration ? " Nothing was generated, so nothing was charged." : " What arrived is kept; another request could cost again."),
+                e.Code, e.Partial.Length > 0 ? e.Partial : text.ToString(), messages, steps, toolCalls, null, null, reportedModel, reportedProvider, null, e.BeforeGeneration, a);
             return;
         }
         catch (Exception e) when (e is VaultUnavailableException)

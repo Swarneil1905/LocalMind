@@ -157,12 +157,13 @@ public sealed class OllamaClient(string endpoint) : IModelClient
                     if (e?["done"]?.GetValue<bool>() == true) { inTok = e["prompt_eval_count"]?.GetValue<int>(); outTok = e["eval_count"]?.GetValue<int>(); done = true; break; }
                 }
             }
+            catch (Exception) when (ct.IsCancellationRequested) { throw new OperationCanceledException(ct); } // a stop or a time limit, not a dropped stream
             catch (Exception ex) when (ex is IOException or HttpRequestException || (ex is OperationCanceledException && !ct.IsCancellationRequested))
             {
                 throw new ModelException(text.Length == 0 ? "provider_error" : "dropped", "The stream dropped" + (text.Length == 0 ? " before any output." : " after output began."), false, null, text.ToString());
             }
             catch (JsonException) { throw new ModelException("protocol", "The model sent an unreadable stream.", false, null, text.ToString()); }
-            if (!done) throw new ModelException(text.Length == 0 ? "provider_error" : "dropped", "The stream ended before the model finished.", false, null, text.ToString());
+            if (!done) throw new ModelException(text.Length == 0 ? "provider_error" : "dropped", text.Length == 0 ? "The stream ended before any output." : "The stream dropped after output began.", false, null, text.ToString());
             return new(text.ToString(), calls, model, model == null ? null : "ollama", inTok, outTok, null);
         }
     }
@@ -293,12 +294,13 @@ public sealed class GatewayClient(string endpoint, Func<string?> key) : IModelCl
                     }
                 }
             }
+            catch (Exception) when (ct.IsCancellationRequested) { throw new OperationCanceledException(ct); } // a stop or a time limit, not a dropped stream
             catch (Exception ex) when (ex is IOException or HttpRequestException || (ex is OperationCanceledException && !ct.IsCancellationRequested))
             {
                 throw new ModelException(text.Length == 0 ? "provider_error" : "dropped", "The stream dropped" + (text.Length == 0 ? " before any output." : " after output began."), false, null, text.ToString());
             }
             catch (JsonException) { throw new ModelException("protocol", "The provider sent an unreadable stream.", false, null, text.ToString()); }
-            if (!finished) throw new ModelException(text.Length == 0 ? "provider_error" : "dropped", "The stream ended before the response finished.", false, null, text.ToString());
+            if (!finished) throw new ModelException(text.Length == 0 ? "provider_error" : "dropped", text.Length == 0 ? "The stream ended before any output." : "The stream dropped after output began.", false, null, text.ToString());
             return new(text.ToString(), [.. calls.OrderBy(c => c.Key).Select(c => new ToolCall(c.Value.Id, c.Value.Name, c.Value.Args.ToString()))], model, routed, inTok, outTok, cost);
         }
     }
