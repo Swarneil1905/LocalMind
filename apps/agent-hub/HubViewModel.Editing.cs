@@ -103,6 +103,8 @@ public sealed partial class HubViewModel
         catch (WorkerException e) { return e; }
     }
 
+    private (string Workspace, string CommandId)? lostMove;
+
     private async Task MoveAsync(string target)
     {
         var task = selectedTask!;
@@ -126,7 +128,7 @@ public sealed partial class HubViewModel
                 return;
             }
             var e = await Execute(() => workspaces!.MoveTaskAsync(ws, commandId, task.Id, target, task.Revision), ws);
-            if (e == null) return;
+            if (e == null) { lostMove = null; return; }
             switch (e.Error.Code)
             {
                 case "blocked":
@@ -136,6 +138,7 @@ public sealed partial class HubViewModel
                     ShowNotice($"{e.Message} “{task.Title}” stays in {column} until you reload.", "Reload board", RefreshCommand);
                     break;
                 case "outcome_unknown":
+                    lostMove = (ws, commandId); // a wake-up can ask the worker whether it was applied
                     ShowNotice(e.Message, "Try again", new(_ => true, _ => Attempt()));
                     break;
                 default:
