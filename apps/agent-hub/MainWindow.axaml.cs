@@ -70,7 +70,25 @@ public partial class MainWindow : Window
         Bind(MenuItemGo, hub.OpenMenuCommand, keys["Menu"]);
         hub.WindowRestoreRequested += ApplyPlacement;
         hub.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(HubViewModel.MenuOpen)) OnMenu(); };
-        Closing += (_, _) => SavePlacement();
+        Closing += (_, e) =>
+        {
+            SavePlacement();
+            if (closeApproved || !hub.HasActiveRuns) return;
+            e.Cancel = true;
+            _ = AskCloseAsync();
+        };
+        hub.PlaceCapture += CapturePlace;
+        hub.PlaceRestore += RestorePlace;
+        hub.ConfirmErase = async text =>
+        {
+            bool ok = false;
+            var dialog = new PromptDialog("Erase workspace", text, "", null, null, "Erase", (v, _) => { if (v.Trim() != "ERASE") return Task.FromResult<string?>("Type ERASE exactly."); ok = true; return Task.FromResult<string?>(null); });
+            await dialog.ShowDialog<bool>(this);
+            RestoreFocus();
+            return ok;
+        };
+        ComposerBox.AddHandler(DragDrop.DropEvent, OnComposerDrop);
+        ComposerBox.AddHandler(KeyDownEvent, OnComposerKey, RoutingStrategies.Tunnel);
         var placementTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
         placementTimer.Tick += (_, _) => { placementTimer.Stop(); SavePlacement(); };
         PositionChanged += (_, _) => { placementTimer.Stop(); placementTimer.Start(); };
@@ -169,6 +187,74 @@ public partial class MainWindow : Window
     }
 
     // Cards are rebuilt after every write, so focus goes back to the selected card once the new ones exist.
+    // --- Evidence in a message, recovery, closing ---------------------------------------------------------------------------
+    private bool closeApproved;
+    private readonly Dictionary<string, double[]> places = [];
+
+    private void RemoveAttachment(object? sender, RoutedEventArgs e) => hub.RemoveAttachmentCommand.Execute((sender as Control)?.DataContext);
+    private void InspectAttachment(object? sender, RoutedEventArgs e) => hub.InspectAttachmentCommand.Execute((sender as Control)?.DataContext);
+    private void ConfirmAttempt(object? sender, RoutedEventArgs e) => hub.ConfirmAttemptCommand.Execute((sender as Control)?.DataContext);
+    private void AbandonAttempt(object? sender, RoutedEventArgs e) => hub.AbandonAttemptCommand.Execute((sender as Control)?.DataContext);
+    private void RetryUncertain(object? sender, RoutedEventArgs e) => hub.RetryUncertainCommand.Execute((sender as Control)?.DataContext);
+    private void RecordCharge(object? sender, RoutedEventArgs e) => hub.RecordChargeCommand.Execute((sender as Control)?.DataContext);
+    private void OpenCitation(object? sender, RoutedEventArgs e) => hub.OpenCitationCommand.Execute((sender as Control)?.DataContext);
+    private void ReplayPrevious(object? sender, RoutedEventArgs e) => hub.ReplayStepCommand.Execute(-1);
+    private void ReplayNext(object? sender, RoutedEventArgs e) => hub.ReplayStepCommand.Execute(1);
+    private void ReplaySelected(object? sender, SelectionChangedEventArgs e) { if (ReplayList.SelectedIndex >= 0) hub.SeekReplay(ReplayList.SelectedIndex); }
+
+    private async void OnComposerDrop(object? sender, DragEventArgs e)
+    {
+        foreach (var item in e.DataTransfer.TryGetFiles() ?? [])
+            if (item.TryGetLocalPath() is { } path) await hub.AttachFileAsync(path);
+    }
+
+    /// <summary>Ctrl+V with an image on the clipboard attaches it; text pastes as usual, line breaks and all.</summary>
+    private async void OnComposerKey(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.V || e.KeyModifiers != KeyModifiers.Control || TopLevel.GetTopLevel(this)?.Clipboard is not { } clip) return;
+        using var bmp = await clip.TryGetBitmapAsync();
+        if (bmp == null) return;
+        e.Handled = true;
+        using var ms = new MemoryStream();
+#pragma warning disable CS0618 // the replacement overload takes encoder options this app has no use for; PNG is the default
+        bmp.Save(ms);
+#pragma warning restore CS0618
+        await hub.AttachImageAsync("pasted-image.png", ms.ToArray());
+    }
+
+    private ScrollViewer? ScrollOf(ListBox list) => list.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+    private void CapturePlace(string taskId) => places[taskId] = [.. columns.Select(l => ScrollOf(l)?.Offset.Y ?? 0)];
+    private void RestorePlace(string taskId)
+    {
+        if (!places.TryGetValue(taskId, out var offsets)) return;
+        // After the selection has scrolled its own card into view, put the board back exactly where it was.
+        Dispatcher.UIThread.Post(() => { for (int i = 0; i < columns.Length && i < offsets.Length; i++) if (ScrollOf(columns[i]) is { } sv) sv.Offset = new(sv.Offset.X, offsets[i]); }, DispatcherPriority.Background);
+    }
+
+    /// <summary>The close prompt: hide, let the runs finish and then exit, or stop them. Only shown when a run is in progress.</summary>
+    private async Task AskCloseAsync()
+    {
+        string? choice = null;
+        var dialog = new PromptDialog("Runs are in progress", "What should happen to them?", "", null, [.. HubViewModel.CloseChoices.Select(c => (c.Value, c.Label))], "Continue", (value, _) => { choice = value; return Task.FromResult<string?>(null); });
+        await dialog.ShowDialog<bool>(this);
+        if (choice == null) return; // the owner changed their mind: the window stays open
+        string action = await hub.ClosePolicyAsync(choice);
+        if (action == "close") { closeApproved = true; Close(); return; }
+        WindowState = WindowState.Minimized;
+        if (action != "finish") return;
+        int waited = 0;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        timer.Tick += async (_, _) =>
+        {
+            if (hub.HasActiveRuns && ++waited < 600) return;
+            timer.Stop();
+            if (hub.HasActiveRuns) await hub.ClosePolicyAsync("stop"); // bounded: after ten minutes the runs are stopped, not abandoned mid-request
+            closeApproved = true;
+            Close();
+        };
+        timer.Start();
+    }
+
     // --- Command menu, plan graph, saved views, window placement ---------------------------------------------------------
     private Control? menuReturn;
 

@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:vm="using:LocalMind.AgentHub" xmlns:c="using:LocalMind.AgentHub.Controls"
+        xmlns:vm="using:LocalMind.AgentHub" xmlns:c="using:LocalMind.AgentHub.Controls" xmlns:core="using:LocalMind.AgentHub.Core"
         x:Class="LocalMind.AgentHub.MainWindow" x:DataType="vm:HubViewModel"
         Title="LocalMind · Agent Hub" Width="1080" Height="670" MinWidth="680" MinHeight="430">
   <Window.Styles>
@@ -27,6 +27,9 @@
         <MenuItem x:Name="ConnectionsItem" Header="C_onnections" Command="{Binding ShowConnectionsCommand}"/>
         <MenuItem x:Name="TeamItem" Header="_Team and budget" Command="{Binding ShowTeamCommand}"/>
         <MenuItem x:Name="PlanItem" Header="Pla_n and graph" Command="{Binding ShowPlanCommand}"/>
+        <MenuItem Header="_Documents" Command="{Binding ShowDocsCommand}"/>
+        <MenuItem Header="_Backup, restore and diagnostics" Command="{Binding ShowDataCommand}"/>
+        <MenuItem Header="Replay _history" Command="{Binding EnterReplayCommand}"/>
         <Separator/>
         <MenuItem Header="Project list _wider" Command="{Binding WidenProjectsCommand}"/>
         <MenuItem Header="Project list n_arrower" Command="{Binding NarrowProjectsCommand}"/>
@@ -200,10 +203,36 @@
                 <ComboBoxItem Content="Planner"/>
                 <ComboBoxItem Content="Everyone"/>
               </ComboBox>
-              <TextBox Grid.Column="1" Text="{Binding InstructionText, Mode=TwoWay}" PlaceholderText="Instruction" AutomationProperties.Name="Instruction"/>
+              <TextBox x:Name="ComposerBox" Grid.Column="1" Text="{Binding InstructionText, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" MaxHeight="160" PlaceholderText="Message (Enter for a new line, Ctrl+Enter to send)" AutomationProperties.Name="Message" DragDrop.AllowDrop="True">
+                <TextBox.KeyBindings><KeyBinding Gesture="Ctrl+Enter" Command="{Binding SendInstructionCommand}"/></TextBox.KeyBindings>
+              </TextBox>
               <Button Grid.Column="2" Content="Preview" Command="{Binding PreviewInstructionCommand}"/>
               <Button Grid.Column="3" Content="Send" Command="{Binding SendInstructionCommand}"/>
             </Grid>
+            <TextBlock Text="{Binding ComposerRecipient}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" AutomationProperties.Name="Who receives this message"/>
+            <TextBlock Text="{Binding ComposerNote}" TextWrapping="Wrap" Foreground="{DynamicResource ErrorText}" AutomationProperties.LiveSetting="Polite"/>
+            <WrapPanel ItemSpacing="8" LineSpacing="4">
+              <Button Content="Attach image…" Command="{Binding AttachFileCommand}"/>
+              <TextBlock Text="Paste (Ctrl+V) or drop PNG, JPEG, GIF or WebP images." Foreground="{DynamicResource Muted}" VerticalAlignment="Center"/>
+            </WrapPanel>
+            <ItemsControl ItemsSource="{Binding Attachments}" AutomationProperties.Name="Pending attachments">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:AttachmentRow">
+                  <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6" Margin="0,2">
+                    <TextBlock VerticalAlignment="Center" TextWrapping="Wrap"><Run Text="{Binding Title}" FontWeight="SemiBold"/><Run Text="  "/><Run Text="{Binding Details}"/></TextBlock>
+                    <Button Grid.Column="1" Content="Inspect" Click="InspectAttachment" AutomationProperties.Name="{Binding Title, StringFormat='Inspect {0}'}"/>
+                    <Button Grid.Column="2" Content="Remove" Click="RemoveAttachment" AutomationProperties.Name="{Binding Title, StringFormat='Remove {0}'}"/>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Border IsVisible="{Binding HasImageInspect}" BorderBrush="{DynamicResource Line}" BorderThickness="1" Padding="8" CornerRadius="4">
+              <StackPanel Spacing="6">
+                <Image Source="{Binding InspectedBitmap}" MaxHeight="220" Stretch="Uniform" HorizontalAlignment="Left" AutomationProperties.Name="The exact image that would be sent"/>
+                <SelectableTextBlock Text="{Binding ImageInspectText}" TextWrapping="Wrap" AutomationProperties.Name="Image details and destinations"/>
+                <Button Content="Confirm these images for the destinations above" Command="{Binding ConfirmImagesCommand}" HorizontalAlignment="Left"/>
+              </StackPanel>
+            </Border>
             <TextBlock Text="{Binding InstructionPreview}" TextWrapping="Wrap" IsVisible="{Binding HasInstructionPreview}" AutomationProperties.Name="Who receives it"/>
           </StackPanel>
         </Border>
@@ -425,6 +454,104 @@
         </ScrollViewer>
       </Grid>
 
+
+      <Grid Grid.Column="1" Margin="{DynamicResource PanePadding}" MinWidth="{DynamicResource TaskMinWidth}" RowDefinitions="Auto,*" RowSpacing="10" IsVisible="{Binding DocsVisible}">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <TextBlock Text="{Binding ProjectHeading, StringFormat='Documents for {0}'}" FontSize="24" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+          <Button Command="{Binding ShowBoardCommand}" Content="Back to board" VerticalAlignment="Center"/>
+        </StackPanel>
+        <ScrollViewer Grid.Row="1">
+          <StackPanel Spacing="10">
+            <TextBlock Text="Only this project's documents are searched. Edit a document and new answers use the new revision; old citations still open the words they cited." TextWrapping="Wrap" Foreground="{DynamicResource Muted}"/>
+            <ListBox ItemsSource="{Binding DocRows}" SelectedItem="{Binding SelectedDoc, Mode=TwoWay}" AutomationProperties.Name="Project documents" MaxHeight="150">
+              <ListBox.ItemTemplate><DataTemplate x:DataType="core:DocumentInfo"><TextBlock Text="{Binding Label}"/></DataTemplate></ListBox.ItemTemplate>
+            </ListBox>
+            <WrapPanel ItemSpacing="8" LineSpacing="8">
+              <TextBox Text="{Binding NewDocName, Mode=TwoWay}" PlaceholderText="Document name" Width="200" AutomationProperties.Name="Document name"/>
+              <Button Content="Add document" Command="{Binding AddDocCommand}"/>
+              <Button Content="Save as new revision of the selected one" Command="{Binding EditDocCommand}"/>
+              <Button Content="Remove from sources" Command="{Binding RemoveDocCommand}"/>
+              <Button Content="Forget this source…" Command="{Binding ForgetDocCommand}"/>
+            </WrapPanel>
+            <TextBox Text="{Binding NewDocText, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="90" PlaceholderText="Document text" AutomationProperties.Name="Document text"/>
+            <TextBlock Text="{Binding ForgetReportText}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+            <WrapPanel ItemSpacing="8" LineSpacing="8">
+              <ComboBox SelectedIndex="{Binding AskRole, Mode=TwoWay}" AutomationProperties.Name="Ask which role" MinWidth="120">
+                <ComboBoxItem Content="Reviewer"/><ComboBoxItem Content="Builder"/><ComboBoxItem Content="Planner"/>
+              </ComboBox>
+              <TextBox Text="{Binding AskText, Mode=TwoWay}" PlaceholderText="Ask about the documents" Width="380" AutomationProperties.Name="Question about the documents"/>
+              <Button Content="Ask" Command="{Binding AskDocsCommand}"/>
+            </WrapPanel>
+            <ItemsControl ItemsSource="{Binding AnswerRows}" AutomationProperties.Name="Answers">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:AnswerRow">
+                  <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" Padding="0,8">
+                    <StackPanel Spacing="4">
+                      <TextBlock Text="{Binding Question}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                      <TextBlock Text="{Binding Answer}" TextWrapping="Wrap"/>
+                      <TextBlock Text="{Binding Basis}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap"/>
+                      <ItemsControl ItemsSource="{Binding Citations}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="core:Citation">
+                            <Button Click="OpenCitation" Margin="0,2,0,0" AutomationProperties.Name="{Binding N, StringFormat='Open citation {0}'}">
+                              <TextBlock TextWrapping="Wrap"><Run Text="["/><Run Text="{Binding N}"/><Run Text="] "/><Run Text="{Binding DocName}"/><Run Text=", revision "/><Run Text="{Binding Revision}"/><Run Text=" · "/><Run Text="{Binding State}"/></TextBlock>
+                            </Button>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <SelectableTextBlock Text="{Binding PassageText}" TextWrapping="Wrap" FontFamily="Consolas, Menlo, monospace" AutomationProperties.Name="Cited passage"/>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+
+      <Grid Grid.Column="1" Margin="{DynamicResource PanePadding}" MinWidth="{DynamicResource TaskMinWidth}" RowDefinitions="Auto,*" RowSpacing="10" IsVisible="{Binding DataVisible}">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <TextBlock Text="Backup, restore and diagnostics" FontSize="24" FontWeight="SemiBold"/>
+          <Button Command="{Binding ShowBoardCommand}" Content="Back to board" VerticalAlignment="Center"/>
+        </StackPanel>
+        <ScrollViewer Grid.Row="1">
+          <StackPanel Spacing="10">
+            <WrapPanel ItemSpacing="8" LineSpacing="8">
+              <Button Content="Export this workspace…" Command="{Binding ExportWorkspaceCommand}"/>
+              <Button Content="Restore an export…" Command="{Binding RestoreWorkspaceCommand}"/>
+              <Button Content="Erase this workspace…" Command="{Binding EraseWorkspaceCommand}"/>
+              <Button Content="Replay this project's history" Command="{Binding EnterReplayCommand}"/>
+            </WrapPanel>
+            <TextBlock Text="An export holds the database, the event log and stored outputs with a hash of each file. It never holds API keys; enter them again after restoring." TextWrapping="Wrap" Foreground="{DynamicResource Muted}"/>
+            <TextBlock Text="{Binding DataStatus}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+            <TextBlock Text="Run diagnostics" FontWeight="SemiBold"/>
+            <CheckBox IsChecked="{Binding DiagnosticsIncludeContent, Mode=TwoWay}" Content="Include project text (cleaned of keys, paths and headers). Off by default."/>
+            <WrapPanel ItemSpacing="8" LineSpacing="8">
+              <Button Content="Preview the report" Command="{Binding PreviewDiagnosticsCommand}"/>
+              <Button Content="Save it on this computer" Command="{Binding SaveDiagnosticsCommand}"/>
+            </WrapPanel>
+            <SelectableTextBlock Text="{Binding DiagnosticsPreview}" TextWrapping="Wrap" FontFamily="Consolas, Menlo, monospace" FontSize="11" AutomationProperties.Name="Diagnostic report preview"/>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+
+      <Grid Grid.Column="1" Margin="{DynamicResource PanePadding}" MinWidth="{DynamicResource TaskMinWidth}" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="10" IsVisible="{Binding ReplayVisible}">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <TextBlock Text="Replay (read-only)" FontSize="24" FontWeight="SemiBold"/>
+          <Button Content="Leave replay" Command="{Binding LeaveReplayCommand}" VerticalAlignment="Center"/>
+        </StackPanel>
+        <WrapPanel Grid.Row="1" ItemSpacing="8">
+          <Button Content="Previous event" Click="ReplayPrevious"/>
+          <Button Content="Next event" Click="ReplayNext"/>
+          <TextBlock Text="Nothing here writes or calls a model." Foreground="{DynamicResource Muted}" VerticalAlignment="Center"/>
+        </WrapPanel>
+        <StackPanel Grid.Row="2" Spacing="4">
+          <TextBlock Text="{Binding ReplayHeading}" FontWeight="SemiBold" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+          <ItemsControl ItemsSource="{Binding ReplayLines}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="x:String"><TextBlock Text="{Binding}" TextWrapping="Wrap"/></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+        </StackPanel>
+        <ListBox x:Name="ReplayList" Grid.Row="3" ItemsSource="{Binding ReplayRows}" SelectedIndex="{Binding ReplayPosition, Mode=OneWay}" SelectionChanged="ReplaySelected" AutomationProperties.Name="Timeline of events"/>
+      </Grid>
+
       <!-- Beside the list when there is room; replaces the list on narrow windows. -->
       <Border Grid.Column="{Binding InspectorColumn}" Width="{Binding InspectorWidth}" Background="{DynamicResource Pane}"
               BorderBrush="{DynamicResource Line}" BorderThickness="1,0,0,0" Padding="{DynamicResource PanePadding}"
@@ -568,6 +695,7 @@
                   </WrapPanel>
                 </StackPanel>
               </Border>
+              <TextBox Text="{Binding ReceiptText, Mode=TwoWay}" PlaceholderText="Amount on the provider's receipt (for an uncertain or unreported charge)" AutomationProperties.Name="Receipt amount"/>
               <ItemsControl ItemsSource="{Binding AttemptRows}" AutomationProperties.Name="Runs">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:AttemptRow">
@@ -584,6 +712,15 @@
                         <Expander Header="What it answered" IsVisible="{Binding HasText}">
                           <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
                         </Expander>
+                        <TextBlock Text="{Binding Intended}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" IsVisible="{Binding Uncertain}"/>
+                        <TextBlock Text="{Binding Receipt}" TextWrapping="Wrap" IsVisible="{Binding Uncertain}"/>
+                        <TextBlock Text="{Binding Decision}" TextWrapping="Wrap"/>
+                        <WrapPanel IsVisible="{Binding Uncertain}">
+                          <Button Margin="0,0,6,6" Content="Confirm with the receipt" Click="ConfirmAttempt" IsVisible="{Binding CanResolve}"/>
+                          <Button Margin="0,0,6,6" Content="Abandon: nothing was confirmed" Click="AbandonAttempt" IsVisible="{Binding CanAbandon}"/>
+                          <Button Margin="0,0,6,6" Content="Retry anyway (may cost again)" Click="RetryUncertain" IsVisible="{Binding CanAbandon}"/>
+                          <Button Margin="0,0,6,6" Content="Record the charge" Click="RecordCharge" IsVisible="{Binding CanRecordCharge}"/>
+                        </WrapPanel>
                         <WrapPanel>
                           <Button Margin="0,0,6,6" Content="Pause" Click="PauseAttempt" IsVisible="{Binding Active}"/>
                           <Button Margin="0,0,6,6" Content="Cancel" Click="CancelAttempt" IsVisible="{Binding Active}"/>
