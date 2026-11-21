@@ -73,7 +73,7 @@ public sealed partial class HubViewModel
     public string ChangeSummary => Review is not { HasOutput: true } ? "" : Review.PreviousOutputId == null ? "This is the first revision, so there is nothing to compare it with." : evidence?.Diff?.Summary ?? "";
     public IReadOnlyList<string> ChangeLines => evidence?.Diff is { } d ? [.. d.Lines.Select(l => $"{l.Op} {l.Text}")] : [];
     public string ChecksText => evidence == null ? "" : evidence.Checks.Count == 0
-        ? "No checks were run for this revision. Fixture agents do not run any, so nothing here says it works."
+        ? "No checks were run for this revision. Neither the fixtures nor the models run any here, so nothing on this screen says it works."
         : "Checks: " + string.Join("; ", evidence.Checks.Select(c => $"{c.Name} {c.Status.Replace('_', ' ')}" + (c.Detail != null ? $" ({c.Detail})" : "")));
     public string EffectText => evidence is { Effects.Count: > 0 } e && Review is { HasOutput: true, Decided: false } r ? $"If you accept revision {r.Revision}: " + string.Join(" ", e.Effects) : "";
     public string OutputNote => evidence?.View is { } v && (!v.Verified || v.Kind != "text") ? v.Note : "";
@@ -213,7 +213,7 @@ public sealed partial class HubViewModel
         string? file = path;
         // Same task as the one already shown: keep the revision the user is looking at. A new task, or a deliberate move, shows the latest.
         int? keep = task != null && openAt is { } want && want.Task == task.Id ? want.Revision
-            : task != null && reviewFor == task.Id && !releasePlace ? review?.Revision : null;
+            : task != null && reviewFor == task.Id && !releasePlace && review is { HasOutput: true } held ? held.Revision : null; // nothing to hold on to until a revision exists
         releasePlace = false;
         (string, int)? pol = null;
         ReviewInfo? info = null;
@@ -247,7 +247,7 @@ public sealed partial class HubViewModel
         if (openAt is { } landed && landed.Task == task?.Id) openAt = null;
         packetLine = found?.Packet is { Recorded: true } rp
             ? $"Written from a packet for project {Projects.FirstOrDefault(p => p.Id == rp.ProjectId)?.Name ?? rp.ProjectId}: about {rp.Tokens} of {rp.Limit} tokens"
-              + (rp.Sources.Count > 0 ? "; sources " + string.Join(", ", rp.Sources.Select(x => $"output {x.Id[..Math.Min(8, x.Id.Length)]} revision {x.Revision}")) : "; no upstream sources") + "."
+              + (rp.Sources.Count > 0 ? "; it cited " + string.Join(", ", rp.Sources.Select(x => $"{x.Id[..Math.Min(8, x.Id.Length)]} (revision {x.Revision})")) : "; no upstream outputs or feedback") + "."
             : "";
         outputImage = null;
         RefreshDraft();
