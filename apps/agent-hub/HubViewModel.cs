@@ -113,6 +113,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
         InitReview();
         InitEvidence();
         InitModels();
+        InitDay5();
     }
 
     /// <summary>Creates a workspace and opens it. Returns an error message to show, or null on success; a failure leaves the current selection alone.</summary>
@@ -202,7 +203,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
     public bool Wide => !narrow;
     public bool ListVisible => !(showInspector && narrow);
     public int InspectorColumn => narrow ? 1 : 2;
-    public double InspectorWidth => narrow ? double.NaN : 280;
+    public double InspectorWidth => narrow ? double.NaN : inspectorSetting;
 
     /// <summary>At narrow widths the inspector replaces the task list, so it starts closed and returns when the window widens.</summary>
     public void SetWidth(double width)
@@ -217,7 +218,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
     private void Layout()
     {
         foreach (var name in new[] { nameof(ProjectsVisible), nameof(InspectorVisible), nameof(Narrow), nameof(Wide),
-                                     nameof(ListVisible), nameof(InspectorColumn), nameof(InspectorWidth), nameof(BoardVisible), nameof(InboxVisible), nameof(ChannelVisible), nameof(QuestionsVisible), nameof(ConnectionsVisible), nameof(TeamVisible) })
+                                     nameof(ListVisible), nameof(InspectorColumn), nameof(InspectorWidth), nameof(BoardVisible), nameof(InboxVisible), nameof(ChannelVisible), nameof(QuestionsVisible), nameof(ConnectionsVisible), nameof(TeamVisible), nameof(PlanVisible) })
             Notify(name);
     }
 
@@ -227,6 +228,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
         InvalidateHandoff();
         Tasks = [];
         selectedTask = null;
+        ClearPlan();
         history.Clear();
         RefreshColumns();
         Notify(nameof(SelectedProject)); Notify(nameof(ProjectHeading)); Notify(nameof(Tasks));
@@ -248,6 +250,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
         workspaceName = workspace;
         await UpdateWriteOwnershipAsync(file, workspace);
         await LoadWorkspaceKeyAsync(file, workspace != null);
+        LoadLayout();
         // Attempts left behind by a crash are sorted out once this window owns the workspace: unsent ones freed, sent ones kept for a check.
         if (CanWrite) { try { await (await workspaces!.Client()).RecoverRunsAsync(file); } catch (WorkerException) { } }
         Notify(nameof(ModeLabel)); Notify(nameof(IsWorkspace)); Notify(nameof(CanEdit));
@@ -261,7 +264,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
             if (version != request) return;
             Projects = projects;
             Notify(nameof(Projects));
-            var first = projects.Find(p => p.Id == preferred) ?? projects.FirstOrDefault();
+            var first = projects.Find(p => p.Id == (preferred ?? savedLayout?.ProjectId)) ?? projects.FirstOrDefault();
             SetSelection(first);
             bool same = first != null && first.Id == preferred;
             await LoadTasksAsync(first, request, same ? keepTask : null, same ? keepHistory : []);
@@ -299,6 +302,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
             SelectedTask = tasks.FirstOrDefault(t => t.Id == (nextSelectId ?? restoreTask));
             nextSelectId = null;
             RaiseCommands();
+            _ = RefreshPlanAsync(false);
             _ = LoadChannelAsync();
             _ = LoadInboxAsync(request);
             _ = LoadQuestionsAsync();
