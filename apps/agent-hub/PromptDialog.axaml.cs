@@ -40,6 +40,9 @@ public partial class PromptDialog : Window
         Opened += (_, _) => (choices != null ? Choices : (Control)Field1).Focus();
     }
 
+    /// <summary>Hides what is typed in the first field: for a key that must not be shown.</summary>
+    public void MaskFirstField() { Field1.PasswordChar = '•'; Field1.MaxLength = 512; }
+
     /// <summary>Raised as the first field changes, so the caller can keep an unsent draft.</summary>
     public event Action<string>? FirstChanged;
 

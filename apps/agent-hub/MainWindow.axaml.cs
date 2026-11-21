@@ -29,10 +29,11 @@ public partial class MainWindow : Window
         Closed += async (_, _) => { hub.StopPolling(); await hub.ReleaseWriteLockAsync(); if (worker != null) await worker.DisposeAsync(); };
         DataContext = hub;
         // Another window may be writing: look for new events every couple of seconds, without any action from the user.
-        hub.StartPolling(TimeSpan.FromSeconds(2));
+        hub.StartPolling(TimeSpan.FromSeconds(1));
         hub.Drafts = new DraftStore(DraftStore.DefaultFolder);
         hub.Clipboard = text => TopLevel.GetTopLevel(this)?.Clipboard?.SetTextAsync(text) ?? Task.CompletedTask;
         WireChannel();
+        hub.PreviewShown += () => Dispatcher.UIThread.Post(() => { SendPreviewButton.BringIntoView(); SendPreviewButton.Focus(); }, DispatcherPriority.Loaded);
         var keys = Shortcuts.For(OperatingSystem.IsMacOS());
         Bind(NewItem, hub.NewWorkspaceCommand, keys["New"]);
         Bind(OpenWorkspaceItem, hub.OpenWorkspaceCommand, keys["OpenWorkspace"]);
@@ -62,6 +63,17 @@ public partial class MainWindow : Window
         Bind(InboxItem, hub.ShowInboxCommand, keys["ShowInbox"]);
         Bind(ChannelItem, hub.ShowChannelCommand, keys["ShowChannel"]);
         Bind(QuestionsItem, hub.ShowQuestionsCommand, keys["ShowQuestions"]);
+        ConnectionsItem.InputGesture = null;
+        TeamItem.InputGesture = null;
+        hub.AskForKey = async prompt =>
+        {
+            string? key = null;
+            var dialog = new PromptDialog("Enter an API key", prompt, "", null, null, "Store key", (value, _) => { key = value; return Task.FromResult<string?>(null); });
+            dialog.MaskFirstField();
+            await dialog.ShowDialog<bool>(this);
+            RestoreFocus();
+            return key;
+        };
         hub.TaskRevealed += Reveal;
         columns = [OpenList, ActiveList, DoneList, CancelledList];
         foreach (var list in columns)
@@ -153,6 +165,15 @@ public partial class MainWindow : Window
 
     private void GoToBlocker(object? sender, RoutedEventArgs args) =>
         hub.GoToBlockerCommand.Execute((args.Source as Control)?.DataContext);
+
+    private void ProbeConnection(object? sender, RoutedEventArgs args) => hub.ProbeCommand.Execute((sender as Button)?.DataContext);
+    private void EnterKey(object? sender, RoutedEventArgs args) => hub.EnterKeyCommand.Execute((sender as Button)?.DataContext);
+    private void DeleteKey(object? sender, RoutedEventArgs args) => hub.DeleteKeyCommand.Execute((sender as Button)?.DataContext);
+    private void RemoveConnection(object? sender, RoutedEventArgs args) => hub.RemoveConnectionCommand.Execute((sender as Button)?.DataContext);
+    private void PauseAttempt(object? sender, RoutedEventArgs args) => hub.PauseAttemptCommand.Execute((sender as Button)?.DataContext);
+    private void CancelAttempt(object? sender, RoutedEventArgs args) => hub.CancelAttemptCommand.Execute((sender as Button)?.DataContext);
+    private void ResumeAttempt(object? sender, RoutedEventArgs args) => hub.ResumeAttemptCommand.Execute((sender as Button)?.DataContext);
+    private void RetryAttempt(object? sender, RoutedEventArgs args) => hub.RetryWithCostCommand.Execute((sender as Button)?.DataContext);
 
     private void SendReply(object? sender, RoutedEventArgs args) => hub.ReplyQuestionCommand.Execute((sender as Button)?.DataContext);
 
