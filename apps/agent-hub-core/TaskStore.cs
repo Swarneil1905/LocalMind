@@ -57,7 +57,7 @@ public static class TaskStore
             long seq;
             using (var c = db.CreateCommand())
             {
-                c.CommandText = "INSERT INTO events(command_id,task_id,kind,from_state,to_state,detail,created_at) VALUES($c,$t,$k,$f,$to,$d,$at); SELECT last_insert_rowid()";
+                c.CommandText = "INSERT INTO events(command_id,task_id,kind,from_state,to_state,detail,created_at,event_schema) VALUES($c,$t,$k,$f,$to,$d,$at,2); SELECT last_insert_rowid()";
                 c.Parameters.AddWithValue("$c", commandId);
                 c.Parameters.AddWithValue("$t", o.TaskId);
                 c.Parameters.AddWithValue("$k", kind);
@@ -85,12 +85,21 @@ public static class TaskStore
         c.ExecuteNonQuery();
     }
 
+    /// <summary>Runs one statement and says how many rows it changed.</summary>
+    internal static int Exec2(SqliteConnection db, string sql, params (string, object?)[] args)
+    {
+        using var c = db.CreateCommand();
+        c.CommandText = sql;
+        foreach (var (k, v) in args) c.Parameters.AddWithValue(k, v ?? DBNull.Value);
+        return c.ExecuteNonQuery();
+    }
+
     internal static T? Scalar<T>(SqliteConnection db, string sql, params (string, object?)[] args)
     {
         using var c = db.CreateCommand();
         c.CommandText = sql;
         foreach (var (k, v) in args) c.Parameters.AddWithValue(k, v ?? DBNull.Value);
-        return c.ExecuteScalar() is { } v2 and not DBNull ? (T)Convert.ChangeType(v2, Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T)) : default;
+        return ProjectStore.ReadRetry(db, () => c.ExecuteScalar()) is { } v2 and not DBNull ? (T)Convert.ChangeType(v2, Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T)) : default;
     }
 
     internal sealed record Row(string Id, string ProjectId, string Title, string Status, int Revision, string? Outcome, bool ReviewRequired);
@@ -133,8 +142,7 @@ public static class TaskStore
     {
         string path = ProjectStore.DatabaseIn(workspace);
         if (!File.Exists(path)) throw new StoreException("not_found", $"No workspace database at {path}.", "Open the workspace again.");
-        using var db = ProjectStore.Connect(path, SqliteOpenMode.ReadOnly);
-        db.Open();
+        using var db = ProjectStore.OpenRead(path);
         using var c = db.CreateCommand();
         c.CommandText = "SELECT seq, detail FROM events WHERE command_id=$c";
         c.Parameters.AddWithValue("$c", commandId);
@@ -151,7 +159,7 @@ public static class TaskStore
             string id = newId();
             Exec(db, "INSERT INTO tasks(id,project_id,title,status,created_at,revision,outcome,owner) VALUES($i,$p,$t,'open',$at,0,$o,NULL)",
                 ("$i", id), ("$p", projectId), ("$t", title), ("$at", DateTime.UtcNow.ToString("O")), ("$o", string.IsNullOrWhiteSpace(outcome) ? null : outcome.Trim()));
-            return new(id, 0, id, null, "open", null);
+            return new(id, 0, id, null, "open", "title=" + title);
         });
 
     /// <summary>Null leaves a field alone; an empty string clears an outcome or owner.</summary>
@@ -165,7 +173,7 @@ public static class TaskStore
             if (owner is not null) sets.Add(("$owner", string.IsNullOrWhiteSpace(owner) ? null : owner.Trim()));
             if (reviewRequired is { } rr) sets.Add(("$review_required", rr ? 1 : 0));
             Bump(db, taskId, [.. sets]);
-            return new(taskId, t.Revision + 1, taskId, null, null, null);
+            return new(taskId, t.Revision + 1, taskId, null, null, title is not null ? "title=" + CleanTitle(title) : null);
         });
 
     public static CommandResult AddDependency(string workspace, string commandId, string taskId, string requiresId, int expectedRevision) =>

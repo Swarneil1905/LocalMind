@@ -108,18 +108,48 @@ public sealed class WorkerHost(string profileId, string token, Func<string> newI
                 "setPrice" => Write(Arg<PriceArgs>(request).Workspace, () => { var a = Arg<PriceArgs>(request); return Team.SetPrice(a.Workspace, a.CommandId, a.ConnectionId, a.ModelId, a.Currency, a.InputPerMTok, a.OutputPerMTok, a.Source, a.Effective, newId); }),
                 "addTaskFile" => Write(Arg<FileArgs>(request).Workspace, () => { var a = Arg<FileArgs>(request); return Team.AddTaskFile(a.Workspace, a.CommandId, a.TaskId, a.Name, a.Content); }),
                 "previewDispatch" => Engine.Preview(Arg<PreviewArgs>(request).Workspace, Arg<PreviewArgs>(request).TaskId, Arg<PreviewArgs>(request).Role, Arg<PreviewArgs>(request).Instruction),
-                "dispatch" => Write(Arg<DispatchArgs>(request).Workspace, () => { var a = Arg<DispatchArgs>(request); return Engine.Dispatch(a.Workspace, a.CommandId, a.TaskId, a.Role, new(a.AcceptPriceRisk, a.AcceptRepeatCost)); }),
+                "dispatch" => Write(Arg<DispatchArgs>(request).Workspace, () => { var a = Arg<DispatchArgs>(request); return Engine.Dispatch(a.Workspace, a.CommandId, a.TaskId, a.Role, new(a.AcceptPriceRisk, a.AcceptRepeatCost, Binding: a.Binding ?? throw NoPreview())); }),
+                "reconcileAttempt" => Write(Arg<ReconcileArgs>(request).Workspace, () => { var a = Arg<ReconcileArgs>(request); return Engine.Reconcile(a.Workspace, a.CommandId, a.AttemptId, a.Amount); }),
                 "cancelAttempt" => Write(Arg<AttemptArgs>(request).Workspace, () => { var a = Arg<AttemptArgs>(request); return Engine.Cancel(a.Workspace, a.CommandId, a.AttemptId); }),
                 "pauseAttempt" => Write(Arg<AttemptArgs>(request).Workspace, () => { var a = Arg<AttemptArgs>(request); return Engine.Pause(a.Workspace, a.CommandId, a.AttemptId); }),
                 "resumeAttempt" => Write(Arg<AttemptArgs>(request).Workspace, () => { var a = Arg<AttemptArgs>(request); return Engine.Resume(a.Workspace, a.CommandId, a.AttemptId, a.AcceptRepeatCost); }),
                 "smokeTest" => Write(Arg<SmokeArgs>(request).Workspace, () => { var a = Arg<SmokeArgs>(request); return Engine.SmokeTest(a.Workspace, a.CommandId, a.ConnectionId, a.ModelId, a.Prompt); }),
-                "previewInstruction" => Engine.PreviewInstruction(Arg<InstructionPreviewArgs>(request).Workspace, Arg<InstructionPreviewArgs>(request).TaskId, Arg<InstructionPreviewArgs>(request).Roles, Arg<InstructionPreviewArgs>(request).Text),
+                "previewInstruction" => Engine.PreviewInstruction(Arg<InstructionPreviewArgs>(request).Workspace, Arg<InstructionPreviewArgs>(request).TaskId, Arg<InstructionPreviewArgs>(request).Roles, Arg<InstructionPreviewArgs>(request).Text, ReadImages(Arg<InstructionPreviewArgs>(request).Images), Arg<InstructionPreviewArgs>(request).ImageConfirms),
                 "sendInstruction" => Write(Arg<InstructionArgs>(request).Workspace, () =>
                 {
                     var a = Arg<InstructionArgs>(request);
-                    var (ins, attempts) = Engine.SendInstruction(a.Workspace, a.CommandId, a.TaskId, a.Roles, a.Text);
+                    var (ins, attempts) = Engine.SendInstruction(a.Workspace, a.CommandId, a.TaskId, a.Roles, a.Text, a.Bindings ?? throw NoPreview(), ReadImages(a.Images), a.ImageConfirms);
                     return new InstructionResult(ins, [.. attempts.Select(x => new InstructionAttempt(x.Role, x.Attempt, x.Error))]);
                 }),
+                "proposePlan" => Write(Arg<PlanProposeArgs>(request).Workspace, () => { var a = Arg<PlanProposeArgs>(request); return Engine.ProposePlan(a.Workspace, a.CommandId, a.ProjectId, a.Brief, a.Tasks, a.Edges); }),
+                "editPlan" => Write(Arg<PlanEditArgs>(request).Workspace, () => { var a = Arg<PlanEditArgs>(request); return Plans.Edit(a.Workspace, a.CommandId, a.PlanId, a.Version, a.Tasks, a.Edges); }),
+                "approvePlan" => Write(Arg<PlanDecideArgs>(request).Workspace, () => { var a = Arg<PlanDecideArgs>(request); return Plans.Approve(a.Workspace, a.CommandId, a.PlanId, a.Version, newId); }),
+                "dismissPlan" => Write(Arg<PlanDecideArgs>(request).Workspace, () => { var a = Arg<PlanDecideArgs>(request); return Plans.Dismiss(a.Workspace, a.CommandId, a.PlanId, a.Version); }),
+                "startPlan" => Write(Arg<PlanStartArgs>(request).Workspace, () => { var a = Arg<PlanStartArgs>(request); return Engine.StartPlan(a.Workspace, a.CommandId, a.PlanId, a.Bindings); }),
+                "readPlans" => Plans.ForProject(Arg<ProjectArgs>(request).Workspace, Arg<ProjectArgs>(request).ProjectId),
+                "planStatus" => Plans.Status(Arg<PlanArgs>(request).Workspace, Arg<PlanArgs>(request).PlanId),
+                "planEstimate" => Engine.Estimate(Arg<PlanArgs>(request).Workspace, Arg<PlanArgs>(request).PlanId),
+                "planActuals" => Plans.Actuals(Arg<PlanArgs>(request).Workspace, Arg<PlanArgs>(request).PlanId),
+                "planHandoffs" => Plans.Handoffs(Arg<ProjectArgs>(request).Workspace, Arg<ProjectArgs>(request).ProjectId, Arg<ProjectArgs>(request).After),
+                "addDocument" => Write(Arg<DocAddArgs>(request).Workspace, () => { var a = Arg<DocAddArgs>(request); return Documents.Add(a.Workspace, a.CommandId, a.ProjectId, a.Name, a.Text, newId); }),
+                "addDocumentImage" => Write(Arg<DocImageArgs>(request).Workspace, () => { var a = Arg<DocImageArgs>(request); return Documents.AddImage(a.Workspace, a.CommandId, a.ProjectId, ReadImages([a.Image])[0], newId); }),
+                "editDocument" => Write(Arg<DocEditArgs>(request).Workspace, () => { var a = Arg<DocEditArgs>(request); return Documents.Edit(a.Workspace, a.CommandId, a.DocId, a.Text); }),
+                "removeDocument" => Write(Arg<DocIdArgs>(request).Workspace, () => { var a = Arg<DocIdArgs>(request); return Documents.Remove(a.Workspace, a.CommandId, a.DocId); }),
+                "forgetSource" => Write(Arg<DocIdArgs>(request).Workspace, () => { var a = Arg<DocIdArgs>(request); var (r, rep) = Documents.Forget(a.Workspace, a.CommandId, a.DocId); return new ForgetResult(r, rep); }),
+                "askDocuments" => Write(Arg<AskArgs>(request).Workspace, () => { var a = Arg<AskArgs>(request); return Engine.AskDocuments(a.Workspace, a.CommandId, a.ProjectId, a.Question, a.Role); }),
+                "readDocuments" => Documents.List(Arg<ProjectArgs>(request).Workspace, Arg<ProjectArgs>(request).ProjectId),
+                "readAnswers" => Documents.Answers(Arg<ProjectArgs>(request).Workspace, Arg<ProjectArgs>(request).ProjectId),
+                "openPassage" => Documents.Open(Arg<PassageArgs>(request).Workspace, Arg<PassageArgs>(request).DocId, Arg<PassageArgs>(request).Revision, Arg<PassageArgs>(request).Start, Arg<PassageArgs>(request).Length),
+                "resolveAttempt" => Write(Arg<ResolveArgs>(request).Workspace, () => { var a = Arg<ResolveArgs>(request); return Engine.ResolveAttempt(a.Workspace, a.CommandId, a.AttemptId, a.Choice, a.Amount); }),
+                "lifecycle" => Write(Arg<LifecycleArgs>(request).Workspace, () => { var a = Arg<LifecycleArgs>(request); return a.Kind == "sleep" ? new WakeReport(Engine.OnSleep(a.Workspace), []) : Engine.OnWake(a.Workspace); }),
+                "shutdown" => Write(Arg<ShutdownArgs>(request).Workspace, () => { var a = Arg<ShutdownArgs>(request); return Engine.Shutdown(a.Workspace, a.Policy, a.MaxMs); }),
+                "replayTimeline" => Replay.Timeline(Arg<ReplayArgs>(request).Workspace, Arg<ReplayArgs>(request).ProjectId),
+                "replayState" => Replay.StateAt(Arg<ReplayArgs>(request).Workspace, Arg<ReplayArgs>(request).ProjectId, Arg<ReplayArgs>(request).Seq),
+                "runDiagnostics" => RunDiagnostics.ToText(RunDiagnostics.Build(Arg<RunDiagArgs>(request).Workspace, Arg<RunDiagArgs>(request).AttemptId, Arg<RunDiagArgs>(request).IncludeContent)),
+                "exportRunDiagnostics" => new { path = RunDiagnostics.Export(Arg<RunDiagArgs>(request).Workspace, Arg<RunDiagArgs>(request).AttemptId, Arg<RunDiagArgs>(request).IncludeContent, Arg<RunDiagArgs>(request).Target ?? throw Bad()) },
+                "exportWorkspace" => Portability.Export(Arg<PackageArgs>(request).Workspace, Arg<PackageArgs>(request).Target),
+                "restoreWorkspace" => Portability.Restore(Arg<RestoreArgs>(request).Package, Arg<RestoreArgs>(request).Target, newId),
+                "eraseWorkspace" => Write(Arg<WorkspaceArgs>(request).Workspace, () => EraseWorkspace(Arg<WorkspaceArgs>(request).Workspace)),
                 "recoverRuns" => Write(Arg<WorkspaceArgs>(request).Workspace, () => new { recovered = Engine.Recover(Arg<WorkspaceArgs>(request).Workspace) }),
                 "exportDiagnostics" => Diagnostics(Arg<DiagnosticsArgs>(request)),
                 _ => throw new StoreException("unknown_operation", $"The worker does not know “{request.Op}”.", "Update LocalMind Agent Hub so the app and worker match."),
@@ -185,6 +215,18 @@ public sealed class WorkerHost(string profileId, string token, Func<string> newI
         return new { path = a.Target };
     }
 
+    /// <summary>Removes the workspace's files and its stored keys. Refused while an attempt is running, so nothing is cut off mid-request.</summary>
+    private object EraseWorkspace(string workspace)
+    {
+        if (Engine.ActiveCount > 0) throw new StoreException("runs_active", "A run is still in progress.", "Stop it or wait for it to finish, then erase the workspace.");
+        string project;
+        using (var db = Reader.Open(workspace)) project = Reader.Rows(db, "SELECT id FROM projects LIMIT 1")[0][0] as string ?? "";
+        var connections = Team.Read(workspace, project).Connections;
+        foreach (var c in connections) DropSecret(workspace, c.Id);
+        Release(workspace);
+        return new EraseResult(Portability.Erase(workspace));
+    }
+
     private object Write(string workspace, Func<object> run)
     {
         RequireOwnership(workspace);
@@ -230,6 +272,17 @@ public sealed class WorkerHost(string profileId, string token, Func<string> newI
 
     private static T Arg<T>(WorkerRequest r) =>
         r.Args is { } a ? a.Deserialize<T>(Protocol.Json) ?? throw Bad() : throw Bad();
+
+    /// <summary>The worker decodes and checks every image itself; the window's word about type and size is never trusted.</summary>
+    private static IReadOnlyList<ImageData> ReadImages(ImageArg[]? args)
+    {
+        if (args is not { Length: > 0 }) return [];
+        if (args.Length > Images.MaxImages) throw new StoreException("too_many_images", $"At most {Images.MaxImages} images can go in one message.", "Remove one.");
+        try { return [.. args.Select(a => Images.Read(a.Name, Convert.FromBase64String(a.Base64)))]; }
+        catch (FormatException) { throw new StoreException("unreadable_image", "An attached image could not be read.", "Attach it again."); }
+    }
+
+    private static StoreException NoPreview() => new("preview_required", "Sending needs the preview it was shown.", "Preview what would be sent, then send from that preview.");
 
     private static StoreException Bad() => new("bad_request", "The request arguments were missing or malformed.", "Update LocalMind Agent Hub so the app and worker match.");
 
@@ -368,8 +421,11 @@ public sealed class WorkerClient(IWorker worker)
         CallAsync<CommandResult>("addTaskFile", new FileArgs(ws, cmd, taskId, name, content), ct);
     public Task<DispatchPreview> PreviewDispatchAsync(string ws, string taskId, string role, string? instruction = null, CancellationToken ct = default) =>
         CallAsync<DispatchPreview>("previewDispatch", new PreviewArgs(ws, taskId, role, instruction), ct);
-    public Task<CommandResult> DispatchAsync(string ws, string cmd, string taskId, string role, bool acceptPriceRisk = false, bool acceptRepeatCost = false, CancellationToken ct = default) =>
-        CallAsync<CommandResult>("dispatch", new DispatchArgs(ws, cmd, taskId, role, acceptPriceRisk, acceptRepeatCost), ct);
+    /// <summary>Sends exactly the preview whose binding is given. Without one, this previews first and confirms what it just saw: for scripted callers; the window always passes the binding the owner was shown.</summary>
+    public async Task<CommandResult> DispatchAsync(string ws, string cmd, string taskId, string role, bool acceptPriceRisk = false, bool acceptRepeatCost = false, string? binding = null, CancellationToken ct = default) =>
+        await CallAsync<CommandResult>("dispatch", new DispatchArgs(ws, cmd, taskId, role, acceptPriceRisk, acceptRepeatCost, binding ?? (await PreviewDispatchAsync(ws, taskId, role, null, ct)).Binding), ct);
+    public Task<CommandResult> ReconcileAttemptAsync(string ws, string cmd, string attemptId, double amount, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("reconcileAttempt", new ReconcileArgs(ws, cmd, attemptId, amount), ct);
     public Task<CommandResult> CancelAttemptAsync(string ws, string cmd, string attemptId, CancellationToken ct = default) =>
         CallAsync<CommandResult>("cancelAttempt", new AttemptArgs(ws, cmd, attemptId, false), ct);
     public Task<CommandResult> PauseAttemptAsync(string ws, string cmd, string attemptId, CancellationToken ct = default) =>
@@ -378,10 +434,49 @@ public sealed class WorkerClient(IWorker worker)
         CallAsync<CommandResult>("resumeAttempt", new AttemptArgs(ws, cmd, attemptId, acceptRepeatCost), ct);
     public Task<CommandResult> SmokeTestAsync(string ws, string cmd, string connectionId, string model, string prompt, CancellationToken ct = default) =>
         CallAsync<CommandResult>("smokeTest", new SmokeArgs(ws, cmd, connectionId, model, prompt), ct);
-    public Task<List<DispatchPreview>> PreviewInstructionAsync(string ws, string taskId, string[] roles, string text, CancellationToken ct = default) =>
-        CallAsync<List<DispatchPreview>>("previewInstruction", new InstructionPreviewArgs(ws, taskId, roles, text), ct);
-    public Task<InstructionResult> SendInstructionAsync(string ws, string cmd, string taskId, string[] roles, string text, CancellationToken ct = default) =>
-        CallAsync<InstructionResult>("sendInstruction", new InstructionArgs(ws, cmd, taskId, roles, text), ct);
+    public Task<List<DispatchPreview>> PreviewInstructionAsync(string ws, string taskId, string[] roles, string text, ImageArg[]? images = null, Dictionary<string, string>? imageConfirms = null, CancellationToken ct = default) =>
+        CallAsync<List<DispatchPreview>>("previewInstruction", new InstructionPreviewArgs(ws, taskId, roles, text, images, imageConfirms), ct);
+    public async Task<InstructionResult> SendInstructionAsync(string ws, string cmd, string taskId, string[] roles, string text, Dictionary<string, string>? bindings = null, ImageArg[]? images = null, Dictionary<string, string>? imageConfirms = null, CancellationToken ct = default) =>
+        await CallAsync<InstructionResult>("sendInstruction", new InstructionArgs(ws, cmd, taskId, roles, text, bindings ?? (await PreviewInstructionAsync(ws, taskId, roles, text, images, imageConfirms, ct)).ToDictionary(p => p.Role, p => p.Binding), images, imageConfirms), ct);
+    public Task<CommandResult> ProposePlanAsync(string ws, string cmd, string projectId, string brief, PlanTask[]? tasks = null, PlanEdge[]? edges = null, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("proposePlan", new PlanProposeArgs(ws, cmd, projectId, brief, tasks, edges), ct);
+    public Task<CommandResult> EditPlanAsync(string ws, string cmd, string planId, int version, PlanTask[] tasks, PlanEdge[] edges, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("editPlan", new PlanEditArgs(ws, cmd, planId, version, tasks, edges), ct);
+    public Task<CommandResult> ApprovePlanAsync(string ws, string cmd, string planId, int version, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("approvePlan", new PlanDecideArgs(ws, cmd, planId, version), ct);
+    public Task<CommandResult> DismissPlanAsync(string ws, string cmd, string planId, int version, CancellationToken ct = default) =>
+        CallAsync<CommandResult>("dismissPlan", new PlanDecideArgs(ws, cmd, planId, version), ct);
+    public Task<PlanStart> StartPlanAsync(string ws, string cmd, string planId, Dictionary<string, string> bindings, CancellationToken ct = default) =>
+        CallAsync<PlanStart>("startPlan", new PlanStartArgs(ws, cmd, planId, bindings), ct);
+    public Task<List<PlanView>> ReadPlansAsync(string ws, string projectId, CancellationToken ct = default) =>
+        CallAsync<List<PlanView>>("readPlans", new ProjectArgs(ws, projectId), ct);
+    public Task<PlanStatus> PlanStatusAsync(string ws, string planId, CancellationToken ct = default) =>
+        CallAsync<PlanStatus>("planStatus", new PlanArgs(ws, planId), ct);
+    public Task<PlanEstimate> PlanEstimateAsync(string ws, string planId, CancellationToken ct = default) =>
+        CallAsync<PlanEstimate>("planEstimate", new PlanArgs(ws, planId), ct);
+    public Task<List<AttemptActual>> PlanActualsAsync(string ws, string planId, CancellationToken ct = default) =>
+        CallAsync<List<AttemptActual>>("planActuals", new PlanArgs(ws, planId), ct);
+    public Task<List<HandoffEvent>> PlanHandoffsAsync(string ws, string projectId, long after, CancellationToken ct = default) =>
+        CallAsync<List<HandoffEvent>>("planHandoffs", new ProjectArgs(ws, projectId, after), ct);
+    public Task<CommandResult> AddDocumentAsync(string ws, string cmd, string projectId, string name, string text, CancellationToken ct = default) => CallAsync<CommandResult>("addDocument", new DocAddArgs(ws, cmd, projectId, name, text), ct);
+    public Task<CommandResult> AddDocumentImageAsync(string ws, string cmd, string projectId, ImageArg image, CancellationToken ct = default) => CallAsync<CommandResult>("addDocumentImage", new DocImageArgs(ws, cmd, projectId, image), ct);
+    public Task<CommandResult> EditDocumentAsync(string ws, string cmd, string docId, string text, CancellationToken ct = default) => CallAsync<CommandResult>("editDocument", new DocEditArgs(ws, cmd, docId, text), ct);
+    public Task<CommandResult> RemoveDocumentAsync(string ws, string cmd, string docId, CancellationToken ct = default) => CallAsync<CommandResult>("removeDocument", new DocIdArgs(ws, cmd, docId), ct);
+    public Task<ForgetResult> ForgetSourceAsync(string ws, string cmd, string docId, CancellationToken ct = default) => CallAsync<ForgetResult>("forgetSource", new DocIdArgs(ws, cmd, docId), ct);
+    public Task<CommandResult> AskDocumentsAsync(string ws, string cmd, string projectId, string question, string role, CancellationToken ct = default) => CallAsync<CommandResult>("askDocuments", new AskArgs(ws, cmd, projectId, question, role), ct);
+    public Task<List<DocumentInfo>> ReadDocumentsAsync(string ws, string projectId, CancellationToken ct = default) => CallAsync<List<DocumentInfo>>("readDocuments", new ProjectArgs(ws, projectId), ct);
+    public Task<List<DocAnswer>> ReadAnswersAsync(string ws, string projectId, CancellationToken ct = default) => CallAsync<List<DocAnswer>>("readAnswers", new ProjectArgs(ws, projectId), ct);
+    public Task<PassageView> OpenPassageAsync(string ws, string docId, int revision, int start, int length, CancellationToken ct = default) => CallAsync<PassageView>("openPassage", new PassageArgs(ws, docId, revision, start, length), ct);
+    public Task<CommandResult> ResolveAttemptAsync(string ws, string cmd, string attemptId, string choice, double? amount = null, CancellationToken ct = default) => CallAsync<CommandResult>("resolveAttempt", new ResolveArgs(ws, cmd, attemptId, choice, amount), ct);
+    public Task<WakeReport> LifecycleAsync(string ws, string kind, CancellationToken ct = default) => CallAsync<WakeReport>("lifecycle", new LifecycleArgs(ws, kind), ct);
+    public Task<ShutdownReport> ShutdownAsync(string ws, string policy, int maxMs, CancellationToken ct = default) => CallAsync<ShutdownReport>("shutdown", new ShutdownArgs(ws, policy, maxMs), ct);
+    public Task<List<ReplayEvent>> ReplayTimelineAsync(string ws, string projectId, CancellationToken ct = default) => CallAsync<List<ReplayEvent>>("replayTimeline", new ReplayArgs(ws, projectId, 0), ct);
+    public Task<ReplayState> ReplayStateAsync(string ws, string projectId, long seq, CancellationToken ct = default) => CallAsync<ReplayState>("replayState", new ReplayArgs(ws, projectId, seq), ct);
+    public Task<string> RunDiagnosticsAsync(string ws, string? attemptId, bool includeContent, CancellationToken ct = default) => CallAsync<string>("runDiagnostics", new RunDiagArgs(ws, attemptId, includeContent, null), ct);
+    public Task<JsonElement> ExportRunDiagnosticsAsync(string ws, string? attemptId, bool includeContent, string target, CancellationToken ct = default) => CallAsync<JsonElement>("exportRunDiagnostics", new RunDiagArgs(ws, attemptId, includeContent, target), ct);
+    public Task<ExportManifest> ExportWorkspaceAsync(string ws, string target, CancellationToken ct = default) => CallAsync<ExportManifest>("exportWorkspace", new PackageArgs(ws, target), ct);
+    public Task<RestoreResult> RestoreWorkspaceAsync(string package, string target, CancellationToken ct = default) => CallAsync<RestoreResult>("restoreWorkspace", new RestoreArgs(package, target), ct);
+    public Task<EraseResult> EraseWorkspaceAsync(string ws, CancellationToken ct = default) => CallAsync<EraseResult>("eraseWorkspace", new WorkspaceArgs(ws), ct);
     public Task<JsonElement> RecoverRunsAsync(string ws, CancellationToken ct = default) =>
         CallAsync<JsonElement>("recoverRuns", new WorkspaceArgs(ws), ct);
     public Task<JsonElement> ExportDiagnosticsAsync(string ws, string target, CancellationToken ct = default) =>

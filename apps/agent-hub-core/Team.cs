@@ -11,14 +11,14 @@ public sealed record ConnectionInfo(string Id, string Provider, string Endpoint,
 public sealed record Assignment(string Role, string ConnectionId, string ModelId);
 
 public sealed record ProjectSettings(string ProjectId, bool LocalOnly, double? BudgetLimit, string Currency, int MaxSteps, int MaxSeconds, int MaxToolCalls, int MaxOutputTokens,
-                                     IReadOnlyList<string>? OnlyProviders, bool AutoReview);
+                                     IReadOnlyList<string>? OnlyProviders, bool AutoReview, int MaxConcurrency = 2);
 
 public sealed record Consent(string Id, string ConnectionId, string ModelId, IReadOnlyList<string> Files, string GrantedAt);
 
 public sealed record Price(string Id, string ConnectionId, string ModelId, string Currency, double InputPerMTok, double OutputPerMTok, string Source, string EffectiveAt);
 
 /// <summary>Committed spend: settled amounts plus open reservations. Unknown usage is counted separately and never hidden.</summary>
-public sealed record BudgetStatus(double? Limit, string Currency, double Spent, double Reserved, int UnknownUsage)
+public sealed record BudgetStatus(double? Limit, string Currency, double Spent, double Reserved, int UnknownUsage, int Unresolved = 0)
 {
     public double? Remaining => Limit is { } l ? l - Spent - Reserved : null;
 }
@@ -109,24 +109,24 @@ public static class Team
     // --- Project settings, consent, prices, roles ---------------------------------------------------------------
     internal static ProjectSettings Settings(SqliteConnection db, string project)
     {
-        var r = Reader.Rows(db, "SELECT local_only,budget_limit,currency,max_steps,max_seconds,max_tool_calls,max_output_tokens,only_providers,auto_review FROM project_settings WHERE project_id=$p", ("$p", project)).FirstOrDefault();
-        if (r == null) return new(project, true, null, "USD", 4, 180, 3, 600, null, true);
+        var r = Reader.Rows(db, "SELECT local_only,budget_limit,currency,max_steps,max_seconds,max_tool_calls,max_output_tokens,only_providers,auto_review,max_concurrency FROM project_settings WHERE project_id=$p", ("$p", project)).FirstOrDefault();
+        if (r == null) return new(project, true, null, "USD", 4, 180, 3, 600, null, true, 2);
         return new(project, Reader.I(r[0]) != 0, r[1] is null ? null : Convert.ToDouble(r[1]), Reader.S(r[2]), Reader.I(r[3]), Reader.I(r[4]), Reader.I(r[5]), Reader.I(r[6]),
-            r[7] is string only ? JsonSerializer.Deserialize<string[]>(only) : null, Reader.I(r[8]) != 0);
+            r[7] is string only ? JsonSerializer.Deserialize<string[]>(only) : null, Reader.I(r[8]) != 0, Reader.I(r[9]));
     }
 
     public static CommandResult SetProjectSettings(string workspace, string commandId, ProjectSettings s) =>
         TaskStore.Run(workspace, commandId, "project_settings_changed", db =>
         {
             if (TaskStore.Scalar<long>(db, "SELECT count(*) FROM projects WHERE id=$p", ("$p", s.ProjectId)) == 0) throw Bad("not_found", "That project no longer exists.", "Reload the workspace.");
-            if (s.MaxSteps is < 1 or > 50 || s.MaxSeconds is < 5 or > 3600 || s.MaxToolCalls is < 0 or > 50 || s.MaxOutputTokens is < 16 or > 32768 || s.BudgetLimit is < 0)
+            if (s.MaxSteps is < 1 or > 50 || s.MaxSeconds is < 5 or > 3600 || s.MaxToolCalls is < 0 or > 50 || s.MaxOutputTokens is < 16 or > 32768 || s.BudgetLimit is < 0 || s.MaxConcurrency is < 1 or > 8)
                 throw Bad("invalid_limits", "A limit is out of range.", "Steps 1–50, time 5–3600 s, tool calls 0–50, output 16–32768 tokens, budget 0 or more.");
             TaskStore.Exec(db, """
-                INSERT INTO project_settings(project_id,local_only,budget_limit,currency,max_steps,max_seconds,max_tool_calls,max_output_tokens,only_providers,auto_review)
-                VALUES($p,$l,$b,$c,$s,$t,$k,$o,$op,$a)
-                ON CONFLICT(project_id) DO UPDATE SET local_only=$l,budget_limit=$b,currency=$c,max_steps=$s,max_seconds=$t,max_tool_calls=$k,max_output_tokens=$o,only_providers=$op,auto_review=$a
+                INSERT INTO project_settings(project_id,local_only,budget_limit,currency,max_steps,max_seconds,max_tool_calls,max_output_tokens,only_providers,auto_review,max_concurrency)
+                VALUES($p,$l,$b,$c,$s,$t,$k,$o,$op,$a,$mc)
+                ON CONFLICT(project_id) DO UPDATE SET local_only=$l,budget_limit=$b,currency=$c,max_steps=$s,max_seconds=$t,max_tool_calls=$k,max_output_tokens=$o,only_providers=$op,auto_review=$a,max_concurrency=$mc
                 """, ("$p", s.ProjectId), ("$l", s.LocalOnly ? 1 : 0), ("$b", s.BudgetLimit), ("$c", s.Currency), ("$s", s.MaxSteps), ("$t", s.MaxSeconds), ("$k", s.MaxToolCalls),
-                ("$o", s.MaxOutputTokens), ("$op", s.OnlyProviders is { Count: > 0 } o ? JsonSerializer.Serialize(o) : null), ("$a", s.AutoReview ? 1 : 0));
+                ("$o", s.MaxOutputTokens), ("$op", s.OnlyProviders is { Count: > 0 } o ? JsonSerializer.Serialize(o) : null), ("$a", s.AutoReview ? 1 : 0), ("$mc", s.MaxConcurrency));
             return new(s.ProjectId, 0, "", null, null, s.LocalOnly ? "local only" : "cloud allowed");
         });
 
@@ -228,13 +228,15 @@ public static class Team
     {
         var s = Settings(db, project);
         double spent = Convert.ToDouble(TaskStore.Scalar<double?>(db, "SELECT COALESCE(sum(amount),0) FROM budget_ledger WHERE project_id=$p AND kind='settle' AND amount IS NOT NULL", ("$p", project)) ?? 0);
-        // An open reservation counts until it is settled or released.
+        // A reservation counts until it is released or settled at a known amount: an unknown charge keeps it, so the cap cannot be spent twice.
         double reserved = Convert.ToDouble(TaskStore.Scalar<double?>(db, """
             SELECT COALESCE(sum(r.amount),0) FROM budget_ledger r WHERE r.project_id=$p AND r.kind='reserve' AND r.amount IS NOT NULL
-            AND NOT EXISTS (SELECT 1 FROM budget_ledger x WHERE x.attempt_id=r.attempt_id AND x.kind IN ('settle','release'))
+            AND NOT EXISTS (SELECT 1 FROM budget_ledger x WHERE x.attempt_id=r.attempt_id AND (x.kind='release' OR (x.kind='settle' AND x.amount IS NOT NULL)))
             """, ("$p", project)) ?? 0);
         int unknown = (int)(TaskStore.Scalar<long?>(db, "SELECT count(*) FROM budget_ledger WHERE project_id=$p AND kind='settle' AND amount IS NULL", ("$p", project)) ?? 0);
-        return new(s.BudgetLimit, s.Currency, spent, reserved, unknown);
+        // An unknown charge with nothing reserved (the price was unknown too) cannot be held against the cap; paid work is blocked until it is reconciled.
+        int unresolved = (int)(TaskStore.Scalar<long?>(db, "SELECT count(*) FROM budget_ledger s WHERE s.project_id=$p AND s.kind='settle' AND s.amount IS NULL AND NOT EXISTS (SELECT 1 FROM budget_ledger r WHERE r.attempt_id=s.attempt_id AND r.kind='reserve' AND r.amount IS NOT NULL)", ("$p", project)) ?? 0);
+        return new(s.BudgetLimit, s.Currency, spent, reserved, unknown, unresolved);
     }
 
     public static IReadOnlyList<(string Name, string Content)> Files(SqliteConnection db, string task) =>

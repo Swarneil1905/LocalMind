@@ -7,12 +7,12 @@ using Microsoft.Data.Sqlite;
 
 namespace LocalMind.AgentHub.Core;
 
-public sealed record DispatchOptions(bool AcceptPriceRisk = false, bool AcceptRepeatCost = false, string? Instruction = null, string? InstructionId = null, string? RetryOf = null);
+public sealed record DispatchOptions(bool AcceptPriceRisk = false, bool AcceptRepeatCost = false, string? Instruction = null, string? InstructionId = null, string? RetryOf = null, string? Binding = null, bool RequireEligible = false, bool QueueIfFull = false, string? ImageConfirm = null);
 
 /// <summary>What a dispatch would send, to whom, and what stands in the way, before anything leaves this computer.</summary>
 public sealed record DispatchPreview(string Role, string ProjectId, string TaskId, string? ConnectionId, string? ConnectionLabel, string? Provider, string? Endpoint, bool IsCloud,
                                      string? Model, string PacketText, IReadOnlyList<string> FileNames, int PacketTokens, int MaxOutputTokens, string PriceStatus,
-                                     double? Estimate, string Currency, string ConsentStatus, string? Blocker, BudgetStatus Budget);
+                                     double? Estimate, string Currency, string ConsentStatus, string? Blocker, BudgetStatus Budget, string Binding = "", IReadOnlyList<string>? Images = null, string ImageToken = "", string ImageStatus = "none");
 
 public sealed record AttemptView(string Id, string RunId, string ProjectId, string TaskId, string Role, string ConnectionId, string Provider, string RequestedModel,
                                  string? ReportedModel, string? ReportedProvider, string? RouteNote, string Status, string CreatedAt, string? SentAt, string? EndedAt,
@@ -27,7 +27,7 @@ public sealed record AttemptView(string Id, string RunId, string ProjectId, stri
 /// the call runs in the background and writes progress to the attempt row, which every window reads. A result enters the same
 /// output, review and event flow as the offline fixtures.
 /// </summary>
-public sealed class RunEngine(ICredentialVault vault, Func<string> newId)
+public sealed partial class RunEngine(ICredentialVault vault, Func<string> newId)
 {
     public static TimeSpan Lease { get; set; } = TimeSpan.FromSeconds(30);
     public string Owner { get; } = "engine-" + Guid.NewGuid().ToString("N")[..8];
@@ -63,11 +63,16 @@ public sealed class RunEngine(ICredentialVault vault, Func<string> newId)
         return Check(db, taskId, role, instruction, new DispatchOptions(Instruction: instruction)).Preview;
     }
 
-    private sealed record Checked(DispatchPreview Preview, Packet Packet, ProjectSettings Settings, string? CredentialRef, Price? Price);
+    private sealed record Checked(DispatchPreview Preview, Packet Packet, ProjectSettings Settings, string? CredentialRef, Price? Price, PacketSection? Under = null, IReadOnlyList<ImageData>? Images = null);
+
+    internal static IReadOnlyList<ImageData> LoadImages(SqliteConnection db, string? instructionId) =>
+        instructionId == null ? [] : [.. Reader.Rows(db, "SELECT name, mime, bytes, width, height FROM instruction_images WHERE instruction_id=$i ORDER BY idx", ("$i", instructionId))
+            .Select(r => new ImageData(Reader.S(r[0]), Reader.S(r[1]), (byte[])r[2]!, Reader.I(r[3]), Reader.I(r[4])))];
 
     /// <summary>Everything a dispatch depends on, read in one place. A blocker is a reason it must not go ahead.</summary>
-    private static Checked Check(SqliteConnection db, string taskId, string role, string? instruction, DispatchOptions o)
+    private static Checked Check(SqliteConnection db, string taskId, string role, string? instruction, DispatchOptions o, IReadOnlyList<ImageData>? previewImages = null)
     {
+        var images = previewImages ?? LoadImages(db, o.InstructionId);
         var task = TaskStore.Task(db, taskId);
         var settings = Team.Settings(db, task.ProjectId);
         var budget = Team.Budget(db, task.ProjectId);
@@ -79,14 +84,23 @@ public sealed class RunEngine(ICredentialVault vault, Func<string> newId)
             return new(new(role, task.ProjectId, taskId, null, null, null, null, false, null, packet.Text, files, tokens, settings.MaxOutputTokens, "none", null, settings.Currency,
                 "not_needed", $"No model is assigned to the {role} for this project. Choose one in Team.", budget), packet, settings, null, null);
         string connId = Reader.S(a[0]), model = Reader.S(a[1]);
+        var under = role == "reviewer" ? packet.Sections.FirstOrDefault(x => x.Heading.StartsWith("Output under review")) : null;
         var c = Team.Connection(db, connId);
         var (price, priceStatus) = Team.PriceFor(db, connId, model, c.IsCloud);
         double? estimate = price == null ? null : tokens / 1e6 * price.InputPerMTok + settings.MaxOutputTokens / 1e6 * price.OutputPerMTok;
         string consent = !c.IsCloud ? "not_needed" : settings.LocalOnly ? "blocked_local_only"
             : Team.ActiveConsent(db, task.ProjectId, connId, model) is { } k ? (files.All(k.Files.Contains) ? "granted" : "files_not_covered") : "required";
         bool available = TaskStore.Scalar<long>(db, "SELECT count(*) FROM connection_models WHERE connection_id=$c AND model_id=$m AND available=1", ("$c", connId), ("$m", model)) > 0;
+        var capsRow = Reader.Rows(db, "SELECT capabilities FROM connection_models WHERE connection_id=$c AND model_id=$m", ("$c", connId), ("$m", model)).FirstOrDefault();
+        var caps = capsRow == null ? ModelCapabilities.Unknown : JsonSerializer.Deserialize<ModelCapabilities>(Reader.S(capsRow[0]), Protocol.Json) ?? ModelCapabilities.Unknown;
+        string imageToken = images.Count > 0 ? Images.Token(connId, model, images) : "";
+        string imageStatus = images.Count == 0 ? "none" : caps.Vision == false ? "no_vision" : c.IsCloud && o.ImageConfirm != imageToken ? "needs_confirmation" : "ok";
         string? blocker =
             !available ? $"{model} was not listed by {c.Label} at the last probe. Probe again or choose another model."
+            : imageStatus == "no_vision" ? $"{model} on {c.Label} does not accept images. Remove the image, or send this to a model that does."
+            : imageStatus == "needs_confirmation" ? $"{images.Count} image(s) would go to {model} on {c.Label}, a cloud service. Inspect them and confirm that destination first."
+            : role == "reviewer" && under == null ? "The draft is not part of this packet (there is none, or it did not fit the limit), so a review would not be about it. Ask the builder for a shorter draft."
+            : c.IsCloud && budget.Limit != null && budget.Unresolved > 0 ? "An earlier paid attempt has no known charge and no reservation. Reconcile it with the provider's receipt first."
             : consent == "blocked_local_only" ? "This project is local-only. Nothing may be sent to a cloud model."
             : consent == "required" ? $"The project has not agreed to send work to {model} on {c.Label}. Preview it and give consent."
             : consent == "files_not_covered" ? $"The consent for {model} does not cover every file in this packet ({string.Join(", ", files)}). Give consent again for these files."
@@ -94,8 +108,14 @@ public sealed class RunEngine(ICredentialVault vault, Func<string> newId)
             : priceStatus is "unknown" or "stale" && !o.AcceptPriceRisk ? $"The price for {model} is {priceStatus}. Record a price, or choose to go ahead without a reliable estimate."
             : estimate is { } e && budget.Remaining is { } left && e > left ? $"The estimate ({e:0.0000} {settings.Currency}) is more than the {left:0.0000} {settings.Currency} left in the budget."
             : null;
+        string eligibility = task.Status + ":" + string.Join(',', Reader.Rows(db, "SELECT requires_id FROM hub_dependencies WHERE task_id=$t ORDER BY requires_id", ("$t", taskId))
+            .Select(r => Reader.S(r[0]) + "=" + (Plans.Satisfied(db, Reader.S(r[0])) ? "ok" : "open")));
+        // The binding covers what the owner is shown: destination, model, packet (which holds every file's text), file versions and price terms. Consent is checked separately.
+        string binding = ProjectStore.Hash(Encoding.UTF8.GetBytes(string.Join('\u001f', role, connId, c.Provider, c.Endpoint, c.IsCloud, model, packet.Text, settings.MaxOutputTokens, priceStatus,
+            price?.Id, price?.Currency, price?.InputPerMTok, price?.OutputPerMTok, estimate, eligibility,
+            string.Join(',', packet.Sections.Where(x => x.FileName != null).Select(x => x.FileName + ":" + ProjectStore.Hash(Encoding.UTF8.GetBytes(x.Body)))), imageToken)));
         return new(new(role, task.ProjectId, taskId, connId, c.Label, c.Provider, c.Endpoint, c.IsCloud, model, packet.Text, files, tokens, settings.MaxOutputTokens, priceStatus,
-            estimate, price?.Currency ?? settings.Currency, consent, blocker, budget), packet, settings, c.CredentialRef, price);
+            estimate, price?.Currency ?? settings.Currency, consent, blocker, budget, binding, [.. images.Select(i => i.Summary)], imageToken, imageStatus), packet, settings, c.CredentialRef, price, under, images);
     }
 
     // --- Dispatch -----------------------------------------------------------------------------------------------
@@ -106,7 +126,16 @@ public sealed class RunEngine(ICredentialVault vault, Func<string> newId)
     public CommandResult Dispatch(string workspace, string commandId, string taskId, string role, DispatchOptions o)
     {
         Recover(workspace);
-        var result = TaskStore.Run(workspace, commandId, "attempt_started", db =>
+        CommandResult result;
+        try { result = DispatchNow(workspace, commandId, taskId, role, o); }
+        catch (StoreException e) when (e.Error.Code == "at_capacity" && o.QueueIfFull) { return Enqueue(workspace, commandId, taskId, role, o, e.Message); }
+        if (!result.Duplicate) Start(workspace, result.Id);
+        return result;
+    }
+
+    private CommandResult DispatchNow(string workspace, string commandId, string taskId, string role, DispatchOptions o)
+    {
+        return TaskStore.Run(workspace, commandId, "attempt_started", db =>
         {
             if (!Team.Roles.Contains(role)) throw Bad("unknown_role", $"“{role}” is not a role.", "Use planner, builder or reviewer.");
             var active = Reader.Rows(db, "SELECT id, status FROM attempts WHERE task_id=$t AND role=$r AND status IN ('leased','sending','streaming','needs_reconciliation')", ("$t", taskId), ("$r", role)).FirstOrDefault();
@@ -114,27 +143,92 @@ public sealed class RunEngine(ICredentialVault vault, Func<string> newId)
                 throw Bad("attempt_active", $"The {role} is already working on this task (attempt {Reader.S(active[0])[..8]}).", "Wait for it, or pause or cancel it first.");
             if (active != null && !o.AcceptRepeatCost)
                 throw Bad("needs_reconciliation", "An earlier attempt may already have been accepted by the provider. Starting again could cost twice.", "Check the provider, then choose to start again anyway.");
-            var ck = Check(db, taskId, role, o.Instruction, o);
-            if (ck.Preview.Blocker is { } why) throw Bad(ck.Preview.ConsentStatus switch { "blocked_local_only" => "local_only", "required" or "files_not_covered" => "consent_required", _ => "blocked" }, why, "Open Team to fix it.");
-            var p = ck.Preview;
             if (role == "reviewer" && TaskStore.Scalar<long>(db, "SELECT count(*) FROM outputs WHERE task_id=$t", ("$t", taskId)) == 0)
                 throw Bad("no_output", "There is no output to review yet.", "Ask the builder first.");
+            var ck = Check(db, taskId, role, o.Instruction, o);
+            if (o.Binding != null && o.Binding != ck.Preview.Binding)
+                throw Bad("preview_changed", "What would be sent has changed since you previewed it: the model, destination, packet, files or price terms differ. Nothing was sent.", "Review the refreshed preview, then send again.");
+            if (ck.Preview.Blocker is { } why) throw Bad(ck.Preview.ImageStatus switch { "no_vision" => "no_vision", "needs_confirmation" => "image_consent_required", _ => ck.Preview.ConsentStatus switch { "blocked_local_only" => "local_only", "required" or "files_not_covered" => "consent_required", _ => "blocked" } }, why, "Open Team to fix it.");
+            var p = ck.Preview;
+            // Read from the board at the moment the lease is taken, so an edit between preview and Send cannot slip through.
+            if (o.RequireEligible && Plans.EligibilityOf(db, taskId) is { Ok: false } no) throw Bad("not_eligible", no.Reason!, "Fix or reopen the prerequisite, then start again.");
+            long running = TaskStore.Scalar<long>(db, "SELECT count(*) FROM attempts WHERE project_id=$p AND status IN ('leased','sending','streaming')", ("$p", p.ProjectId));
+            if (running >= ck.Settings.MaxConcurrency)
+                throw Bad("at_capacity", $"The project is already running {running} attempt(s), its limit of {ck.Settings.MaxConcurrency}.", "Wait for one to finish, or raise the limit in Team.");
             string id = newId(), run = newId();
             TaskStore.Exec(db, "INSERT INTO runs(id,task_id,role,created_at,packet_project,packet_limit,packet_tokens,packet_text,packet_sources) VALUES($r,$t,$o,$at,$p,$l,$k,$x,$s)",
                 ("$r", run), ("$t", taskId), ("$o", role), ("$at", Now), ("$p", p.ProjectId), ("$l", ck.Packet.TokenLimit), ("$k", ck.Packet.TokensUsed), ("$x", ck.Packet.Text),
                 ("$s", JsonSerializer.Serialize(ck.Packet.Sections.Where(x => x.SourceId != null).Select(x => new { id = x.SourceId, revision = x.SourceRevision }))));
             TaskStore.Exec(db, """
-                INSERT INTO attempts(id,command_id,run_id,project_id,task_id,role,connection_id,provider,requested_model,status,lease_owner,lease_expires,created_at,packet_text,estimate,currency,price_id,price_status,instruction_id,retry_of)
-                VALUES($i,$cmd,$run,$p,$t,$role,$c,$prov,$m,'leased',$own,$exp,$at,$x,$e,$cur,$pid,$ps,$ins,$re)
+                INSERT INTO attempts(id,command_id,run_id,project_id,task_id,role,connection_id,provider,requested_model,status,lease_owner,lease_expires,created_at,packet_text,estimate,currency,price_id,price_status,instruction_id,retry_of,review_output_id,review_revision,binding)
+                VALUES($i,$cmd,$run,$p,$t,$role,$c,$prov,$m,'leased',$own,$exp,$at,$x,$e,$cur,$pid,$ps,$ins,$re,$ro,$rr,$bd)
                 """, ("$i", id), ("$cmd", commandId), ("$run", run), ("$p", p.ProjectId), ("$t", taskId), ("$role", role), ("$c", p.ConnectionId), ("$prov", p.Provider), ("$m", p.Model),
                 ("$own", Owner), ("$exp", Later(Lease)), ("$at", Now), ("$x", p.PacketText), ("$e", p.Estimate), ("$cur", p.Currency), ("$pid", ck.Price?.Id), ("$ps", p.PriceStatus),
-                ("$ins", o.InstructionId), ("$re", o.RetryOf));
+                ("$ins", o.InstructionId), ("$re", o.RetryOf), ("$ro", ck.Under?.SourceId), ("$rr", ck.Under?.SourceRevision), ("$bd", p.Binding));
+            // The file tool reads these snapshots and nothing else: the versions admitted to this attempt, whatever the task's files become later.
+            foreach (var f in ck.Packet.Sections.Where(x => x.FileName != null))
+                TaskStore.Exec(db, "INSERT INTO attempt_files VALUES($a,$n,$h,$c)", ("$a", id), ("$n", f.FileName), ("$h", ProjectStore.Hash(Encoding.UTF8.GetBytes(f.Body))), ("$c", f.Body));
             if (p.Estimate is { } amount && amount > 0)
                 TaskStore.Exec(db, "INSERT INTO budget_ledger VALUES($i,$p,$a,'reserve',$amt,$cur,$at)", ("$i", newId()), ("$p", p.ProjectId), ("$a", id), ("$amt", amount), ("$cur", p.Currency), ("$at", Now));
             return new(id, TaskStore.Task(db, taskId).Revision, taskId, null, null, $"{role}: {p.Model} on {p.ConnectionLabel}, {p.PacketTokens} tokens sent" + (p.IsCloud ? " to the cloud" : " locally"));
         });
-        if (!result.Duplicate) Start(workspace, result.Id);
-        return result;
+    }
+
+    // --- Waiting for a free project slot -----------------------------------------------------------------------------
+    /// <summary>Work that is eligible but finds the project at its limit waits here, in order, and shows as queued on the board and in the channel.</summary>
+    private CommandResult Enqueue(string workspace, string commandId, string taskId, string role, DispatchOptions o, string why) =>
+        TaskStore.Run(workspace, "queue-" + commandId, "attempt_queued", db =>
+        {
+            var t = TaskStore.Task(db, taskId);
+            var existing = Reader.Rows(db, "SELECT id FROM start_queue WHERE task_id=$t AND role=$r AND status='waiting'", ("$t", taskId), ("$r", role)).FirstOrDefault();
+            string id = existing != null ? Reader.S(existing[0]) : newId();
+            if (existing == null)
+                TaskStore.Exec(db, "INSERT INTO start_queue(id,project_id,task_id,role,binding,accept_price,instruction,instruction_id,require_eligible,created_at,status) VALUES($i,$p,$t,$r,$b,$ap,$ins,$iid,$re,$at,'waiting')",
+                    ("$i", id), ("$p", t.ProjectId), ("$t", taskId), ("$r", role), ("$b", o.Binding), ("$ap", o.AcceptPriceRisk ? 1 : 0), ("$ins", o.Instruction), ("$iid", o.InstructionId), ("$re", o.RequireEligible ? 1 : 0), ("$at", Now));
+            return new(id, t.Revision, taskId, null, null, $"queued: {why}");
+        });
+
+    /// <summary>Starts waiting work, oldest first, while its project has room. A start that is no longer valid is dropped with its reason on the record.</summary>
+    public int Drain(string workspace)
+    {
+        int started = 0;
+        for (int guard = 0; guard < 50; guard++)
+        {
+            (string Id, string Task, string Role, DispatchOptions Options)? next = null;
+            using (var db = Reader.Open(workspace))
+                foreach (var r in Reader.Rows(db, "SELECT id,task_id,role,binding,accept_price,instruction,instruction_id,require_eligible,project_id FROM start_queue WHERE status='waiting' ORDER BY created_at, rowid"))
+                {
+                    var s = Team.Settings(db, Reader.S(r[8]));
+                    long running = TaskStore.Scalar<long>(db, "SELECT count(*) FROM attempts WHERE project_id=$p AND status IN ('leased','sending','streaming')", ("$p", Reader.S(r[8])));
+                    if (running >= s.MaxConcurrency) continue;
+                    next = (Reader.S(r[0]), Reader.S(r[1]), Reader.S(r[2]), new(Reader.I(r[4]) != 0, false, r[5] as string, r[6] as string, null, r[3] as string, Reader.I(r[7]) != 0));
+                    break;
+                }
+            if (next is not { } n) return started;
+            try
+            {
+                var res = Dispatch(workspace, "queued-" + n.Id, n.Task, n.Role, n.Options);
+                Write(ProjectStore.DatabaseIn(workspace), "UPDATE start_queue SET status='started', attempt_id=$a WHERE id=$i", ("$a", res.Id), ("$i", n.Id));
+                started++;
+            }
+            catch (StoreException e) when (e.Error.Code == "at_capacity") { return started; }
+            catch (StoreException e)
+            {
+                Write(ProjectStore.DatabaseIn(workspace), "UPDATE start_queue SET status='dropped', note=$n WHERE id=$i", ("$n", e.Message), ("$i", n.Id));
+                try { TaskStore.Run(workspace, "queue-drop-" + n.Id, "attempt_queue_dropped", db => new(n.Id, 0, n.Task, null, null, e.Message)); } catch (StoreException) { }
+            }
+        }
+        return started;
+    }
+
+    [ThreadStatic] private static bool draining;
+
+    private void Wake(string workspaceOrPath)
+    {
+        if (draining) return; // the dispatch a drain makes must not start another drain
+        draining = true;
+        try { Drain(workspaceOrPath); } catch (Exception e) when (e is StoreException or Microsoft.Data.Sqlite.SqliteException or IOException) { }
+        finally { draining = false; }
     }
 
     private void Start(string workspace, string attemptId)
@@ -163,6 +257,7 @@ public sealed class RunEngine(ICredentialVault vault, Func<string> newId)
             return new(attemptId, 0, a.TaskId, null, null, reason);
         });
         if (running.TryGetValue(attemptId, out var run)) run.Cts.Cancel();
+        Wake(workspace);
         return r;
     }
 
@@ -203,6 +298,7 @@ public sealed class RunEngine(ICredentialVault vault, Func<string> newId)
                 Settle(db, a, null, !sent);
             }
             TaskStore.Exec(db, "COMMIT");
+            if (stale.Count > 0) { db.Close(); Wake(path); }
             return stale.Count;
         }
         catch { TaskStore.Exec(db, "ROLLBACK"); throw; }
@@ -219,16 +315,19 @@ public sealed class RunEngine(ICredentialVault vault, Func<string> newId)
             a = Attempt(db, attemptId);
             settings = Team.Settings(db, a.ProjectId);
             conn = Team.Connection(db, a.ConnectionId);
-            files = Team.Files(db, a.TaskId).Where(f => a.PacketText.Contains($"Supplied file “{f.Name}”")).ToList();
+            files = [.. Reader.Rows(db, "SELECT name, content FROM attempt_files WHERE attempt_id=$a ORDER BY name", ("$a", attemptId)).Select(r => (Reader.S(r[0]), Reader.S(r[1])))];
             var caps = Reader.Rows(db, "SELECT capabilities FROM connection_models WHERE connection_id=$c AND model_id=$m", ("$c", a.ConnectionId), ("$m", a.RequestedModel)).FirstOrDefault();
             // The file tool is offered only when there are admitted files and the model is not known to lack tools.
             offerTools = files.Count > 0 && (caps == null || JsonSerializer.Deserialize<ModelCapabilities>(Reader.S(caps[0]), Protocol.Json)?.Tools != false);
         }
         var client = Client(conn.Provider, conn.Endpoint, conn.CredentialRef);
-        var messages = new List<ChatMessage> { new("system", SystemPrompt(a.Role)), new("user", a.PacketText) };
+        IReadOnlyList<ImageData> pics;
+        using (var db = Reader.Open(workspace)) pics = LoadImages(db, a.InstructionId);
+        var messages = new List<ChatMessage> { new("system", SystemPrompt(a.Role)), new("user", a.PacketText, Images: pics.Count > 0 ? pics : null) };
         var clock = Stopwatch.StartNew();
         var limit = TimeSpan.FromSeconds(settings.MaxSeconds);
         var text = new StringBuilder();
+        Track(attemptId, text);
         int steps = 0, toolCalls = 0, inTok = 0, outTok = 0;
         bool usageKnown = true;
         decimal? reportedCost = null;
@@ -367,10 +466,9 @@ public sealed class RunEngine(ICredentialVault vault, Func<string> newId)
                 }
                 else if (a.Role == "reviewer")
                 {
-                    var latest = Reader.Rows(db, "SELECT id, revision FROM outputs WHERE task_id=$t ORDER BY revision DESC LIMIT 1", ("$t", a.TaskId)).First();
-                    revision = Reader.I(latest[1]);
-                    // The review is about the revision that was in the packet; if a newer one arrived meanwhile, the review still names the one it read.
-                    var reviewed = Reader.Rows(db, "SELECT id, revision FROM outputs WHERE task_id=$t AND $x LIKE '%revision ' || revision || ' · DRAFT%' ORDER BY revision DESC LIMIT 1", ("$t", a.TaskId), ("$x", a.PacketText)).FirstOrDefault() ?? latest;
+                    // The review is about the output ID and revision recorded when the attempt started, even if a newer revision arrived meanwhile.
+                    var reviewed = Reader.Rows(db, "SELECT o.id, o.revision FROM attempts t JOIN outputs o ON o.id=t.review_output_id WHERE t.id=$i", ("$i", attemptId)).FirstOrDefault()
+                        ?? throw Bad("no_target", "This review has no recorded draft it was about, so it was not attached to any revision.", "Ask for the review again.");
                     revision = Reader.I(reviewed[1]);
                     var (rec, comment) = Recommendation(text);
                     outputId = newId();
@@ -389,6 +487,11 @@ public sealed class RunEngine(ICredentialVault vault, Func<string> newId)
             });
         }
         catch (StoreException e) when (e.Error.Code == "late_result") { return; }
+        catch (StoreException e) when (e.Error.Code == "no_target")
+        {
+            Finish(path, attemptId, "failed", e.Message, "no_target", text, messages, steps, toolCalls, inTok, outTok, reportedModel, reportedProvider, reportedCost, false, a);
+            return;
+        }
         // The builder's revision goes to the reviewer on its own, with a different model, unless the route was not the one asked for.
         if (a.Role == "builder" && done is { Duplicate: false } && settings.AutoReview && !unexpected)
         {
@@ -397,7 +500,7 @@ public sealed class RunEngine(ICredentialVault vault, Func<string> newId)
                 using var db = Reader.Open(workspace);
                 var rev = Reader.Rows(db, "SELECT model_id FROM assignments WHERE project_id=$p AND role='reviewer'", ("$p", a.ProjectId)).FirstOrDefault();
                 if (rev != null && Reader.S(rev[0]) != a.RequestedModel)
-                    Dispatch(workspace, "chain-" + attemptId, a.TaskId, "reviewer", new());
+                    Dispatch(workspace, "chain-" + attemptId, a.TaskId, "reviewer", new(QueueIfFull: true));
                 else if (rev != null)
                     Write(path, "UPDATE attempts SET route_note=COALESCE(route_note || ' ','') || 'The reviewer was not started: it uses the same model as the builder.' WHERE id=$i", ("$i", attemptId));
             }
@@ -406,6 +509,7 @@ public sealed class RunEngine(ICredentialVault vault, Func<string> newId)
                 Write(path, "UPDATE attempts SET route_note=COALESCE(route_note || ' ','') || $n WHERE id=$i", ("$n", "The reviewer was not started: " + e.Message), ("$i", attemptId));
             }
         }
+        Wake(path);
     }
 
     internal static (string Recommendation, string Comment) Recommendation(string text)
@@ -451,6 +555,7 @@ public sealed class RunEngine(ICredentialVault vault, Func<string> newId)
             });
         }
         catch (StoreException e) when (e.Error.Code == "late_result") { }
+        Wake(path);
     }
 
     /// <summary>
@@ -469,11 +574,32 @@ public sealed class RunEngine(ICredentialVault vault, Func<string> newId)
         TaskStore.Exec(db, "INSERT INTO budget_ledger VALUES($i,$p,$a,'settle',$amt,$c,$at)", ("$i", newId()), ("$p", a.ProjectId), ("$a", a.Id), ("$amt", cost), ("$c", a.Currency ?? "USD"), ("$at", Now));
     }
 
+    /// <summary>
+    /// The provider's final charge for an attempt whose usage was unknown. It replaces the open reservation once; the same receipt again changes nothing,
+    /// and a different amount for an already reconciled attempt is refused.
+    /// </summary>
+    public CommandResult Reconcile(string workspace, string commandId, string attemptId, double amount) =>
+        TaskStore.Run(workspace, commandId, "attempt_reconciled", db =>
+        {
+            if (amount < 0 || double.IsNaN(amount)) throw Bad("invalid_amount", "A charge is zero or more.", "Enter the amount from the provider's receipt.");
+            var a = Attempt(db, attemptId);
+            if (a.Active) throw Bad("attempt_active", "That attempt is still running.", "Wait for it to finish.");
+            var row = Reader.Rows(db, "SELECT amount FROM budget_ledger WHERE attempt_id=$a AND kind='settle'", ("$a", attemptId)).FirstOrDefault()
+                ?? throw Bad("not_unresolved", "That attempt has no unresolved charge.", "Only an attempt whose usage was never reported needs a receipt.");
+            if (row[0] is not null)
+            {
+                if (Math.Abs(Convert.ToDouble(row[0]) - amount) > 1e-9) throw Bad("already_reconciled", "That attempt's charge is already recorded with a different amount.", "Check the receipt.");
+                return new(attemptId, 0, a.TaskId, null, null, "already recorded");
+            }
+            TaskStore.Exec(db, "UPDATE budget_ledger SET amount=$m WHERE attempt_id=$a AND kind='settle' AND amount IS NULL", ("$m", amount), ("$a", attemptId));
+            TaskStore.Exec(db, "UPDATE attempts SET cost=$m WHERE id=$a", ("$m", amount), ("$a", attemptId));
+            return new(attemptId, 0, a.TaskId, null, null, $"charge {amount:0.0000} {a.Currency}");
+        });
+
     // --- Small helpers ------------------------------------------------------------------------------------------
     private static bool Live(string path, string attemptId)
     {
-        using var db = ProjectStore.Connect(path, SqliteOpenMode.ReadOnly);
-        db.Open();
+        using var db = ProjectStore.OpenRead(path);
         return TaskStore.Scalar<string>(db, "SELECT status FROM attempts WHERE id=$i", ("$i", attemptId)) is "leased" or "sending" or "streaming";
     }
 
@@ -512,10 +638,10 @@ public sealed class RunEngine(ICredentialVault vault, Func<string> newId)
 
     // --- Addressing one agent or the team -----------------------------------------------------------------------
     /// <summary>What an instruction would do, per recipient, before it is sent.</summary>
-    public IReadOnlyList<DispatchPreview> PreviewInstruction(string workspace, string taskId, IReadOnlyList<string> roles, string text)
+    public IReadOnlyList<DispatchPreview> PreviewInstruction(string workspace, string taskId, IReadOnlyList<string> roles, string text, IReadOnlyList<ImageData>? images = null, IReadOnlyDictionary<string, string>? confirms = null)
     {
         using var db = Reader.Open(workspace);
-        return [.. Recipients(db, taskId, roles).Select(r => Check(db, taskId, r, text, new(Instruction: text)).Preview)];
+        return [.. Recipients(db, taskId, roles).Select(r => Check(db, taskId, r, text, new(Instruction: text, ImageConfirm: confirms?.GetValueOrDefault(r)), images ?? []).Preview)];
     }
 
     private static List<string> Recipients(SqliteConnection db, string taskId, IReadOnlyList<string> roles)
@@ -531,22 +657,33 @@ public sealed class RunEngine(ICredentialVault vault, Func<string> newId)
     /// Records the instruction, then starts one attempt per recipient. Each attempt's command ID is the instruction's plus the role, so sending
     /// the same instruction again starts nothing new. The text goes only into the packets of the roles it was addressed to.
     /// </summary>
-    public (CommandResult Instruction, IReadOnlyList<(string Role, CommandResult? Attempt, string? Error)> Attempts) SendInstruction(string workspace, string commandId, string taskId, IReadOnlyList<string> roles, string text)
+    public (CommandResult Instruction, IReadOnlyList<(string Role, CommandResult? Attempt, string? Error)> Attempts) SendInstruction(string workspace, string commandId, string taskId, IReadOnlyList<string> roles, string text, IReadOnlyDictionary<string, string> bindings, IReadOnlyList<ImageData>? images = null, IReadOnlyDictionary<string, string>? imageConfirms = null)
     {
         if (string.IsNullOrWhiteSpace(text) || text.Length > 4000) throw Bad("invalid_text", "An instruction needs 1 to 4000 characters.", "Shorten it.");
         List<string> recipients;
-        using (var db = Reader.Open(workspace)) recipients = Recipients(db, taskId, roles);
+        using (var db = Reader.Open(workspace))
+        {
+            recipients = Recipients(db, taskId, roles);
+            // Checked before anything is recorded: a changed preview sends nothing to anyone.
+            foreach (var r in recipients)
+                if (!bindings.TryGetValue(r, out var shown)) throw Bad("preview_required", $"The {r} was not in the preview.", "Preview the instruction, then send it.");
+                else if (shown != Check(db, taskId, r, text, new(Instruction: text, ImageConfirm: imageConfirms?.GetValueOrDefault(r)), images ?? []).Preview.Binding)
+                    throw Bad("preview_changed", $"What the {r} would receive has changed since you previewed it. Nothing was sent.", "Review the refreshed preview, then send again.");
+        }
         var ins = TaskStore.Run(workspace, commandId, "instruction_sent", db =>
         {
             var t = TaskStore.Task(db, taskId);
             string id = newId();
             TaskStore.Exec(db, "INSERT INTO instructions VALUES($i,$p,$t,$r,$x,$at)", ("$i", id), ("$p", t.ProjectId), ("$t", taskId), ("$r", JsonSerializer.Serialize(recipients)), ("$x", text.Trim()), ("$at", Now));
+            int n = 0;
+            foreach (var img in images ?? [])
+                TaskStore.Exec(db, "INSERT INTO instruction_images VALUES($i,$n,$name,$mime,$w,$h,$z,$hash,$b)", ("$i", id), ("$n", n++), ("$name", img.Name), ("$mime", img.Mime), ("$w", img.Width), ("$h", img.Height), ("$z", img.Size), ("$hash", img.Hash), ("$b", img.Bytes));
             return new(id, t.Revision, taskId, null, null, $"to {string.Join(", ", recipients)}: {text.Trim()}");
         });
         var results = new List<(string, CommandResult?, string?)>();
         foreach (var role in recipients)
         {
-            try { results.Add((role, Dispatch(workspace, commandId + ":" + role, taskId, role, new(Instruction: text.Trim(), InstructionId: ins.Id)), null)); }
+            try { results.Add((role, Dispatch(workspace, commandId + ":" + role, taskId, role, new(Instruction: text.Trim(), InstructionId: ins.Id, Binding: bindings[role], ImageConfirm: imageConfirms?.GetValueOrDefault(role))), null)); }
             catch (StoreException e) { results.Add((role, null, e.Message)); }
         }
         return (ins, results);

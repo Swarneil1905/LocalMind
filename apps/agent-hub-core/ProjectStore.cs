@@ -5,7 +5,7 @@ namespace LocalMind.AgentHub.Core;
 /// <summary>The Agent Hub project store. Only the worker writes to it.</summary>
 public static class ProjectStore
 {
-    public const int CurrentSchema = 9;
+    public const int CurrentSchema = 11;
     public const string FileName = "agenthub.db";
 
     /// <summary>Test seam: runs after each migration step, inside the transaction.</summary>
@@ -13,6 +13,51 @@ public static class ProjectStore
 
     internal static SqliteConnection Connect(string path, SqliteOpenMode mode) =>
         new(new SqliteConnectionStringBuilder { DataSource = path, Mode = mode, Pooling = false, DefaultTimeout = 5 }.ToString());
+
+    /// <summary>Test seam: called with the attempt number before each read-only open's first query; a test can throw the error a racing writer causes.</summary>
+    public static Action<int>? BeforeReadProbe { get; set; }
+
+    /// <summary>
+    /// A read-only connection that opens while another connection is committing or closing can fail its first query with SQLITE_BUSY (5), SQLITE_LOCKED (6) or
+    /// SQLITE_READONLY (8, seen in the Day 5 independent Debug run). None of these means the store is damaged, so the open is retried briefly.
+    /// </summary>
+    /// <summary>
+    /// Runs one read on a read-only connection, repeating it briefly when SQLite reports the transient codes (5, 6, 8) another connection's commit can cause between two queries.
+    /// A read-write connection is never retried: there an error is real.
+    /// </summary>
+    /// <summary>Test seam: runs before every read on a read-only connection, with the attempt number.</summary>
+    public static Action<int>? BeforeRead { get; set; }
+
+    internal static T ReadRetry<T>(SqliteConnection db, Func<T> read)
+    {
+        bool readOnly = db.ConnectionString.Contains("ReadOnly", StringComparison.OrdinalIgnoreCase);
+        for (int attempt = 1; ; attempt++)
+        {
+            try { BeforeRead?.Invoke(attempt); return read(); }
+            catch (SqliteException e) when (readOnly && e.SqliteErrorCode is 5 or 6 or 8 && attempt < 12) { Thread.Sleep(10 * attempt); }
+        }
+    }
+
+    public static SqliteConnection OpenRead(string path)
+    {
+        for (int attempt = 1; ; attempt++)
+        {
+            var db = Connect(path, SqliteOpenMode.ReadOnly);
+            try
+            {
+                db.Open();
+                BeforeReadProbe?.Invoke(attempt);
+                Scalar(db, "SELECT count(*) FROM sqlite_schema");
+                return db;
+            }
+            catch (SqliteException e) when (e.SqliteErrorCode is 5 or 6 or 8 && attempt < 12)
+            {
+                db.Dispose();
+                Thread.Sleep(10 * attempt);
+            }
+            catch { db.Dispose(); throw; }
+        }
+    }
 
     internal static void Run(SqliteConnection db, string sql, SqliteTransaction? tx = null)
     {
@@ -26,7 +71,7 @@ public static class ProjectStore
     {
         using var c = db.CreateCommand();
         c.CommandText = sql;
-        return Convert.ToInt64(c.ExecuteScalar());
+        return Convert.ToInt64(ReadRetry(db, () => c.ExecuteScalar()));
     }
 
     private static bool HasTable(SqliteConnection db, string name) =>
@@ -163,6 +208,18 @@ public static class ProjectStore
             Run(db, "INSERT OR REPLACE INTO meta VALUES('schema_version','9')", tx);
             AfterMigrationStep?.Invoke(9);
         }
+        if (version < 10)
+        {
+            Run(db, V10Objects, tx);
+            Run(db, "INSERT OR REPLACE INTO meta VALUES('schema_version','10')", tx);
+            AfterMigrationStep?.Invoke(10);
+        }
+        if (version < 11)
+        {
+            Run(db, V11Objects, tx);
+            Run(db, "INSERT OR REPLACE INTO meta VALUES('schema_version','11')", tx);
+            AfterMigrationStep?.Invoke(11);
+        }
         tx.Commit();
         return true;
     }
@@ -201,6 +258,39 @@ public static class ProjectStore
             UNIQUE(attempt_id, kind));
         CREATE TABLE instructions(id TEXT PRIMARY KEY, project_id TEXT NOT NULL, task_id TEXT NOT NULL, recipients TEXT NOT NULL, text TEXT NOT NULL, created_at TEXT NOT NULL);
         CREATE TABLE task_files(task_id TEXT NOT NULL, name TEXT NOT NULL, content TEXT NOT NULL, PRIMARY KEY(task_id, name));
+        """;
+
+    /// <summary>What an attempt was bound to when it started: the preview it was sent from, the draft a review is about, and the file versions its tool may read.</summary>
+    private const string V10Objects = """
+        ALTER TABLE attempts ADD COLUMN review_output_id TEXT;
+        ALTER TABLE attempts ADD COLUMN review_revision INTEGER;
+        ALTER TABLE attempts ADD COLUMN binding TEXT;
+        CREATE TABLE attempt_files(attempt_id TEXT NOT NULL, name TEXT NOT NULL, content_hash TEXT NOT NULL, content TEXT NOT NULL, PRIMARY KEY(attempt_id, name));
+        ALTER TABLE project_settings ADD COLUMN max_concurrency INTEGER NOT NULL DEFAULT 2;
+        CREATE TABLE plans(id TEXT PRIMARY KEY, project_id TEXT NOT NULL, brief TEXT NOT NULL, status TEXT NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, decided_at TEXT,
+            planner_model TEXT, planner_input INTEGER, planner_output INTEGER);
+        CREATE TABLE plan_tasks(plan_id TEXT NOT NULL, key TEXT NOT NULL, title TEXT NOT NULL, owner TEXT, criteria TEXT NOT NULL DEFAULT '', review INTEGER NOT NULL DEFAULT 1, task_id TEXT,
+            position INTEGER NOT NULL, PRIMARY KEY(plan_id, key));
+        CREATE TABLE plan_edges(plan_id TEXT NOT NULL, key TEXT NOT NULL, requires_key TEXT NOT NULL, PRIMARY KEY(plan_id, key, requires_key));
+        """;
+
+    /// <summary>Plan edits keep the owner's own prerequisite text; work that could not start waits in a visible queue instead of being refused or lost.</summary>
+    private const string V11Objects = """
+        ALTER TABLE plan_tasks ADD COLUMN after_text TEXT;
+        ALTER TABLE events ADD COLUMN event_schema INTEGER NOT NULL DEFAULT 1;
+        CREATE TABLE instruction_images(instruction_id TEXT NOT NULL, idx INTEGER NOT NULL, name TEXT NOT NULL, mime TEXT NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL,
+            size INTEGER NOT NULL, hash TEXT NOT NULL, bytes BLOB, PRIMARY KEY(instruction_id, idx));
+        CREATE TABLE documents(id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'text', created_at TEXT NOT NULL, removed_at TEXT, forgotten_at TEXT);
+        CREATE TABLE document_revisions(doc_id TEXT NOT NULL, revision INTEGER NOT NULL, text TEXT, hash TEXT NOT NULL, bytes BLOB, created_at TEXT NOT NULL, PRIMARY KEY(doc_id, revision));
+        CREATE TABLE doc_chunks(doc_id TEXT NOT NULL, revision INTEGER NOT NULL, idx INTEGER NOT NULL, start INTEGER NOT NULL, length INTEGER NOT NULL, PRIMARY KEY(doc_id, revision, idx));
+        CREATE TABLE doc_terms(doc_id TEXT NOT NULL, revision INTEGER NOT NULL, idx INTEGER NOT NULL, term TEXT NOT NULL);
+        CREATE INDEX doc_terms_term ON doc_terms(term);
+        CREATE TABLE doc_thumbs(doc_id TEXT PRIMARY KEY, bytes BLOB NOT NULL);
+        CREATE TABLE doc_answers(id TEXT PRIMARY KEY, project_id TEXT NOT NULL, question TEXT NOT NULL, answer TEXT NOT NULL, status TEXT NOT NULL, model TEXT, destination TEXT, packet_text TEXT, created_at TEXT NOT NULL, invalid_refs TEXT);
+        CREATE TABLE doc_citations(answer_id TEXT NOT NULL, n INTEGER NOT NULL, doc_id TEXT NOT NULL, revision INTEGER NOT NULL, start INTEGER NOT NULL, length INTEGER NOT NULL, cited INTEGER NOT NULL, PRIMARY KEY(answer_id, n));
+        CREATE TABLE reconciliations(attempt_id TEXT PRIMARY KEY, choice TEXT NOT NULL, amount REAL, note TEXT, created_at TEXT NOT NULL);
+        CREATE TABLE start_queue(id TEXT PRIMARY KEY, project_id TEXT NOT NULL, task_id TEXT NOT NULL, role TEXT NOT NULL, binding TEXT, accept_price INTEGER NOT NULL DEFAULT 0,
+            instruction TEXT, instruction_id TEXT, require_eligible INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, status TEXT NOT NULL, note TEXT, attempt_id TEXT);
         """;
 
     private const string V6Objects = """
@@ -242,7 +332,7 @@ public static class ProjectStore
                     CREATE TABLE hub_dependencies(task_id TEXT NOT NULL, requires_id TEXT NOT NULL, PRIMARY KEY(task_id, requires_id));
                     CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
                     CREATE TABLE workspace(id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL);
-                    INSERT INTO meta VALUES('schema_version','9');
+                    INSERT INTO meta VALUES('schema_version','11');
                     CREATE TABLE events(seq INTEGER PRIMARY KEY AUTOINCREMENT, command_id TEXT NOT NULL UNIQUE, task_id TEXT NOT NULL, kind TEXT NOT NULL,
                         from_state TEXT, to_state TEXT, detail TEXT, created_at TEXT NOT NULL);
                     CREATE TABLE outputs(id TEXT PRIMARY KEY, task_id TEXT NOT NULL, revision INTEGER NOT NULL, text TEXT NOT NULL, author_role TEXT NOT NULL,
@@ -255,7 +345,7 @@ public static class ProjectStore
                     INSERT INTO policy VALUES(1,'human',1);
                     CREATE TABLE decisions(id TEXT PRIMARY KEY, task_id TEXT NOT NULL, run_id TEXT, output_id TEXT NOT NULL, content_revision INTEGER NOT NULL,
                         policy_revision INTEGER NOT NULL, actor TEXT NOT NULL, decision TEXT NOT NULL, comment TEXT, submission_id TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL);
-                    """ + V6Objects + V8Objects + V9Objects, tx);
+                    """ + V6Objects + V8Objects + V9Objects + V10Objects + V11Objects, tx);
                 using var c = db.CreateCommand();
                 c.Transaction = tx;
                 c.CommandText = "INSERT INTO projects VALUES($id,$n); INSERT INTO workspace VALUES($w,$n,$t)";
@@ -285,8 +375,7 @@ public static class ProjectStore
     /// <summary>True when opening this store would have to upgrade it, which is a write.</summary>
     public static bool NeedsMigration(string path)
     {
-        using var db = Connect(path, SqliteOpenMode.ReadOnly);
-        db.Open();
+        using var db = OpenRead(path);
         int v = ReadVersion(db);
         return v >= 0 && v < CurrentSchema;
     }
@@ -294,11 +383,11 @@ public static class ProjectStore
     public static WorkspaceInfo Load(string folderOrFile)
     {
         string path = DatabaseIn(folderOrFile);
+        if (Directory.Exists(Path.GetDirectoryName(Path.GetFullPath(path)))) Migration.Resolve(Path.GetDirectoryName(Path.GetFullPath(path))!); // finish or undo an interrupted upgrade first
         if (!File.Exists(path))
             throw new StoreException("not_found", $"No workspace database at {path}.", "Choose the folder that contains agenthub.db.");
-        bool migrated = Migrate(path);
-        using var db = Connect(path, SqliteOpenMode.ReadOnly);
-        db.Open();
+        bool migrated = Migration.UpgradeIfNeeded(path);
+        using var db = OpenRead(path);
         using var c = db.CreateCommand();
         c.CommandText = """
             SELECT p.id, COALESCE((SELECT name FROM workspace LIMIT 1), p.name) FROM projects p
