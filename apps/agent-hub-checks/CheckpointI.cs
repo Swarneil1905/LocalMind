@@ -360,6 +360,9 @@ internal static class CheckpointI
     {
         await using var b = await NewBench(folder);
         await LocalTeam(b, answer: r => Text(r, "slow draft", 150));
+        // This fixture is about leases. An automatic review of each draft would hold project slots (limit 2) at unrelated moments, so it is switched off here;
+        // the limit itself and the review queue have their own checks in CheckpointJ.
+        await b.W.SetProjectSettingsAsync(b.Db, C(), b.Settings with { AutoReview = false });
         string task = b.Task("Draft", "Write it");
         var one = new RunEngine(new MemoryVault(), () => Guid.NewGuid().ToString("N"));
         var two = new RunEngine(new MemoryVault(), () => Guid.NewGuid().ToString("N"));
