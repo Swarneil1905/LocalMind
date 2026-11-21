@@ -11,7 +11,7 @@ public sealed partial class HubViewModel
     public string? ReadOnlyReason { get; private set; }
     public bool HasReadOnlyReason => ReadOnlyReason != null;
     /// <summary>True for an Agent Hub workspace this window owns the writes to.</summary>
-    public bool CanWrite => IsWorkspace && ReadOnlyReason == null;
+    public bool CanWrite => IsWorkspace && ReadOnlyReason == null && !Replaying;
 
     /// <summary>Lets go of the workspace so another window can take it.</summary>
     public async Task ReleaseWriteLockAsync()

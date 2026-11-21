@@ -64,11 +64,20 @@ public sealed class RoleRow(string role, HubViewModel hub) : INotifyPropertyChan
 /// <summary>One model attempt as the run inspector shows it: who received what, which model answered, and what it cost.</summary>
 public sealed record AttemptRow(AttemptView A, string ConnectionLabel)
 {
+    /// <summary>The action that was in doubt, the receipt the provider gave, and what the owner can do about it, together.</summary>
+    public bool Uncertain => A.SentAt != null && (A.Status is "needs_reconciliation" or "interrupted" || (A.Status == "completed" && A.Cost == null && A.Provider != "ollama"));
+    public bool CanResolve => Uncertain && A.Status != "confirmed";
+    public bool CanAbandon => Uncertain && A.Status is "needs_reconciliation" or "interrupted";
+    public bool CanRecordCharge => A.Status == "completed" && A.Cost == null && A.Provider != "ollama" && A.SentAt != null;
+    public string Intended => $"Intended: send the {A.Role} a packet of about {(A.PacketText.Length + 3) / 4} tokens ({A.RequestedModel}) so it can " + (A.Role == "builder" ? "write a revision" : A.Role == "reviewer" ? "review a revision" : "answer") + ".";
+    public string Receipt => !Uncertain ? "" : A.InputTokens is { } i ? $"Receipt so far: {i} tokens in, {A.OutputTokens} out" + (A.Cost is { } c ? $", cost {c:0.000000} {A.Currency}." : "; the charge is not reported.")
+        : $"No receipt: the provider reported no usage. {(A.PartialText.Length > 0 ? $"{A.PartialText.Length} characters of partial output were kept." : "No output arrived.")}";
+    public string Decision => A.Status switch { "confirmed" => "You confirmed this attempt with a receipt.", "abandoned" when A.StopReason?.Contains("Abandoned by the owner") == true => "You abandoned this attempt.", _ => "" };
     public string Title => $"{char.ToUpperInvariant(A.Role[0])}{A.Role[1..]} · {A.RequestedModel} on {ConnectionLabel}";
     public string Status => A.Status switch
     {
         "leased" => "Starting", "sending" => "Waiting for the model", "streaming" => "Answering", "completed" => "Finished", "failed" => "Failed", "interrupted" => "Interrupted",
-        "stopped" => "Stopped at a limit", "cancelled" => "Cancelled", "paused" => "Paused", "abandoned" => "Abandoned (never sent)", "needs_reconciliation" => "Needs your check", _ => A.Status,
+        "stopped" => "Stopped at a limit", "cancelled" => "Cancelled", "paused" => "Paused", "abandoned" => A.SentAt == null ? "Abandoned (never sent)" : "Abandoned by you", "needs_reconciliation" => "Needs your check", "confirmed" => "Confirmed by you", _ => A.Status,
     } + (A.Revision is { } r && A.Role == "builder" ? $" · wrote revision {r}" : A.Revision is { } rv && A.Role == "reviewer" ? $" · reviewed revision {rv}" : "");
     public string Route => A.ReportedModel == null && A.Status is "leased" or "sending" ? $"Requested {A.RequestedModel}."
         : $"Requested {A.RequestedModel}; answered by {A.ReportedModel ?? "unknown"}" + (A.Provider == "openrouter" ? $" via {A.ReportedProvider ?? "an unknown provider"}" : "") + "." + (A.RouteNote is { } n ? " " + n : "");
@@ -182,9 +191,11 @@ public sealed partial class HubViewModel
     public WorkspaceCommand RetryWithCostCommand { get; private set; } = null!;
 
     // --- Instructions from the channel ------------------------------------------------------------------------
-    public int RecipientIndex { get; set; }
+    private int recipientIndex;
+    public int RecipientIndex { get => recipientIndex; set { if (recipientIndex == value) return; recipientIndex = value; if (!restoring) { RecipientNeedsReselect = false; ComposerNote = ""; instructionBindings = null; lastPreviews = []; } ComposerChanged(); } }
     private static readonly string[][] RecipientSets = [["builder"], ["reviewer"], ["planner"], ["everyone"]];
-    public string InstructionText { get; set; } = "";
+    private string instructionText = "";
+    public string InstructionText { get => instructionText; set { if (instructionText == value) return; instructionText = value ?? ""; instructionBindings = null; ComposerChanged(); } }
     public string InstructionPreview { get; private set; } = "";
     public bool HasInstructionPreview => InstructionPreview.Length > 0;
     public string InstructionNote => selectedTask == null ? "Select a task on the board to address its team." : $"About “{selectedTask.Title}”.";
@@ -192,6 +203,8 @@ public sealed partial class HubViewModel
     public WorkspaceCommand SendInstructionCommand { get; private set; } = null!;
 
     private async Task<WorkerClient> Worker() => await workspaces!.Client();
+
+    private ImageArg[]? ImageArgs() => Attachments.Where(a => !a.Missing).Select(a => new ImageArg(a.Image.Name, Convert.ToBase64String(a.Image.Bytes))).ToArray() is { Length: > 0 } x ? x : null;
 
     private void InitModels()
     {
@@ -250,6 +263,7 @@ public sealed partial class HubViewModel
         ClosePreviewCommand = new(_ => HasPreview, _ => { preview = null; NotifyPreview(); return Task.CompletedTask; });
         SendPreviewCommand = new(_ => CanEdit && CanSendPreview, _ => SendPreview(false));
         ConsentAndSendCommand = new(_ => CanEdit && PreviewNeedsConsent, _ => SendPreview(true));
+        InitDay6();
         PauseAttemptCommand = new(p => CanWrite && p is AttemptRow { Active: true }, p => Control("pause", (AttemptRow)p!, false));
         CancelAttemptCommand = new(p => CanWrite && p is AttemptRow { Active: true }, p => Control("cancel", (AttemptRow)p!, false));
         ResumeAttemptCommand = new(p => CanWrite && p is AttemptRow { CanResumeFree: true }, p => Control("resume", (AttemptRow)p!, false));
@@ -257,29 +271,33 @@ public sealed partial class HubViewModel
 
         PreviewInstructionCommand = new(_ => IsWorkspace && selectedTask != null && InstructionText.Trim().Length > 0, async _ => await Guarded(async () =>
         {
-            var previews = await (await Worker()).PreviewInstructionAsync(path!, selectedTask!.Id, RecipientSets[RecipientIndex], InstructionText.Trim());
+            var previews = await (await Worker()).PreviewInstructionAsync(path!, selectedTask!.Id, RecipientSets[RecipientIndex], InstructionText.Trim(), ImageArgs(), new(imageConfirms));
             instructionBindings = previews.ToDictionary(p => p.Role, p => p.Binding);
-            InstructionPreview = string.Join("\n", previews.Select(p => $"{p.Role}: {p.Model} on {p.ConnectionLabel} ({(p.IsCloud ? "cloud" : "this computer")}), about {p.PacketTokens} tokens"
+            lastPreviews = previews;
+            InstructionPreview = string.Join("\n", previews.Select(p => $"{p.Role}: {p.Model} on {p.ConnectionLabel} ({(p.IsCloud ? "cloud" : "this computer")}), about {p.PacketTokens} tokens" + (p.Images is { Count: > 0 } im ? $", {im.Count} image(s): " + p.ImageStatus.Replace("needs_confirmation", "needs your confirmation").Replace("no_vision", "this model cannot accept images").Replace("ok", "ready") : "")
                 + (p.Estimate is { } e ? $", estimated {e:0.000000} {p.Currency}" : ", price unknown") + (p.Blocker is { } b ? $" — blocked: {b}" : "")));
             Notify(nameof(InstructionPreview)); Notify(nameof(HasInstructionPreview));
         }));
-        SendInstructionCommand = new(_ => CanWrite && selectedTask != null && InstructionText.Trim().Length > 0, _ =>
+        SendInstructionCommand = new(_ => CanWrite && selectedTask != null && InstructionText.Trim().Length > 0 && !RecipientNeedsReselect && Attachments.All(a => !a.Missing), _ =>
         {
             var bindings = instructionBindings;
             if (bindings == null) { ShowNotice("Preview what each recipient would receive before sending.", "Dismiss", DismissNoticeCommand); return Task.CompletedTask; }
             string ws = path!, task = selectedTask!.Id, text = InstructionText.Trim();
             var roles = RecipientSets[RecipientIndex];
+            var images = ImageArgs(); var confirms = new Dictionary<string, string>(imageConfirms);
             string click = Guid.NewGuid().ToString("N"); // a retry of this send reuses its ID, so no recipient is dispatched twice
             return Fail(async () =>
             {
+                bool anyDelivered = true;
                 string? error = await Submit($"instruction|{ws}|{task}|{click}", ws, async id =>
                 {
-                    var r = await (await Worker()).SendInstructionAsync(ws, id, task, roles, text, bindings);
+                    var r = await (await Worker()).SendInstructionAsync(ws, id, task, roles, text, bindings, images, new(confirms));
                     var failed = r.Attempts.Where(x => x.Error != null).ToList();
+                    anyDelivered = failed.Count < r.Attempts.Count; // nobody received it: the message stays in the composer
                     if (failed.Count > 0) ShowNotice(string.Join(" ", failed.Select(f => $"Not sent to the {f.Role}: {f.Error}")), "Dismiss", DismissNoticeCommand);
                     return r.Instruction;
                 });
-                if (error == null) { InstructionText = ""; InstructionPreview = ""; instructionBindings = null; Notify(nameof(InstructionText)); Notify(nameof(InstructionPreview)); Notify(nameof(HasInstructionPreview)); }
+                if (error == null && anyDelivered) { InstructionText = ""; Attachments.Clear(); lastPreviews = []; imageConfirms.Clear(); InstructionPreview = ""; instructionBindings = null; ComposerChanged(); Notify(nameof(InstructionText)); Notify(nameof(InstructionPreview)); Notify(nameof(HasInstructionPreview)); }
                 return error;
             });
         });
@@ -380,6 +398,7 @@ public sealed partial class HubViewModel
         finally { LoadingTeam = false; }
         foreach (var n in new[] { nameof(ConnectionsEmpty), nameof(BudgetLine), nameof(PriceLines), nameof(CloudChoices), nameof(LocalChoices), nameof(SmokeModel), nameof(TeamLocalOnly), nameof(TeamBudget),
                                   nameof(TeamCurrency), nameof(TeamMaxSteps), nameof(TeamMaxSeconds), nameof(TeamMaxToolCalls), nameof(TeamMaxOutput), nameof(TeamOnlyProviders), nameof(TeamAutoReview) }) Notify(n);
+        if (composerWorkspace != workspaceKey || composerProject != selected?.Id) RestoreComposer(); // once per project: a refresh never replaces what is being typed
         RaiseCommands();
     }
 
