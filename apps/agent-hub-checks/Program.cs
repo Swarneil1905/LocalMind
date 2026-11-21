@@ -9,6 +9,8 @@ if (args is ["--handoff-c-fixture", var hc]) { Console.WriteLine($"Wrote {Checkp
 
 if (args is ["--stream", var sw, var st, var sc, var sd]) { await CheckpointH.Stream(sw, st, int.Parse(sc), int.Parse(sd)); return; }
 
+if (args is ["--day4-fixture", var d4, var d4url, var d4b, var d4r]) { Console.WriteLine($"Wrote {await CheckpointI.MakeDay4(Path.GetFullPath(d4), d4url, d4b, d4r)}"); return; }
+
 if (args is ["--only-i", var oi]) { await CheckpointI.Run(Path.GetFullPath(oi)); return; }
 
 if (args is ["--only-h", var oh]) { await CheckpointH.Run(Path.GetFullPath(oh)); return; }

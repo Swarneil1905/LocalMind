@@ -79,6 +79,30 @@ internal static class CheckpointI
         return new Bench { W = w, Fake = fake, Vault = vault, Db = info.DatabasePath, Project = info.ProjectId, Folder = folder };
     }
 
+    /// <summary>
+    /// Development-only (the Day 4 native receipt): a disposable Atlas with release notes to write from three supplied changes, QA after it,
+    /// and an Ollama connection with a builder and a reviewer on two different model IDs. Nothing here is scripted: the models are real.
+    /// </summary>
+    public static async Task<string> MakeDay4(string folder, string endpoint, string builder, string reviewer)
+    {
+        var fake = new FakeWorker("day4-fixture", new MemoryVault());
+        var w = new WorkerClient(fake);
+        var info = await w.CreateWorkspaceAsync(folder, "Atlas");
+        string db = info.DatabasePath;
+        string draft = (await w.CreateTaskAsync(db, C(), info.ProjectId, "Release notes", "Write release notes as a bulleted list, one bullet for each supplied change. Cover every change.")).Id;
+        string qa = (await w.CreateTaskAsync(db, C(), info.ProjectId, "QA", "Check the release notes against the build.")).Id;
+        await w.UpdateTaskAsync(db, C(), draft, 0, reviewRequired: true);
+        await w.AddDependencyAsync(db, C(), qa, draft, 0);
+        await SeedReleaseNotes(w, db, info.ProjectId, draft);
+        string conn = (await w.AddConnectionAsync(db, C(), "ollama", endpoint, "Ollama on this computer")).Id;
+        await w.ProbeConnectionAsync(db, conn);
+        await w.AssignRoleAsync(db, C(), info.ProjectId, "builder", conn, builder);
+        await w.AssignRoleAsync(db, C(), info.ProjectId, "reviewer", conn, reviewer);
+        await w.ReleaseWorkspaceAsync(db);
+        await fake.DisposeAsync();
+        return db;
+    }
+
     public static async Task Run(string dir)
     {
         Directory.CreateDirectory(dir);
@@ -97,6 +121,7 @@ internal static class CheckpointI
         await Routing(Path.Combine(dir, "routing"));
         await Addressing(Path.Combine(dir, "addressing"));
         await Journey(Path.Combine(dir, "journey"));
+        await Desktop(Path.Combine(dir, "desktop"));
     }
 
     // Scripted models -------------------------------------------------------------------------------------------------
@@ -361,7 +386,7 @@ internal static class CheckpointI
             UPDATE attempts SET sent_at='{past}', partial_text='half a dra' WHERE id='x-sent';
             """);
         await b.W.RecoverRunsAsync(b.Db);
-        Check(b.Attempt("x-unsent") is { Status: "abandoned" } u && u.StopReason!.Contains("never sent") && b.Attempt("x-sent") is { Status: "needs_reconciliation", PartialText: "half a dra" } s && s.StopReason!.Contains("may have accepted"),
+        Check(b.Attempt("x-unsent") is { Status: "abandoned" } u && u.StopReason!.Contains("before anything was sent") && b.Attempt("x-sent") is { Status: "needs_reconciliation", PartialText: "half a dra" } s && s.StopReason!.Contains("may have accepted"),
               "on expiry an unsent attempt is abandoned and safe to start again, while a sent one is kept for reconciliation with its partial text");
         var fresh = await b.Settled((await b.W.DispatchAsync(b.Db, C(), t2, "builder")).Id);
         var guarded = await Refused(() => b.W.DispatchAsync(b.Db, C(), t3, "builder"));
@@ -383,7 +408,7 @@ internal static class CheckpointI
         await b.W.SetProjectSettingsAsync(b.Db, C(), b.Settings with { MaxToolCalls = 20, MaxSteps = 2 });
         var steps = await b.Settled((await b.W.DispatchAsync(b.Db, C(), task, "builder")).Id);
         Check(steps is { Status: "stopped", Steps: 2 } && steps.StopReason == "Stopped at the 2-step limit.", "the step limit stops it at two model turns");
-        ScriptOllama(b.Local, ["builder-a:1", "reviewer-b:2"], r => new(200, ContentType: "application/x-ndjson", Chunks: ScriptedServer.OllamaText(r.Model, string.Concat(Enumerable.Range(0, 60).Select(i => $"w{i} "))), DelayMs: 400));
+        ScriptOllama(b.Local, ["builder-a:1", "reviewer-b:2"], r => new(200, ContentType: "application/x-ndjson", Chunks: ScriptedServer.OllamaText(r.Model, string.Concat(Enumerable.Range(0, 60).Select(i => $"w{i} "))), DelayMs: 2500));
         await b.W.SetProjectSettingsAsync(b.Db, C(), b.Settings with { MaxSteps = 4, MaxSeconds = 5 });
         var slow = await b.Settled((await b.W.DispatchAsync(b.Db, C(), task, "builder")).Id, 15000);
         Check(slow is { Status: "stopped" } && slow.StopReason == "Stopped at the 5-second limit." && slow.PartialText.Length > 0, "the time limit stops a slow stream and keeps what had arrived");
@@ -483,7 +508,7 @@ internal static class CheckpointI
     private static async Task Controls(string folder)
     {
         await using var b = await NewBench(folder);
-        await LocalTeam(b, answer: r => new(200, ContentType: "application/x-ndjson", Chunks: ScriptedServer.OllamaText(r.Model, string.Concat(Enumerable.Range(0, 40).Select(i => $"t{i} "))), DelayMs: 150));
+        await LocalTeam(b, answer: r => new(200, ContentType: "application/x-ndjson", Chunks: ScriptedServer.OllamaText(r.Model, string.Concat(Enumerable.Range(0, 40).Select(i => $"t{i} "))), DelayMs: 700));
         await b.W.SetProjectSettingsAsync(b.Db, C(), b.Settings with { AutoReview = false });
         string task = b.Task("Draft", "Write it");
         var a = await b.W.DispatchAsync(b.Db, C(), task, "builder");
@@ -564,7 +589,7 @@ internal static class CheckpointI
               "the preview of a private instruction names its one recipient, its model, the packet it will get and the estimate");
         var priv = await b.W.SendInstructionAsync(b.Db, C(), task, ["builder"], "Use British spelling.");
         var builderRun = await b.Settled(priv.Attempts.Single().Attempt!.Id);
-        Check(priv.Attempts.Single().Role == "builder" && builderRun.PacketText.Contains("Use British spelling.") && !b.Local.Seen.Any(r => r.Model == "reviewer-b:2"),
+        Check(priv.Attempts.Single().Role == "builder" && builderRun.PacketText.Contains("Use British spelling.") && !b.Local.Seen.Any(r => r.Path == "/api/chat" && r.Model == "reviewer-b:2"),
               "a private instruction reaches only the builder; the reviewer receives nothing");
 
         string cmd = C();
@@ -635,5 +660,99 @@ internal static class CheckpointI
         Check(runs.Count == 4 && runs.All(r => r.Status == "completed" && r.InputTokens == 40 && r.OutputTokens == 25 && r.Cost == 0) && runs.Select(r => r.RequestedModel).Distinct().Count() == 2
               && One<string>(b.Db, "SELECT decision FROM decisions WHERE content_revision=2") == "accepted" && One<string>(b.Db, $"SELECT author_role FROM outputs WHERE id='{out2}'") == "builder · scripted-builder:1 (Scripted Ollama)",
               "after a restart the outputs, the decision, both models' attempts and their usage are all read back");
+    }
+    // AH25 through the desktop view model: connect, assign, preview, send, review, decide, restart ----------------------------
+    private static async Task Desktop(string folder)
+    {
+        using var local = new ScriptedServer();
+        ScriptOllama(local, ["scripted-builder:1", "scripted-reviewer:2"], ReleaseNotesTeam("scripted-builder:1", "scripted-reviewer:2"));
+        var vault = new MemoryVault();
+        var fake = new FakeWorker("desk", vault);
+        var hub = new LocalMind.AgentHub.HubViewModel { Workspaces = new LocalMind.AgentHub.WorkspaceService(new WorkerClient(fake)), PickFile = () => Task.FromResult<string?>(null) };
+        await hub.CreateWorkspaceAsync("Atlas", folder);
+        hub.StartPolling(TimeSpan.FromMilliseconds(100)); // as the window does
+        string db = Path.Combine(folder, "agenthub.db");
+        string project = One<string>(db, "SELECT id FROM projects");
+        var w = new WorkerClient(fake);
+        await hub.CreateTaskAsync("Release notes", "Write release notes covering every supplied change.");
+        await hub.CreateTaskAsync("QA", "");
+        var draft = hub.Tasks.Single(t => t.Title == "Release notes");
+        hub.SelectedTask = hub.Tasks.Single(t => t.Title == "QA");
+        await hub.AddPrerequisiteAsync(draft.Id);
+        hub.SelectedTask = hub.Tasks.Single(t => t.Title == "Release notes");
+        await hub.ToggleReviewCommand.RunAsync();
+        await Until(() => hub.SelectedTask?.ReviewRequired == true);
+        await SeedReleaseNotes(w, db, project, draft.Id);
+
+        // Connections: add the local endpoint and probe it. Team: a different model for each role.
+        hub.ShowConnectionsCommand.Execute(null);
+        hub.NewProviderIndex = 0;
+        hub.NewEndpoint = local.Url;
+        hub.NewLabel = "Scripted Ollama";
+        await hub.AddConnectionCommand.RunAsync();
+        await Until(() => hub.ConnectionRows.Count == 1);
+        await hub.ProbeCommand.RunAsync(hub.ConnectionRows[0]);
+        await Until(() => hub.ConnectionRows.Count == 1 && hub.ConnectionRows[0].ModelLines.Count == 2);
+        Check(hub.ConnectionRows[0].Probe.StartsWith("Last successful probe") && hub.ConnectionRows[0].ModelLines.Any(l => l.StartsWith("scripted-reviewer:2 — text")),
+              "the Connections view lists the discovered models with their capabilities and the last successful probe");
+        hub.ShowTeamCommand.Execute(null);
+        await Until(() => hub.RoleRows.Count == 3 && hub.RoleRows[1].Choices.Count == 2);
+        var builderRow = hub.RoleRows.Single(r => r.Role == "builder");
+        builderRow.Selected = builderRow.Choices.Single(c => c.ModelId == "scripted-builder:1");
+        await Until(() => Team.Read(db, project).Assignments.Count == 1);
+        var reviewerRow = hub.RoleRows.Single(r => r.Role == "reviewer");
+        reviewerRow.Selected = reviewerRow.Choices.Single(c => c.ModelId == "scripted-reviewer:2");
+        await Until(() => Team.Read(db, project).Assignments.Count == 2);
+        await Until(() => hub.RoleRows.Single(r => r.Role == "reviewer").Explanation.Contains("Provider: Ollama"));
+        Check(hub.RoleRows.Single(r => r.Role == "builder").Selected!.ModelId == "scripted-builder:1" && hub.RoleRows.Single(r => r.Role == "reviewer").Explanation.Contains("Model: scripted-reviewer:2"),
+              "the team editor assigns a different model to builder and reviewer and shows provider and model separately");
+
+        // Preview, then send the brief from the ordinary workspace.
+        hub.ShowBoardCommand.Execute(null);
+        hub.SelectedTask = hub.Tasks.Single(t => t.Title == "Release notes");
+        await Until(() => hub.CanEdit);
+        await hub.PreviewBuilderCommand.RunAsync();
+        Check(hub.HasPreview && hub.PreviewTitle.Contains("scripted-builder:1") && hub.PreviewDetails.Contains("change-a.txt, change-b.txt, change-c.txt") && hub.PreviewDetails.Contains("Nothing leaves this computer")
+              && hub.PreviewPacket.Contains("Faster startup") && hub.CanSendPreview, "the preview shows the recipient, its model, the files and the exact packet before sending");
+        await hub.SendPreviewCommand.RunAsync();
+        await Until(() => hub.AttemptRows.Count == 2 && hub.AttemptRows.All(r => !r.Active), 15000);
+        await hub.RefreshCommand.RunAsync();
+        await Until(() => hub.Review?.HasOutput == true && hub.HasFeedback);
+        await Until(() => hub.AttemptRows.Count == 2);
+        var rows = hub.AttemptRows.ToList();
+        Check(rows.Any(r => r.Title.StartsWith("Builder · scripted-builder:1") && r.Status.Contains("wrote revision 1")) && rows.Any(r => r.Title.StartsWith("Reviewer · scripted-reviewer:2") && r.Status.Contains("reviewed revision 1"))
+              && rows.All(r => r.Route.Contains("answered by scripted-") && r.Usage.Contains("40 tokens in, 25 out") && r.Usage.Contains("no cost (local model)")) && rows.All(r => r.Packet.Length > 0)
+              && hub.FeedbackText.Contains("change-c.txt"),
+              "the run inspector shows both attempts: who received what, which model answered, and their usage; the reviewer's reason is in the review panel");
+
+        // The owner asks for the correction and compares revision 2 without opening a log.
+        await hub.FreezeRequestChanges()("Please add the missing change.");
+        await hub.PreviewBuilderCommand.RunAsync();
+        await hub.SendPreviewCommand.RunAsync();
+        await Until(() => hub.AttemptRows.Count == 4 && hub.AttemptRows.All(r => !r.Active), 15000);
+        await hub.RefreshCommand.RunAsync();
+        await Until(() => hub.Review?.Revision == 2 && hub.HasFeedback && hub.FeedbackText.Contains("approve"));
+        Check(hub.ChangeLines.Any(l => l == "+ - Faster startup") && hub.CanDecide && hub.EffectText.Contains("“QA” can then start"), "revision 2 shows the added change beside the decision, and the reviewer now recommends approval");
+        hub.SelectedTask = hub.Tasks.Single(t => t.Title == "QA");
+        await hub.MoveTaskCommand.RunAsync("in_progress");
+        Check(hub.Tasks.Single(t => t.Title == "QA").Status == "open", "QA still waits: the reviewer's approval is only a recommendation");
+        hub.SelectedTask = hub.Tasks.Single(t => t.Title == "Release notes");
+        await Until(() => hub.CanDecide);
+        await hub.AcceptOutputCommand.RunAsync();
+        await Until(() => hub.Review?.AcceptedBy != null);
+        hub.SelectedTask = hub.Tasks.Single(t => t.Title == "QA");
+        await hub.MoveTaskCommand.RunAsync("in_progress");
+        await Until(() => hub.Tasks.Single(t => t.Title == "QA").Status == "in progress");
+
+        // Restart: outputs, decision and usage records are all still there.
+        hub.StopPolling();
+        await hub.ReleaseWriteLockAsync();
+        var again = new LocalMind.AgentHub.HubViewModel { Workspaces = new LocalMind.AgentHub.WorkspaceService(new WorkerClient(new FakeWorker("desk2", vault))), PickFile = () => Task.FromResult<string?>(null) };
+        await again.OpenWorkspaceFolderAsync(folder);
+        again.SelectedTask = again.Tasks.Single(t => t.Title == "Release notes");
+        await Until(() => again.AttemptRows.Count == 4 && again.Review?.AcceptedBy != null);
+        Check(again.DecisionBadge.StartsWith("Accepted · revision 2") && again.AttemptRows.Select(r => r.A.RequestedModel).Distinct().Count() == 2 && again.AttemptRows.All(r => r.A.Status == "completed" && r.A.InputTokens == 40),
+              "after a restart the accepted revision, its badge and all four attempts with their usage are read back");
+        await again.ReleaseWriteLockAsync();
     }
 }
