@@ -232,7 +232,7 @@ public sealed partial class HubViewModel
             if (!int.TryParse(TeamMaxSteps, out int s) || !int.TryParse(TeamMaxSeconds, out int t) || !int.TryParse(TeamMaxToolCalls, out int k) || !int.TryParse(TeamMaxOutput, out int o))
             { ShowNotice("Each limit must be a whole number.", "Dismiss", DismissNoticeCommand); return Task.CompletedTask; }
             var only = TeamOnlyProviders.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            var settings = new ProjectSettings(selected!.Id, TeamLocalOnly, TeamBudget.Trim().Length == 0 ? null : b, TeamCurrency.Trim().ToUpperInvariant(), s, t, k, o, only.Length == 0 ? null : only, TeamAutoReview);
+            var settings = new ProjectSettings(selected!.Id, TeamLocalOnly, TeamBudget.Trim().Length == 0 ? null : b, TeamCurrency.Trim().ToUpperInvariant(), s, t, k, o, only.Length == 0 ? null : only, TeamAutoReview, team?.Settings.MaxConcurrency ?? 2);
             string ws = path!, click = Guid.NewGuid().ToString("N");
             return Fail(() => Submit($"settings|{ws}|{click}", ws, async id => await (await Worker()).SetProjectSettingsAsync(ws, id, settings)));
         });
@@ -258,12 +258,15 @@ public sealed partial class HubViewModel
         PreviewInstructionCommand = new(_ => IsWorkspace && selectedTask != null && InstructionText.Trim().Length > 0, async _ => await Guarded(async () =>
         {
             var previews = await (await Worker()).PreviewInstructionAsync(path!, selectedTask!.Id, RecipientSets[RecipientIndex], InstructionText.Trim());
+            instructionBindings = previews.ToDictionary(p => p.Role, p => p.Binding);
             InstructionPreview = string.Join("\n", previews.Select(p => $"{p.Role}: {p.Model} on {p.ConnectionLabel} ({(p.IsCloud ? "cloud" : "this computer")}), about {p.PacketTokens} tokens"
                 + (p.Estimate is { } e ? $", estimated {e:0.000000} {p.Currency}" : ", price unknown") + (p.Blocker is { } b ? $" — blocked: {b}" : "")));
             Notify(nameof(InstructionPreview)); Notify(nameof(HasInstructionPreview));
         }));
         SendInstructionCommand = new(_ => CanWrite && selectedTask != null && InstructionText.Trim().Length > 0, _ =>
         {
+            var bindings = instructionBindings;
+            if (bindings == null) { ShowNotice("Preview what each recipient would receive before sending.", "Dismiss", DismissNoticeCommand); return Task.CompletedTask; }
             string ws = path!, task = selectedTask!.Id, text = InstructionText.Trim();
             var roles = RecipientSets[RecipientIndex];
             string click = Guid.NewGuid().ToString("N"); // a retry of this send reuses its ID, so no recipient is dispatched twice
@@ -271,12 +274,12 @@ public sealed partial class HubViewModel
             {
                 string? error = await Submit($"instruction|{ws}|{task}|{click}", ws, async id =>
                 {
-                    var r = await (await Worker()).SendInstructionAsync(ws, id, task, roles, text);
+                    var r = await (await Worker()).SendInstructionAsync(ws, id, task, roles, text, bindings);
                     var failed = r.Attempts.Where(x => x.Error != null).ToList();
                     if (failed.Count > 0) ShowNotice(string.Join(" ", failed.Select(f => $"Not sent to the {f.Role}: {f.Error}")), "Dismiss", DismissNoticeCommand);
                     return r.Instruction;
                 });
-                if (error == null) { InstructionText = ""; InstructionPreview = ""; Notify(nameof(InstructionText)); Notify(nameof(InstructionPreview)); Notify(nameof(HasInstructionPreview)); }
+                if (error == null) { InstructionText = ""; InstructionPreview = ""; instructionBindings = null; Notify(nameof(InstructionText)); Notify(nameof(InstructionPreview)); Notify(nameof(HasInstructionPreview)); }
                 return error;
             });
         });
@@ -292,6 +295,8 @@ public sealed partial class HubViewModel
         try { await work(); }
         catch (WorkerException e) { ShowNotice(e.Message, "Dismiss", DismissNoticeCommand); }
     }
+
+    private Dictionary<string, string>? instructionBindings;
 
     private async Task LoadPreviewAsync(string role)
     {
@@ -316,8 +321,10 @@ public sealed partial class HubViewModel
                 try { await (await Worker()).GrantConsentAsync(ws, Guid.NewGuid().ToString("N"), p.ProjectId, p.ConnectionId!, p.Model!, [.. p.FileNames]); }
                 catch (WorkerException e) { return e.Message; }
             }
-            string? error = await Submit($"dispatch|{ws}|{p.TaskId}|{p.Role}|{click}", ws, async id => await (await Worker()).DispatchAsync(ws, id, p.TaskId, p.Role, acceptPriceRisk: priceRisk));
+            string? error = await Submit($"dispatch|{ws}|{p.TaskId}|{p.Role}|{click}", ws, async id => await (await Worker()).DispatchAsync(ws, id, p.TaskId, p.Role, acceptPriceRisk: priceRisk, binding: p.Binding));
             if (error == null) { preview = null; NotifyPreview(); await RefreshRunsAsync(); }
+            // The model, packet, files or price changed after the owner looked: show the new preview and send nothing.
+            else if (error.StartsWith("What would be sent has changed")) await LoadPreviewAsync(p.Role);
             return error;
         });
     }

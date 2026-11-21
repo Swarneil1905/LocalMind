@@ -128,7 +128,7 @@ public sealed partial class HubViewModel
 
     private void InitReview()
     {
-        OpenLatestRevisionCommand = new(_ => IsStale, _ => { releasePlace = true; return LoadReviewAsync(); });
+        OpenLatestRevisionCommand = new(_ => IsStale, _ => { pinnedTask = null; releasePlace = true; return LoadReviewAsync(); });
         AskBuilderCommand = new(_ => CanEdit, _ => { releasePlace = true; return Role("builder"); });
         AskReviewerCommand = new(_ => CanEdit && Review is { HasOutput: true }, _ => Role("reviewer"));
         AcceptOutputCommand = new(_ => CanDecide, _ => Decide("accepted", null));
@@ -213,7 +213,7 @@ public sealed partial class HubViewModel
         string? file = path;
         // Same task as the one already shown: keep the revision the user is looking at. A new task, or a deliberate move, shows the latest.
         int? keep = task != null && openAt is { } want && want.Task == task.Id ? want.Revision
-            : task != null && reviewFor == task.Id && !releasePlace && review is { HasOutput: true } held ? held.Revision : null; // nothing to hold on to until a revision exists
+            : task != null && reviewFor == task.Id && (!releasePlace || Pinned) && review is { HasOutput: true } held ? held.Revision : null; // nothing to hold on to until a revision exists
         releasePlace = false;
         (string, int)? pol = null;
         ReviewInfo? info = null;
@@ -267,7 +267,7 @@ public sealed partial class HubViewModel
         foreach (var n in new[] { nameof(Review), nameof(ReviewVisible), nameof(CanDecide), nameof(DecisionSubject), nameof(ReviewToggleLabel), nameof(PolicyLine), nameof(HasOutput),
                                   nameof(OutputHeading), nameof(OutputText), nameof(HasFeedback), nameof(FeedbackText), nameof(StateLine), nameof(RequestChangesLabel),
                                   nameof(IsStale), nameof(StaleNotice), nameof(HasChange), nameof(ChangeHeading), nameof(ChangeSummary), nameof(ChangeLines), nameof(ChecksText),
-                                  nameof(EffectText), nameof(OutputNote), nameof(HasOutputNote), nameof(PacketLine), nameof(HasPacketLine), nameof(ShowOutputText), nameof(OutputImage), nameof(HasOutputImage) })
+                                  nameof(EffectText), nameof(OutputNote), nameof(HasOutputNote), nameof(PacketLine), nameof(HasPacketLine), nameof(ShowOutputText), nameof(OutputImage), nameof(HasOutputImage), nameof(Pinned), nameof(PinNote), nameof(EvidenceNote), nameof(HasEvidenceNote), nameof(ComparisonLines) })
             Notify(n);
         RaiseCommands();
     }
