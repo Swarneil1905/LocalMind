@@ -31,6 +31,7 @@ public partial class MainWindow : Window
         // Another window may be writing: look for new events every couple of seconds, without any action from the user.
         hub.StartPolling(TimeSpan.FromSeconds(1));
         hub.Drafts = new DraftStore(DraftStore.DefaultFolder);
+        hub.Layouts = new LayoutStore(LayoutStore.DefaultFolder);
         hub.Clipboard = text => TopLevel.GetTopLevel(this)?.Clipboard?.SetTextAsync(text) ?? Task.CompletedTask;
         WireChannel();
         hub.PreviewShown += () => Dispatcher.UIThread.Post(() => { SendPreviewButton.BringIntoView(); SendPreviewButton.Focus(); }, DispatcherPriority.Loaded);
@@ -65,6 +66,15 @@ public partial class MainWindow : Window
         Bind(QuestionsItem, hub.ShowQuestionsCommand, keys["ShowQuestions"]);
         ConnectionsItem.InputGesture = null;
         TeamItem.InputGesture = null;
+        PlanItem.InputGesture = null;
+        Bind(MenuItemGo, hub.OpenMenuCommand, keys["Menu"]);
+        hub.WindowRestoreRequested += ApplyPlacement;
+        hub.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(HubViewModel.MenuOpen)) OnMenu(); };
+        Closing += (_, _) => SavePlacement();
+        var placementTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
+        placementTimer.Tick += (_, _) => { placementTimer.Stop(); SavePlacement(); };
+        PositionChanged += (_, _) => { placementTimer.Stop(); placementTimer.Start(); };
+        SizeChanged += (_, _) => { placementTimer.Stop(); placementTimer.Start(); };
         hub.AskForKey = async prompt =>
         {
             string? key = null;
@@ -80,6 +90,10 @@ public partial class MainWindow : Window
         {
             list.AddHandler(Controls.TaskCard.BlockerRequestedEvent, GoToBlocker);
             list.SelectionChanged += (_, _) => OnColumnSelection(list);
+            list.KeyDown += (_, e) =>
+            {
+                if (e.Key == Key.Space && e.KeyModifiers == KeyModifiers.Control && list.SelectedItem is TaskItem t) { hub.ToggleSelectCommand.Execute(t); e.Handled = true; }
+            };
         }
         // Tasks live in four lists but there is one selection: the view model's.
         hub.PropertyChanged += (_, e) =>
@@ -137,6 +151,7 @@ public partial class MainWindow : Window
     private void OnColumnSelection(ListBox list)
     {
         if (syncing || list.SelectedItem is not TaskItem picked) return;
+        hub.Steady.Anchor = hub.Steady.Focus = picked.Id; // the card being worked on keeps its place while others arrive
         hub.SelectedTask = picked;
         SyncSelection();
     }
@@ -154,6 +169,64 @@ public partial class MainWindow : Window
     }
 
     // Cards are rebuilt after every write, so focus goes back to the selected card once the new ones exist.
+    // --- Command menu, plan graph, saved views, window placement ---------------------------------------------------------
+    private Control? menuReturn;
+
+    private void OnMenu()
+    {
+        if (hub.MenuOpen)
+        {
+            menuReturn = lastFocus;
+            Dispatcher.UIThread.Post(() => { MenuBox.Focus(); MenuBox.SelectAll(); }, DispatcherPriority.Loaded);
+        }
+        else if (menuReturn is { IsEffectivelyVisible: true, IsEnabled: true } back) Dispatcher.UIThread.Post(() => back.Focus(), DispatcherPriority.Loaded);
+        else RestoreFocus();
+    }
+
+    private void MenuKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape) { hub.CloseMenuCommand.Execute(null); e.Handled = true; }
+        else if (e.Key == Key.Enter) { RunMenu(); e.Handled = true; }
+        else if (e.Key == Key.Down && sender == MenuBox && MenuList.ItemCount > 0) { MenuList.SelectedIndex = Math.Max(0, MenuList.SelectedIndex); MenuList.Focus(); e.Handled = true; }
+    }
+
+    private void MenuPicked(object? sender, TappedEventArgs e) => RunMenu();
+
+    private void RunMenu()
+    {
+        var entry = MenuList.SelectedItem as MenuEntry ?? hub.MenuEntries.FirstOrDefault();
+        if (entry != null) hub.RunMenuEntryCommand.Execute(entry);
+    }
+
+    private void PlanKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        hub.ActivateNodeCommand.Execute(null);
+        e.Handled = true;
+    }
+
+    private void OpenNode(object? sender, RoutedEventArgs e) => hub.ActivateNodeCommand.Execute((sender as Control)?.DataContext);
+    private void OpenNodeBlocker(object? sender, RoutedEventArgs e) => hub.OpenNodeBlockerCommand.Execute((sender as Control)?.DataContext);
+    private void ApplyView(object? sender, RoutedEventArgs e) => hub.ApplyViewCommand.Execute((sender as Control)?.DataContext);
+
+    private IReadOnlyList<ScreenArea> ScreenAreas() => [.. Screens.All.Select(s => new ScreenArea(s.WorkingArea.X, s.WorkingArea.Y, s.WorkingArea.Width, s.WorkingArea.Height, s.IsPrimary))];
+
+    private void ApplyPlacement(WindowPlacement saved)
+    {
+        var fit = LayoutStore.Fit(saved, ScreenAreas());
+        double scale = Math.Max(0.5, RenderScaling);
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Position = new(fit.X, fit.Y);
+        Width = Math.Max(MinWidth, fit.Width / scale);
+        Height = Math.Max(MinHeight, fit.Height / scale);
+    }
+
+    private void SavePlacement()
+    {
+        if (WindowState != WindowState.Normal || Bounds.Width < 100) return;
+        hub.NoteWindow(new(Position.X, Position.Y, (int)(Bounds.Width * RenderScaling), (int)(Bounds.Height * RenderScaling)));
+    }
+
     private void RestoreFocus()
     {
         Dispatcher.UIThread.Post(() =>

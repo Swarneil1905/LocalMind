@@ -3,6 +3,9 @@
         xmlns:vm="using:LocalMind.AgentHub" xmlns:c="using:LocalMind.AgentHub.Controls"
         x:Class="LocalMind.AgentHub.MainWindow" x:DataType="vm:HubViewModel"
         Title="LocalMind · Agent Hub" Width="1080" Height="670" MinWidth="680" MinHeight="430">
+  <Window.Styles>
+    <Style Selector="Border.pulse"><Style.Animations><Animation Duration="0:0:0.9" IterationCount="1"><KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.35"/></KeyFrame><KeyFrame Cue="100%"><Setter Property="Opacity" Value="1"/></KeyFrame></Animation></Style.Animations></Style>
+  </Window.Styles>
   <Grid RowDefinitions="Auto,*,Auto" Background="{DynamicResource Canvas}">
     <Menu x:Name="MainMenu" Background="{DynamicResource Pane}">
       <MenuItem Header="_File">
@@ -23,6 +26,12 @@
         <Separator/>
         <MenuItem x:Name="ConnectionsItem" Header="C_onnections" Command="{Binding ShowConnectionsCommand}"/>
         <MenuItem x:Name="TeamItem" Header="_Team and budget" Command="{Binding ShowTeamCommand}"/>
+        <MenuItem x:Name="PlanItem" Header="Pla_n and graph" Command="{Binding ShowPlanCommand}"/>
+        <Separator/>
+        <MenuItem Header="Project list _wider" Command="{Binding WidenProjectsCommand}"/>
+        <MenuItem Header="Project list n_arrower" Command="{Binding NarrowProjectsCommand}"/>
+        <MenuItem Header="Details _wider" Command="{Binding WidenInspectorCommand}"/>
+        <MenuItem Header="Details na_rrower" Command="{Binding NarrowInspectorCommand}"/>
       </MenuItem>
       <MenuItem Header="_Task">
         <MenuItem x:Name="NewTaskItem" Header="_New task…" Command="{Binding NewTaskCommand}"/>
@@ -48,12 +57,13 @@
         <MenuItem x:Name="BlockerItem" Header="_Blocker" Command="{Binding GoToBlockerCommand}"/>
         <MenuItem x:Name="BackItem" Header="B_ack" Command="{Binding BackCommand}"/>
         <MenuItem x:Name="BackInboxItem" Header="Back to _inbox" Command="{Binding BackToInboxCommand}"/>
+        <MenuItem x:Name="MenuItemGo" Header="_Command menu…" Command="{Binding OpenMenuCommand}"/>
       </MenuItem>
     </Menu>
 
     <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto">
       <Border Background="{DynamicResource Pane}" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0"
-              Width="{DynamicResource ProjectsWidth}" Padding="{DynamicResource PanePadding}" IsVisible="{Binding ProjectsVisible}">
+              Width="{Binding ProjectsWidth}" Padding="{DynamicResource PanePadding}" IsVisible="{Binding ProjectsVisible}">
         <Grid RowDefinitions="Auto,*" RowSpacing="12">
           <TextBlock Text="Projects" Foreground="{DynamicResource Muted}" FontWeight="SemiBold"/>
           <ListBox Grid.Row="1" ItemsSource="{Binding Projects}" SelectedItem="{Binding SelectedProject, Mode=TwoWay}" AutomationProperties.Name="Local projects">
@@ -77,6 +87,20 @@
           <Button Command="{Binding ShowConnectionsCommand}" Content="Connections" IsVisible="{Binding IsWorkspace}"/>
           <Button Command="{Binding ShowTeamCommand}" Content="Team" IsVisible="{Binding IsWorkspace}"/>
           <Button Command="{Binding ToggleInspectorCommand}" Content="Task details" IsVisible="{Binding Narrow}"/>
+          <Button Command="{Binding ShowPlanCommand}" Content="Plan and graph" IsVisible="{Binding IsWorkspace}"/>
+          <TextBox Text="{Binding FilterSearch, Mode=TwoWay}" PlaceholderText="Search this project" Width="170" AutomationProperties.Name="Search this project"/>
+          <TextBox Text="{Binding FilterOwner, Mode=TwoWay}" PlaceholderText="Owner" Width="110" AutomationProperties.Name="Filter by owner"/>
+          <CheckBox IsChecked="{Binding FilterBlocked, Mode=TwoWay}" Content="Blocked only"/>
+          <ComboBox ItemsSource="{Binding ReviewChoices}" SelectedItem="{Binding FilterReview, Mode=TwoWay}" Width="110" AutomationProperties.Name="Filter by review state"/>
+          <Button Command="{Binding ClearFilterCommand}" Content="Clear filters"/>
+          <TextBox Text="{Binding SavedViewName, Mode=TwoWay}" PlaceholderText="Name this view" Width="130" AutomationProperties.Name="Name for the saved view"/>
+          <Button Command="{Binding SaveViewCommand}" Content="Save view"/>
+          <ItemsControl ItemsSource="{Binding SavedViewsHere}">
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:SavedView"><Button Content="{Binding Name}" Click="ApplyView" Margin="0,0,6,0" AutomationProperties.Name="{Binding Name, StringFormat='Saved view {0}'}"/></DataTemplate></ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <Button Command="{Binding RevealPendingCommand}" Content="{Binding PendingNote}" IsVisible="{Binding HasPending}"/>
+          <TextBlock Text="{Binding FilterLine}" VerticalAlignment="Center" Foreground="{DynamicResource Muted}"/>
         </WrapPanel>
         <StackPanel Grid.Row="2" Spacing="8">
         <Border CornerRadius="4" Padding="10,8" Background="{DynamicResource ErrorFill}" IsVisible="{Binding HasNotice}">
@@ -340,6 +364,67 @@
         </ScrollViewer>
       </Grid>
 
+
+      <Grid Grid.Column="1" Margin="{DynamicResource PanePadding}" MinWidth="{DynamicResource TaskMinWidth}" RowDefinitions="Auto,*" RowSpacing="10"
+            IsVisible="{Binding PlanVisible}">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <TextBlock Text="{Binding ProjectHeading, StringFormat='Plan for {0}'}" FontSize="24" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+          <Button Command="{Binding ShowBoardCommand}" Content="Back to board" VerticalAlignment="Center"/>
+        </StackPanel>
+        <ScrollViewer Grid.Row="1">
+          <StackPanel Spacing="10">
+            <TextBlock Text="{Binding PlanStatusLine}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+            <TextBox Text="{Binding PlanBrief, Mode=TwoWay}" PlaceholderText="Brief for the planner" AcceptsReturn="True" MinHeight="60" TextWrapping="Wrap" AutomationProperties.Name="Brief for the planner"/>
+            <Button Content="Ask the planner for a plan" Command="{Binding ProposePlanCommand}" HorizontalAlignment="Left"/>
+            <StackPanel IsVisible="{Binding HasProposal}" Spacing="6">
+              <TextBlock Text="Proposed tasks, one per line: Title | owner | criteria | after: Other title; Another title" TextWrapping="Wrap" Foreground="{DynamicResource Muted}"/>
+              <TextBox Text="{Binding PlanEditText, Mode=TwoWay}" AcceptsReturn="True" MinHeight="120" TextWrapping="Wrap" AutomationProperties.Name="Proposed tasks"/>
+              <TextBlock Text="{Binding PlanProblemsText}" TextWrapping="Wrap" Foreground="{DynamicResource ErrorText}" AutomationProperties.LiveSetting="Polite"/>
+              <TextBlock Text="{Binding PlanUnsavedNote}" TextWrapping="Wrap" Foreground="{DynamicResource Muted}"/>
+              <WrapPanel ItemSpacing="8" LineSpacing="8">
+                <Button Content="Save edits" Command="{Binding SavePlanCommand}"/>
+                <Button Content="Approve this plan" Command="{Binding ApprovePlanCommand}"/>
+                <Button Content="Dismiss" Command="{Binding DismissPlanCommand}"/>
+              </WrapPanel>
+            </StackPanel>
+            <StackPanel IsVisible="{Binding HasAcceptedPlan}" Spacing="8">
+              <WrapPanel ItemSpacing="8" LineSpacing="8">
+                <Button Content="Show estimate" Command="{Binding EstimatePlanCommand}"/>
+                <Button Content="Start the ready tasks" Command="{Binding StartPlanCommand}"/>
+                <CheckBox IsChecked="{Binding ReducedMotion, Mode=TwoWay}" Content="Reduce motion"/>
+                <CheckBox IsChecked="{Binding AnimationPaused, Mode=TwoWay}" Content="Pause handoff animation"/>
+              </WrapPanel>
+              <ItemsControl ItemsSource="{Binding EstimateLines}">
+                <ItemsControl.ItemTemplate><DataTemplate x:DataType="x:String"><TextBlock Text="{Binding}" TextWrapping="Wrap"/></DataTemplate></ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <ItemsControl ItemsSource="{Binding ActualLines}">
+                <ItemsControl.ItemTemplate><DataTemplate x:DataType="x:String"><TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{DynamicResource Muted}"/></DataTemplate></ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Text="Tasks in dependency order. Arrow keys walk them; Enter opens one." FontWeight="SemiBold"/>
+              <ListBox x:Name="PlanList" ItemsSource="{Binding PlanNodes}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}" AutomationProperties.Name="Plan graph, in dependency order" KeyDown="PlanKeyDown">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:PlanNodeRow">
+                    <Border Classes.pulse="{Binding Pulse}" Padding="6" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1">
+                      <StackPanel Spacing="2">
+                        <TextBlock FontWeight="SemiBold"><Run Text="{Binding Title}"/><Run Text="  ·  "/><Run Text="{Binding StateLabel}"/></TextBlock>
+                        <TextBlock Text="{Binding Direction}" TextWrapping="Wrap" Foreground="{DynamicResource Muted}"/>
+                        <TextBlock Text="{Binding BlockerText}" TextWrapping="Wrap" IsVisible="{Binding HasBlocker}"/>
+                        <TextBlock Text="{Binding HandoffLabel}" Foreground="{DynamicResource BadgeText}"/>
+                        <TextBlock Text="{Binding Seq}" Foreground="{DynamicResource Muted}" FontSize="11"/>
+                        <WrapPanel ItemSpacing="6">
+                          <Button Content="Open task" Click="OpenNode"/>
+                          <Button Content="Open blocker and its revision" Click="OpenNodeBlocker" IsVisible="{Binding HasBlocker}"/>
+                        </WrapPanel>
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+
       <!-- Beside the list when there is room; replaces the list on narrow windows. -->
       <Border Grid.Column="{Binding InspectorColumn}" Width="{Binding InspectorWidth}" Background="{DynamicResource Pane}"
               BorderBrush="{DynamicResource Line}" BorderThickness="1,0,0,0" Padding="{DynamicResource PanePadding}"
@@ -410,6 +495,16 @@
                   <Button Content="Open the newest revision" Command="{Binding OpenLatestRevisionCommand}" HorizontalAlignment="Left"/>
                 </StackPanel>
               </Border>
+              <WrapPanel>
+                <Button Margin="0,0,6,6" Content="Pin this revision" Command="{Binding PinRevisionCommand}"/>
+                <Button Margin="0,0,6,6" Content="Unpin" Command="{Binding UnpinRevisionCommand}"/>
+                <Button Margin="0,0,6,6" Content="Compare with the newest" Command="{Binding ComparePinnedCommand}"/>
+              </WrapPanel>
+              <TextBlock Text="{Binding PinNote}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+              <ItemsControl ItemsSource="{Binding ComparisonLines}">
+                <ItemsControl.ItemTemplate><DataTemplate x:DataType="x:String"><TextBlock Text="{Binding}" TextWrapping="Wrap" FontFamily="Consolas,monospace"/></DataTemplate></ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Text="{Binding EvidenceNote}" IsVisible="{Binding HasEvidenceNote}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
               <WrapPanel>
                 <Button Margin="0,0,6,6" Content="Ask builder" Command="{Binding AskBuilderCommand}"/>
                 <Button Margin="0,0,6,6" Content="Ask reviewer" Command="{Binding AskReviewerCommand}"/>
@@ -525,6 +620,27 @@
         <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap"/>
         <TextBlock Grid.Column="1" Text="{Binding ModeLabel}" Foreground="{DynamicResource BadgeText}" FontWeight="SemiBold"/>
       </Grid>
+    </Border>
+
+    <Border x:Name="MenuOverlay" Grid.RowSpan="3" Background="#80000000" IsVisible="{Binding MenuOpen}" Padding="40">
+      <Border Background="{DynamicResource Pane}" BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="6" Padding="12" MaxWidth="640" VerticalAlignment="Top" HorizontalAlignment="Center" Width="560">
+        <StackPanel Spacing="8">
+          <TextBlock Text="Go to a task, agent or action" FontWeight="SemiBold"/>
+          <TextBox x:Name="MenuBox" Text="{Binding MenuQuery, Mode=TwoWay}" PlaceholderText="Type to search" AutomationProperties.Name="Search tasks, agents and actions" KeyDown="MenuKeyDown"/>
+          <ListBox x:Name="MenuList" ItemsSource="{Binding MenuEntries}" MaxHeight="320" AutomationProperties.Name="Results" KeyDown="MenuKeyDown" DoubleTapped="MenuPicked">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:MenuEntry">
+                <StackPanel>
+                  <TextBlock Text="{Binding Label}" Opacity="{Binding Opacity}"/>
+                  <TextBlock Text="{Binding Hint}" Foreground="{DynamicResource Muted}" FontSize="11"/>
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <TextBlock Text="{Binding MenuNote}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Assertive"/>
+          <TextBlock Text="Enter runs the selected result. Escape closes this and returns you to where you were." Foreground="{DynamicResource Muted}" FontSize="11" TextWrapping="Wrap"/>
+        </StackPanel>
+      </Border>
     </Border>
   </Grid>
 </Window>
