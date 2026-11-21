@@ -48,7 +48,7 @@ public sealed partial class HubViewModel
     private void SetCenter(string mode)
     {
         center = mode;
-        foreach (var n in new[] { nameof(BoardVisible), nameof(InboxVisible), nameof(ChannelVisible), nameof(QuestionsVisible) }) Notify(n);
+        foreach (var n in new[] { nameof(BoardVisible), nameof(InboxVisible), nameof(ChannelVisible), nameof(QuestionsVisible), nameof(ConnectionsVisible), nameof(TeamVisible) }) Notify(n);
         RaiseCommands();
     }
 
@@ -234,8 +234,15 @@ public sealed partial class HubViewModel
         long latest;
         try { latest = await Task.Run(() => Channel.LatestSeq(file)); }
         catch (Exception ex) when (IsDataError(ex) || ex is StoreException) { return; }
-        if (path != file || latest == lastEventSeq) return;
+        if (path != file) return;
+        if (latest == lastEventSeq)
+        {
+            // Nothing new was recorded, but a running model writes progress to its attempt: keep that moving on screen.
+            if (AnyRunning) await RefreshRunsAsync();
+            return;
+        }
         lastEventSeq = latest;
+        await RefreshRunsAsync();
         await LoadChannelAsync();
         await LoadInboxAsync(0);
         await LoadQuestionsAsync();
