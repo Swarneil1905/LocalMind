@@ -33,6 +33,8 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
         set { pickFile = value; OpenCommand.Changed(); }
     }
     private Func<Task<string?>>? pickFile;
+    /// <summary>Raised just before following a blocker, and again after Back, so the window can keep and restore the board's scroll position.</summary>
+    public event Action<string>? PlaceCapture, PlaceRestore;
     /// <summary>Raised when navigation selects a task the view should scroll to and focus.</summary>
     public event Action<TaskItem>? TaskRevealed;
 
@@ -93,6 +95,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
             {
                 history.Add(source.Id);
                 if (history.Count > MaxHistory) history.RemoveAt(0);
+                PlaceCapture?.Invoke(source.Id);
                 Select(target);
             }
             return Task.CompletedTask;
@@ -103,7 +106,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
             {
                 var id = history[^1];
                 history.RemoveAt(history.Count - 1);
-                if (Tasks.FirstOrDefault(t => t.Id == id) is { } source) { Select(source); break; }
+                if (Tasks.FirstOrDefault(t => t.Id == id) is { } source) { Select(source); PlaceRestore?.Invoke(source.Id); break; }
             }
             RaiseCommands();
             return Task.CompletedTask;
@@ -218,7 +221,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
     private void Layout()
     {
         foreach (var name in new[] { nameof(ProjectsVisible), nameof(InspectorVisible), nameof(Narrow), nameof(Wide),
-                                     nameof(ListVisible), nameof(InspectorColumn), nameof(InspectorWidth), nameof(BoardVisible), nameof(InboxVisible), nameof(ChannelVisible), nameof(QuestionsVisible), nameof(ConnectionsVisible), nameof(TeamVisible), nameof(PlanVisible) })
+                                     nameof(ListVisible), nameof(InspectorColumn), nameof(InspectorWidth), nameof(BoardVisible), nameof(InboxVisible), nameof(ChannelVisible), nameof(QuestionsVisible), nameof(ConnectionsVisible), nameof(TeamVisible), nameof(PlanVisible), nameof(DocsVisible), nameof(DataVisible), nameof(ReplayVisible) })
             Notify(name);
     }
 
@@ -251,6 +254,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
         await UpdateWriteOwnershipAsync(file, workspace);
         await LoadWorkspaceKeyAsync(file, workspace != null);
         LoadLayout();
+        DetachComposer();
         // Attempts left behind by a crash are sorted out once this window owns the workspace: unsent ones freed, sent ones kept for a check.
         if (CanWrite) { try { await (await workspaces!.Client()).RecoverRunsAsync(file); } catch (WorkerException) { } }
         Notify(nameof(ModeLabel)); Notify(nameof(IsWorkspace)); Notify(nameof(CanEdit));
