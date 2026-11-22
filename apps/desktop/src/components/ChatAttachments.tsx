@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Image, X } from "lucide-react";
 import { attachmentRequest, type AttachmentDraft, type ChatAttachment } from "../lib/attachments";
 import { providerError } from "../lib/providers";
@@ -15,27 +15,57 @@ export function DraftAttachments({ items, onRemove, onRetry }: { items: Attachme
     {preview && <AttachmentPreview item={preview} onClose={() => setPreview(null)} />}
   </>;
 }
-export function SavedAttachments({ items, conversationId }: { items: ChatAttachment[]; conversationId?: string }) {
-  const [preview, setPreview] = useState<ChatAttachment | null>(null);
-  const [error, setError] = useState("");
-  const show = async (item: ChatAttachment) => {
-    setError("");
-    if (item.data_url) { setPreview(item); return; }
-    try { setPreview(await attachmentRequest<ChatAttachment>("POST", "/attachments/preview", { id: item.id, conversation_id: conversationId })); }
-    catch (cause) { setError(providerError(cause)); }
+type SavedAttachmentsProps = { items: ChatAttachment[]; conversationId?: string };
+type SavedPreview = { item: ChatAttachment; status: "loading" | "ready" } | { item: ChatAttachment; status: "error"; error: string };
+export function SavedAttachments({ items, conversationId }: SavedAttachmentsProps) {
+  // Each conversation owns its preview state and pending request lifetime.
+  return <SavedAttachmentList key={conversationId} items={items} conversationId={conversationId} />;
+}
+function SavedAttachmentList({ items, conversationId }: SavedAttachmentsProps) {
+  const [preview, setPreview] = useState<SavedPreview | null>(null);
+  const request = useRef(0);
+  const opener = useRef<HTMLElement | null>(null);
+  useEffect(() => () => { request.current++; }, []);
+  const returnFocus = useCallback(() => {
+    if (opener.current?.isConnected) opener.current.focus();
+  }, []);
+  const close = () => {
+    request.current++;
+    setPreview(null);
+    returnFocus();
   };
-  return <div className="message-attachments">{items.map(item => <div key={item.id}><button type="button" onClick={() => void show(item)}>{item.filename}</button>{item.mime_type?.startsWith("image/") && <VisualCard source="" content="" conversationId={conversationId} attachmentId={item.id} />}</div>)}
-    {error && <p role="alert">{error}</p>}
-    {preview && <AttachmentPreview item={preview} onClose={() => setPreview(null)} />}
+  const show = async (item: ChatAttachment, trigger?: HTMLElement) => {
+    if (trigger) opener.current = trigger;
+    else returnFocus();
+    const current = ++request.current;
+    if (item.data_url) { setPreview({ item, status: "ready" }); return; }
+    setPreview({ item, status: "loading" });
+    try {
+      const result = await attachmentRequest<ChatAttachment>("POST", "/attachments/preview", { id: item.id, conversation_id: conversationId });
+      if (current === request.current) setPreview({ item: result, status: "ready" });
+    } catch (cause) {
+      if (current === request.current) setPreview({ item, status: "error", error: providerError(cause) });
+    }
+  };
+  return <div className="message-attachments" onKeyDown={event => {
+    if (preview && preview.status !== "ready" && event.key === "Escape") close();
+  }}>{items.map(item => <div key={item.id}><button type="button" onClick={event => void show(item, event.currentTarget)}>{item.filename}</button>{item.mime_type?.startsWith("image/") && <VisualCard source="" content="" conversationId={conversationId} attachmentId={item.id} />}</div>)}
+    {preview?.status === "loading" && <p role="status">Loading preview for {preview.item.filename}… <button type="button" onClick={close}>Close preview</button></p>}
+    {preview?.status === "error" && <p role="alert">Could not preview {preview.item.filename}: {preview.error} <button type="button" onClick={() => void show(preview.item)}>Retry preview for {preview.item.filename}</button></p>}
+    {preview?.status === "ready" && <AttachmentPreview item={preview.item} onClose={close} onReturnFocus={returnFocus} />}
   </div>;
 }
-export function AttachmentPreview({ item, onClose }: { item: Partial<ChatAttachment> & { filename: string }; onClose: () => void }) {
+export function AttachmentPreview({ item, onClose, onReturnFocus }: { item: Partial<ChatAttachment> & { filename: string }; onClose: () => void; onReturnFocus?: () => void }) {
   const [zoom, setZoom] = useState(1);
   const modal = useRef<HTMLElement>(null);
   useEffect(() => {
     const prior = document.activeElement as HTMLElement | null;
-    return () => prior?.focus();
-  }, []);
+    modal.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    return () => {
+      if (onReturnFocus) onReturnFocus();
+      else if (prior?.isConnected) prior.focus();
+    };
+  }, [onReturnFocus]);
   return <div className="cloud-review"><section ref={modal} role="dialog" aria-modal="true" aria-label={`Attachment preview: ${item.filename}`} onKeyDown={event => {
     if (event.key === "Escape") onClose();
     if (event.key === "Tab") {
@@ -45,7 +75,7 @@ export function AttachmentPreview({ item, onClose }: { item: Partial<ChatAttachm
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     }
   }}>
-    <button className="secondary-button" autoFocus onClick={onClose}>Close preview</button>
+    <button className="secondary-button" onClick={onClose}>Close preview</button>
     <h3>{item.filename}</h3>
     {item.kind === "document" ? <><p>{item.limitation}</p>{item.pages?.map(page => <section key={page.page}><h4>Page {page.page}{page.truncated ? " · excerpt truncated" : ""}{page.scanned ? " · no extractable text" : ""}</h4><pre style={{ whiteSpace: "pre-wrap", maxHeight: 260, overflow: "auto" }}>{page.text}</pre></section>)}</> : <>
       <label>Zoom {Math.round(zoom*100)}%<input type="range" min={0.5} max={4} step={0.25} value={zoom} onChange={event => setZoom(Number(event.target.value))} /></label>
