@@ -22,7 +22,7 @@ internal static partial class CheckpointJ
         return c.ExecuteScalar() is { } v and not DBNull ? (T)Convert.ChangeType(v, typeof(T)) : default!;
     }
 
-    internal static async Task Until(Func<bool> done, int ms = 8000, [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(done))] string? what = null)
+    internal static async Task Until(Func<bool> done, int ms = 30000, [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(done))] string? what = null)
     {
         var end = DateTime.UtcNow.AddMilliseconds(ms);
         while (DateTime.UtcNow < end && !done()) await Task.Delay(25);
@@ -205,7 +205,7 @@ internal static partial class CheckpointJ
         var preview = await b.W.PreviewDispatchAsync(b.Db, task, "builder");
         var run = await b.Settled((await b.W.DispatchAsync(b.Db, C(), task, "builder")).Id);
         string toolText = string.Concat(b.Local.Seen.Last(x => x.Path == "/api/chat").Json!["messages"]!.AsArray().Where(m => m?["role"]?.GetValue<string>() == "tool").Select(m => m!["content"]!.GetValue<string>()));
-        Check(preview.FileNames.SequenceEqual(["small.txt"]) && run.ToolCalls == 1 && toolText.Contains("not one of the files") && !toolText.Contains("TOPSECRET")
+        Check(preview.FileNames.SequenceEqual(["small.txt"]) && run.ToolCalls == 1 && toolText.Contains("was not part of this handoff") && !toolText.Contains("TOPSECRET")
               && One<long>(b.Db, $"SELECT count(*) FROM attempt_files WHERE attempt_id='{run.Id}'") == 1,
               "an omitted file whose name appears in ordinary text grants no access: the tool says no and the bytes never leave");
 

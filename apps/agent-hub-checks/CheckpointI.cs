@@ -351,7 +351,7 @@ internal static class CheckpointI
         await b.W.AssignRoleAsync(b.Db, C(), b.Project, "builder", local, "local-a:1");
         var local1 = await b.Settled((await b.W.DispatchAsync(b.Db, C(), task, "builder")).Id);
         var second = b.Local.Seen.Last(r => r.Path == "/api/chat").Json!["messages"]!.AsArray();
-        Check(local1.Status == "completed" && local1.ToolCalls == 1 && second.Any(m => m?["role"]?.GetValue<string>() == "tool" && m["content"]!.GetValue<string>().Contains("not one of the files supplied"))
+        Check(local1.Status == "completed" && local1.ToolCalls == 1 && second.Any(m => m?["role"]?.GetValue<string>() == "tool" && m["content"]!.GetValue<string>().Contains("was not part of this handoff"))
               && b.Gateway.Requests == before, "when a model asks for a file outside its packet it is told no, and nothing goes to the cloud");
     }
 
