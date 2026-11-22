@@ -1,6 +1,0 @@
-<Project>
-  <!-- The four Agent Hub projects restore from packages.lock.json. CI restores in locked mode, so a drifted lock file fails the build. -->
-  <PropertyGroup>
-    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-  </PropertyGroup>
-</Project>

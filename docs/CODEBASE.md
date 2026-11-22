@@ -4,7 +4,7 @@ LocalMind runs as a desktop application on each user's computer. React renders t
 
 For setup and contribution steps, start with [CONTRIBUTING.md](../CONTRIBUTING.md). This guide explains where behavior lives and which files to read when changing it.
 
-For the native C# desktop pilot, see the [Agent Hub README](../apps/agent-hub/README.md).
+The native C# desktop pilot now lives in the separate [RoleCrew AI repository](https://github.com/Swarneil1905/RoleCrew-AI) (private beta).
 
 ## Read these first
 
