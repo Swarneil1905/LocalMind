@@ -154,7 +154,7 @@ internal static class CheckpointC
         string db = Path.Combine(folder, "agenthub.db");
         TaskStore.UpdateTask(db, "other-1", qaId, hub.SelectedTask!.Revision, null, "Changed elsewhere", null); // another writer, bypassing this window
         await hub.MoveTaskCommand.RunAsync("in_progress");
-        Check(hub.Notice is { } stale && stale.Contains("changed by someone else") && hub.NoticeActionLabel == "Reload board" && hub.OpenTasks.Any(t => t.Id == qaId),
+        Check(hub.Notice is { } stale && stale.Contains("changed by someone else") && hub.NoticeActionLabel == "Reload and review" && hub.OpenTasks.Any(t => t.Id == qaId),
               "a stale move shows the conflict, keeps the stored column and offers a reload");
         await hub.NoticeCommand!.RunAsync();
         await hub.MoveTaskCommand.RunAsync("in_progress");

@@ -356,7 +356,7 @@ internal static class CheckpointF
         var proposed = all.Messages.Single(m => m.Kind == "output_proposed");
         var review = all.Messages.Single(m => m.Kind == "review_recorded");
         var decision = all.Messages.Single(m => m.Kind == "changes_requested");
-        Check(proposed is { ActorKind: "agent" } && proposed.RunId == One<string>(db, $"SELECT run_id FROM outputs WHERE id='{o1.Id}'") && proposed.Text.Contains("draft, not an accepted output") && proposed.Text.Contains("Draft 1 for"),
+        Check(proposed is { ActorKind: "agent" } && proposed.RunId == One<string>(db, $"SELECT run_id FROM outputs WHERE id='{o1.Id}'") && proposed.Text.Contains("It is a draft; nothing is accepted") && proposed.Text.Contains("Draft 1 for"),
               "the builder's handoff is a message bound to its run, shown as a draft, with the actual text");
         Check(review is { ActorKind: "agent" } && review.RunId != null && review.Text.Contains("Add a one-line summary") && review.Text.Contains("not a decision"), "the reviewer's recommendation is shown and labelled as only a recommendation");
         Check(decision is { ActorKind: "human", Actor: "You (workspace owner)" } && decision.Text.Contains("Add a summary.") && decision.RunId == proposed.RunId, "the human decision is its own message from the owner");
