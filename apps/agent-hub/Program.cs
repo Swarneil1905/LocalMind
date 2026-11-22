@@ -10,8 +10,11 @@ namespace LocalMind.AgentHub;
 internal static class Program
 {
     [STAThread]
-    public static void Main(string[] args) =>
+    public static void Main(string[] args)
+    {
+        LaunchOptions.Parse(args);
         AppBuilder.Configure<HubApp>().UsePlatformDetect().StartWithClassicDesktopLifetime(args);
+    }
 }
 
 public sealed class HubApp : Application

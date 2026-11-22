@@ -11,8 +11,14 @@ public sealed record SavedLayout(double ProjectsWidth = 240, double InspectorWid
 /// <summary>One file per workspace, so two workspaces keep their own pane sizes, project, view and saved filters.</summary>
 public sealed class LayoutStore(string folder)
 {
-    public static string DefaultFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LocalMind", "AgentHub", "layouts");
+    public static string DefaultFolder => Path.Combine(LaunchOptions.DataRoot, "layouts");
     private string FileFor(string workspaceId) => Path.Combine(folder, "layout-" + string.Concat(workspaceId.Select(c => char.IsLetterOrDigit(c) ? c : '_')) + ".json");
+
+    public bool Delete(string workspaceId)
+    {
+        try { File.Delete(FileFor(workspaceId)); return true; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
+    }
 
     public SavedLayout? Load(string workspaceId)
     {
