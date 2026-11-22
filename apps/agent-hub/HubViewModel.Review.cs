@@ -267,7 +267,7 @@ public sealed partial class HubViewModel
         foreach (var n in new[] { nameof(Review), nameof(ReviewVisible), nameof(CanDecide), nameof(DecisionSubject), nameof(ReviewToggleLabel), nameof(PolicyLine), nameof(HasOutput),
                                   nameof(OutputHeading), nameof(OutputText), nameof(HasFeedback), nameof(FeedbackText), nameof(StateLine), nameof(RequestChangesLabel),
                                   nameof(IsStale), nameof(StaleNotice), nameof(HasChange), nameof(ChangeHeading), nameof(ChangeSummary), nameof(ChangeLines), nameof(ChecksText),
-                                  nameof(EffectText), nameof(OutputNote), nameof(HasOutputNote), nameof(PacketLine), nameof(HasPacketLine), nameof(ShowOutputText), nameof(OutputImage), nameof(HasOutputImage), nameof(Pinned), nameof(PinNote), nameof(EvidenceNote), nameof(HasEvidenceNote), nameof(ComparisonLines) })
+                                  nameof(EffectText), nameof(OutputNote), nameof(HasOutputNote), nameof(PacketLine), nameof(HasPacketLine), nameof(ShowOutputText), nameof(VisualVisible), nameof(VisualRefused), nameof(VisualRefusal), nameof(VisualHeading), nameof(VisualRows), nameof(VisualIsLine), nameof(VisualLine), nameof(VisualZeroLine), nameof(VisualExportStatus), nameof(OutputImage), nameof(HasOutputImage), nameof(Pinned), nameof(PinNote), nameof(EvidenceNote), nameof(HasEvidenceNote), nameof(ComparisonLines) })
             Notify(n);
         RaiseCommands();
     }

@@ -7,8 +7,19 @@ namespace LocalMind.AgentHub;
 /// <summary>One connection as the Connections view lists it.</summary>
 public sealed record ConnectionRow(ConnectionInfo Info)
 {
-    public string Title => $"{Info.Label} · {(Info.Provider == "ollama" ? "Ollama" : "OpenRouter")}";
-    public string Where => $"{Info.Endpoint} · {(Info.IsCloud ? "cloud: packets leave this computer" : "this computer")}";
+    private ProviderProfile? Profile => Providers.Of(Info.Provider);
+    public string Title => $"{Info.Label} · {Providers.Label(Info.Provider)}";
+    public string Where => $"{Info.Endpoint} · {(Info.IsCloud ? $"cloud: packets leave this computer, to {Profile?.Company ?? Info.Provider}" : "this computer")}";
+    public string About => Profile?.Note ?? "";
+    private (string Code, string Message) Failure => Info.LastError is { } e && e.IndexOf('\u001f') is var i and >= 0 ? (e[..i], e[(i + 1)..]) : ("", Info.LastError ?? "");
+    /// <summary>Which of three different things went wrong: nothing answered, no usable credential, or the provider answered with an error.</summary>
+    public string FailureKind => Info.LastProbeOk != false ? "" : Failure.Code switch
+    {
+        "endpoint_unavailable" => "Unreachable",
+        "auth" => Failure.Message.Contains("No key") ? "Missing credentials" : "Credentials refused",
+        "vault_unavailable" => "Credential store unavailable",
+        _ => "Provider error",
+    };
     public string Key => Info.Provider == "ollama" ? "No key needed." : Info.CredentialStatus switch
     {
         "stored" => "Key stored in the operating system's credential store.",
@@ -16,7 +27,7 @@ public sealed record ConnectionRow(ConnectionInfo Info)
         "deleted" => "Key deleted. Enter a key to use this connection.",
         _ => "No key yet. Enter one to use this connection.",
     };
-    public string Probe => Info.LastProbeAt == null ? "Not probed yet." : Info.LastProbeOk == true ? $"Last successful probe {When(Info.LastProbeAt)}." : $"Last probe failed {When(Info.LastProbeAt)}: {Info.LastError}";
+    public string Probe => Info.LastProbeAt == null ? "Not probed yet." : Info.LastProbeOk == true ? $"Last successful probe {When(Info.LastProbeAt)}." : $"Last probe failed {When(Info.LastProbeAt)} · {FailureKind}: {Failure.Message}";
     public IReadOnlyList<string> ModelLines => [.. Info.Models.Select(m => $"{m.Id} — {m.Capabilities.Describe()}" + (m.Available ? "" : " — not listed at the last probe"))];
     public bool NeedsKey => Info.Provider != "ollama";
     public string AutomationName => Title;
@@ -80,7 +91,7 @@ public sealed record AttemptRow(AttemptView A, string ConnectionLabel)
         "stopped" => "Stopped at a limit", "cancelled" => "Cancelled", "paused" => "Paused", "abandoned" => A.SentAt == null ? "Abandoned (never sent)" : "Abandoned by you", "needs_reconciliation" => "Needs your check", "confirmed" => "Confirmed by you", _ => A.Status,
     } + (A.Revision is { } r && A.Role == "builder" ? $" · wrote revision {r}" : A.Revision is { } rv && A.Role == "reviewer" ? $" · reviewed revision {rv}" : "");
     public string Route => A.ReportedModel == null && A.Status is "leased" or "sending" ? $"Requested {A.RequestedModel}."
-        : $"Requested {A.RequestedModel}; answered by {A.ReportedModel ?? "unknown"}" + (A.Provider == "openrouter" ? $" via {A.ReportedProvider ?? "an unknown provider"}" : "") + "." + (A.RouteNote is { } n ? " " + n : "");
+        : $"Requested {A.RequestedModel}; answered by {A.ReportedModel ?? "unknown"}" + (A.Provider == "openrouter" ? $" via {A.ReportedProvider ?? "an unknown provider"}" : A.Provider != "ollama" && Providers.Of(A.Provider) is { } pf ? $" on the {pf.Company} API (direct)" : "") + "." + (A.RouteNote is { } n ? " " + n : "");
     public string Usage => (A.InputTokens is { } i ? $"{i} tokens in, {A.OutputTokens} out" : "Usage not reported") + " · "
         + (A.Cost is { } c ? (c == 0 ? "no cost (local model)" : $"cost {c:0.000000} {A.Currency}") : A.Estimate is { } e ? $"estimated {e:0.000000} {A.Currency}, actual unknown" : "cost unknown")
         + $" · {A.Steps} step{(A.Steps == 1 ? "" : "s")}" + (A.ToolCalls > 0 ? $", {A.ToolCalls} tool call{(A.ToolCalls == 1 ? "" : "s")}" : "");
@@ -114,7 +125,11 @@ public sealed partial class HubViewModel
     private IReadOnlyList<ModelChoice> allChoices = [];
 
     // --- Connections ------------------------------------------------------------------------------------------
-    public int NewProviderIndex { get => newProvider; set { newProvider = value; NewEndpoint = value == 0 ? "http://localhost:11434" : "https://openrouter.ai/api/v1"; Notify(); Notify(nameof(NewEndpoint)); } }
+    public int NewProviderIndex { get => newProvider; set { newProvider = value; NewEndpoint = Choice.Endpoint; Notify(); Notify(nameof(NewEndpoint)); Notify(nameof(NewProviderNote)); } }
+    public sealed record ProviderChoice(string Label, string Provider, string Endpoint);
+    public static IReadOnlyList<ProviderChoice> ProviderChoices { get; } = [.. Providers.All.Select(p => new ProviderChoice(p.Label, p.Id, p.Endpoint)), .. Providers.All.Where(p => p.AltEndpoint != null).Select(p => new ProviderChoice(p.AltLabel!, p.Id, p.AltEndpoint!))];
+    private ProviderChoice Choice => ProviderChoices[Math.Clamp(newProvider, 0, ProviderChoices.Count - 1)];
+    public string NewProviderNote => Providers.Of(Choice.Provider) is { } p ? $"{p.Company} · {p.Region}. {p.Note}" : "";
     private int newProvider;
     public string NewEndpoint { get; set; } = "http://localhost:11434";
     public string NewLabel { get; set; } = "";
@@ -167,6 +182,8 @@ public sealed partial class HubViewModel
     private DispatchPreview? preview;
     /// <summary>Raised when a dispatch preview opens, so the window can bring it into view and put focus on its decision.</summary>
     public event Action? PreviewShown;
+    /// <summary>The send went through and the Send it button is gone; the window decides whether focus needs a new home.</summary>
+    public event Action? SentFocusRequested;
     public bool HasPreview => preview != null;
     public string PreviewTitle => preview is { } p ? $"Send to the {p.Role}: {p.Model ?? "no model"}" + (p.ConnectionLabel != null ? $" on {p.ConnectionLabel} ({(p.IsCloud ? "cloud" : "this computer")})" : "") : "";
     public string PreviewDetails => preview is { } p
@@ -212,7 +229,7 @@ public sealed partial class HubViewModel
         ShowTeamCommand = new(_ => IsWorkspace, _ => { SetCenter("team"); return LoadTeamAsync(); });
         AddConnectionCommand = new(_ => CanWrite, _ =>
         {
-            string ws = path!, provider = newProvider == 0 ? "ollama" : "openrouter", endpoint = NewEndpoint.Trim(), label = NewLabel.Trim(), click = Guid.NewGuid().ToString("N");
+            string ws = path!, provider = Choice.Provider, endpoint = NewEndpoint.Trim(), label = NewLabel.Trim(), click = Guid.NewGuid().ToString("N");
             return Fail(() => Submit($"conn|{ws}|{click}", ws, async id => await (await Worker()).AddConnectionAsync(ws, id, provider, endpoint, label)));
         });
         ProbeCommand = new(p => CanWrite && p is ConnectionRow, async p => await Guarded(async () => { try { await (await Worker()).ProbeConnectionAsync(path!, ((ConnectionRow)p!).Info.Id); } finally { await LoadTeamAsync(); } /* a failed probe is recorded, so the row must show it */ }));
@@ -340,7 +357,7 @@ public sealed partial class HubViewModel
                 catch (WorkerException e) { return e.Message; }
             }
             string? error = await Submit($"dispatch|{ws}|{p.TaskId}|{p.Role}|{click}", ws, async id => await (await Worker()).DispatchAsync(ws, id, p.TaskId, p.Role, acceptPriceRisk: priceRisk, binding: p.Binding));
-            if (error == null) { preview = null; NotifyPreview(); await RefreshRunsAsync(); }
+            if (error == null) { preview = null; NotifyPreview(); SentFocusRequested?.Invoke(); await RefreshRunsAsync(); }
             // The model, packet, files or price changed after the owner looked: show the new preview and send nothing.
             else if (error.StartsWith("What would be sent has changed")) await LoadPreviewAsync(p.Role);
             return error;
@@ -405,7 +422,7 @@ public sealed partial class HubViewModel
     private static string Explain(string role, ModelChoice? c, TeamView view)
     {
         if (c == null) return $"No model. The {role} can only be played by the offline fixture.";
-        var parts = new List<string> { $"Provider: {(c.Provider == "ollama" ? "Ollama" : "OpenRouter")} ({c.ConnectionLabel}). Model: {c.ModelId}.", $"Capabilities: {c.Capabilities.Describe()}." };
+        var parts = new List<string> { $"Provider: {Providers.Label(c.Provider)} ({c.ConnectionLabel}). Model: {c.ModelId}.", $"Capabilities: {c.Capabilities.Describe()}." };
         if (!c.Available) parts.Add("This model was not listed at the last probe.");
         if (c.Capabilities.Text == null) parts.Add("Text output is not confirmed by the provider.");
         if (c.IsCloud) parts.Add(view.Consents.Any(k => k.ConnectionId == c.ConnectionId && k.ModelId == c.ModelId) ? "Cloud: consent given." : "Cloud: needs consent before use.");
