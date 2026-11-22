@@ -135,7 +135,8 @@ public sealed partial class HubViewModel
                     ShowNotice($"{e.Message} “{task.Title}” stays in {column}.", "Go to blocker", GoToBlockerCommand);
                     break;
                 case "conflict":
-                    ShowNotice($"{e.Message} “{task.Title}” stays in {column} until you reload.", "Reload board", RefreshCommand);
+                    staleMove = (ws, task.Id, target, task.Title); // the keyboard, the menu and a drop all arrive here, so all of them recover the same way
+                    ShowNotice($"{e.Message} “{task.Title}” stays where the saved board has it ({column}) until you reload. After the reload you can apply your move again if it still makes sense.", "Reload and review", ReloadAfterStale());
                     break;
                 case "outcome_unknown":
                     lostMove = (ws, commandId); // a wake-up can ask the worker whether it was applied
