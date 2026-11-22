@@ -34,6 +34,22 @@ public partial class MainWindow : Window
         hub.Layouts = new LayoutStore(LayoutStore.DefaultFolder);
         hub.Clipboard = text => TopLevel.GetTopLevel(this)?.Clipboard?.SetTextAsync(text) ?? Task.CompletedTask;
         WireChannel();
+        if (LaunchOptions.PerfFile is { } perfFile) Perf.Start(perfFile);
+        Appearance.ScaleChanged += s => { ScaleHost.LayoutTransform = new Avalonia.Media.ScaleTransform(s, s); hub.SetWidth(Bounds.Width / s); };
+        Appearance.Apply(Appearance.Resolve(LaunchOptions.Theme), LaunchOptions.Scale ?? 1.0);
+        if (LaunchOptions.Size is { } sz) { Width = sz.W; Height = sz.H; }
+        if (Motion.Reduced) Styles.Clear(); // the OS asks for less movement: drop the one pulse animation
+        AddHandler(KeyDownEvent, (_, _) => { if (!Perf.Enabled) return; long t = Perf.Begin(); Dispatcher.UIThread.Post(() => Perf.End("key", t), DispatcherPriority.Background); }, RoutingStrategies.Tunnel, true);
+        AddHandler(PointerWheelChangedEvent, (_, _) => { if (!Perf.Enabled) return; long t = Perf.Begin(); Dispatcher.UIThread.Post(() => Perf.End("wheel", t), DispatcherPriority.Background); }, RoutingStrategies.Tunnel, true);
+        if (LaunchOptions.Open is { } open)
+            Opened += async (_, _) =>
+            {
+                Perf.Event("window_open", Perf.SinceProcessStart());
+                await hub.OpenWorkspaceFolderAsync(System.IO.Path.GetDirectoryName(open)!);
+                Perf.Event("board_ready", Perf.SinceProcessStart());
+            };
+        // After Send the button that had focus disappears. Move focus to the next send action only if focus was on it or lost; never pull it from somewhere the owner went.
+        hub.SentFocusRequested += () => { var was = FocusManager?.GetFocusedElement(); bool mine = was == null || was == SendPreviewButton; Dispatcher.UIThread.Post(() => { if (mine || FocusManager?.GetFocusedElement() == null) SendToBuilderButton.Focus(); }, DispatcherPriority.Loaded); };
         hub.PreviewShown += () => Dispatcher.UIThread.Post(() => { SendPreviewButton.BringIntoView(); SendPreviewButton.Focus(); }, DispatcherPriority.Loaded);
         var keys = Shortcuts.For(OperatingSystem.IsMacOS());
         Bind(NewItem, hub.NewWorkspaceCommand, keys["New"]);
@@ -77,6 +93,8 @@ public partial class MainWindow : Window
             e.Cancel = true;
             _ = AskCloseAsync();
         };
+        lifecycle = new LifecycleAdapter(hub, OperatingSystem.IsWindows() ? new WindowsPowerSignals() : new UnavailableSignals("No supported sleep/wake signal is wired on this platform."), a => Dispatcher.UIThread.Post(a));
+        Closed += (_, _) => lifecycle?.Dispose();
         hub.PlaceCapture += CapturePlace;
         hub.PlaceRestore += RestorePlace;
         hub.ConfirmErase = async text =>
@@ -129,6 +147,15 @@ public partial class MainWindow : Window
             dialog.FirstChanged += keep;
             return dialog.ShowDialog<bool>(this).ContinueWith(_ => RestoreFocus(), TaskScheduler.FromCurrentSynchronizationContext());
         };
+        // While the welcome screen covers the board, nothing behind it takes focus or appears to assistive tools.
+        void ApplyWelcome()
+        {
+            bool on = hub.WelcomeVisible;
+            foreach (var c in MainArea.Children) if (c != WelcomeHost) c.IsEnabled = !on;
+            if (on) Dispatcher.UIThread.Post(() => (hub.WelcomeWorkerDown ? WelcomeHost.GetVisualDescendants().OfType<Button>().LastOrDefault() : WelcomeStart)?.Focus(), DispatcherPriority.Loaded);
+        }
+        hub.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(HubViewModel.WelcomeVisible)) ApplyWelcome(); };
+        Opened += (_, _) => ApplyWelcome();
         hub.DecisionFocusRequested += () => Dispatcher.UIThread.Post(() => { AcceptButton.IsVisible = true; AcceptButton.Focus(); }, DispatcherPriority.Loaded);
         hub.PromptSetPolicy = () =>
         {
@@ -145,7 +172,7 @@ public partial class MainWindow : Window
             (id, _) => hub.AddPrerequisiteAsync(id)).ShowDialog<bool>(this).ContinueWith(_ => RestoreFocus(), TaskScheduler.FromCurrentSynchronizationContext());
         hub.PromptRemovePrerequisite = () => new PromptDialog("Remove prerequisite", "Stop waiting for:", "", null, hub.CurrentPrerequisites(), "Remove",
             (id, _) => hub.RemovePrerequisiteAsync(id)).ShowDialog<bool>(this).ContinueWith(_ => RestoreFocus(), TaskScheduler.FromCurrentSynchronizationContext());
-        SizeChanged += (_, e) => hub.SetWidth(e.NewSize.Width);
+        SizeChanged += (_, e) => hub.SetWidth(e.NewSize.Width / Appearance.CurrentScale); // layout decisions use the width the content actually has
         // Closing a menu (Escape or after an action) hands focus back to where the user was working.
         AddHandler(GotFocusEvent, (_, e) => { if (e.Source is Control c and not (MenuItem or Menu)) lastFocus = c; });
         MainMenu.Closed += (_, _) => Dispatcher.UIThread.Post(() => { if (!MainMenu.IsOpen) RestoreFocus(); }, DispatcherPriority.Input);
@@ -155,7 +182,7 @@ public partial class MainWindow : Window
             if (e.Key == Key.Escape && TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is MenuItem)
                 Dispatcher.UIThread.Post(() => { MainMenu.Close(); RestoreFocus(); }, DispatcherPriority.Background);
         }, handledEventsToo: true);
-        if (Environment.GetCommandLineArgs().Skip(1).FirstOrDefault() is string file)
+        if (LaunchOptions.File is string file)
             Opened += async (_, _) => await hub.OpenPathAsync(file);
     }
 
@@ -189,6 +216,7 @@ public partial class MainWindow : Window
     // Cards are rebuilt after every write, so focus goes back to the selected card once the new ones exist.
     // --- Evidence in a message, recovery, closing ---------------------------------------------------------------------------
     private bool closeApproved;
+    private LifecycleAdapter? lifecycle;
     private readonly Dictionary<string, double[]> places = [];
 
     private void RemoveAttachment(object? sender, RoutedEventArgs e) => hub.RemoveAttachmentCommand.Execute((sender as Control)?.DataContext);
@@ -406,7 +434,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            string exe = ProcessWorker.Locate() ?? throw new WorkerException(new("worker_unavailable", "The Agent Hub worker is missing.", "Reinstall or rebuild Agent Hub, then restart it."));
+            string exe = ProcessWorker.Locate() ?? throw new WorkerException(new("worker_unavailable", Recovery.WorkerStartup("the worker program is missing"), "Reinstall Agent Hub."));
             string profile = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Environment.UserName)))[..12];
             worker = new ProcessWorker(exe, profile);
             await worker.StartAsync();
@@ -416,7 +444,7 @@ public partial class MainWindow : Window
         {
             client = null; // let the next attempt try again
             if (e is WorkerException) throw;
-            throw new WorkerException(new("worker_unavailable", "The Agent Hub worker could not start.", "Reinstall or rebuild Agent Hub, then restart it."));
+            throw new WorkerException(new("worker_unavailable", Recovery.WorkerStartup(), "Restart Agent Hub."));
         }
     }
 
