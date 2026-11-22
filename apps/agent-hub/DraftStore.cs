@@ -25,7 +25,7 @@ public sealed class DraftFile
 /// </summary>
 public sealed class DraftStore(string folder)
 {
-    public static string DefaultFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LocalMind", "AgentHub", "drafts");
+    public static string DefaultFolder => Path.Combine(LaunchOptions.DataRoot, "drafts");
 
     private string FileFor(string workspaceKey) => Path.Combine(folder, new string([.. workspaceKey.Select(c => char.IsLetterOrDigit(c) || c == '-' ? c : '_')]) + ".json");
 
@@ -53,6 +53,27 @@ public sealed class DraftStore(string folder)
     {
         try { string p = Path.Combine(BlobFolder(workspaceKey), hash + ".bin"); return File.Exists(p) ? File.ReadAllBytes(p) : null; }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }
+    }
+
+    /// <summary>
+    /// Removes everything this window kept for one workspace: its draft file and its attachment bytes. Other workspaces are untouched. Each failure is returned by name,
+    /// so an erase never claims a cleanup that did not happen.
+    /// </summary>
+    public (IReadOnlyList<string> Removed, IReadOnlyList<string> Failed) Erase(string workspaceKey)
+    {
+        List<string> removed = [], failed = [];
+        void Try(string file)
+        {
+            try { File.Delete(file); removed.Add(Path.GetFileName(file)); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { failed.Add(Path.GetFileName(file)); }
+        }
+        if (File.Exists(FileFor(workspaceKey))) Try(FileFor(workspaceKey));
+        if (Directory.Exists(BlobFolder(workspaceKey)))
+        {
+            foreach (var f in Directory.EnumerateFiles(BlobFolder(workspaceKey))) Try(f);
+            try { Directory.Delete(BlobFolder(workspaceKey), false); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { failed.Add(Path.GetFileName(BlobFolder(workspaceKey))); }
+        }
+        return (removed, failed);
     }
 
     public void Save(string workspaceKey, DraftFile file)

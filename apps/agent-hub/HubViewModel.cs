@@ -17,7 +17,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
     private TaskItem? selectedTask;
     private readonly List<string> history = [];
     private bool showProjects = true, showInspector = true, narrow, inspectorBeforeNarrow = true;
-    private string statusText = "Open a LocalMind projects.db file to view your workspace.";
+    private string statusText = "No workspace is open. Start the offline tutorial, or open or create a workspace.";
     private WorkspaceCommand[] commands;
     // Navigation snapshot of an in-flight open/refresh, so an overlapping refresh of the same file keeps it.
     private string? pendingFile, pendingProject, pendingTask;
@@ -40,7 +40,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
 
     public IReadOnlyList<ProjectItem> Projects { get; private set; } = [];
     public IReadOnlyList<TaskItem> Tasks { get; private set; } = [];
-    public string StatusText { get => statusText; private set { statusText = value; Notify(); } }
+    public string StatusText { get => statusText; private set { statusText = value; Notify(); Notify(nameof(FooterText)); } }
     public string ProjectHeading => selected?.Name ?? "Project workspace";
 
     /// <summary>Set by the window; null in tests that only read legacy files.</summary>
@@ -52,7 +52,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
     private Func<Task<string?>>? pickFolder;
     private void NotifyWorkspaceCommands() { NewWorkspaceCommand?.Changed(); OpenWorkspaceCommand?.Changed(); ImportLegacyCommand?.Changed(); }
 
-    public string ModeLabel => path == null ? "" : workspaceName == null ? "Legacy file · Read-only" : ReadOnlyReason != null ? $"{workspaceName} · read-only (open in another window)" : $"{workspaceName} · Agent Hub workspace";
+    public string ModeLabel => path == null ? "" : workspaceName == null ? "Legacy file · Read-only" : ReadOnlyReason != null ? $"{workspaceName} · read-only (open in another window)" : $"{(IsDemo ? "DEMO CONTENT · " : "")}{workspaceName} · Agent Hub workspace";
 
     public WorkspaceCommand NewWorkspaceCommand { get; }
     public WorkspaceCommand OpenWorkspaceCommand { get; }
@@ -151,7 +151,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
         else await OpenAsync(target);
     }
 
-    private void RaiseCommands() { foreach (var c in commands) c.Changed(); }
+    private void RaiseCommands() { foreach (var c in commands) c.Changed(); NotifyEmpty(); if (center == "guide") RefreshGuide(); }
 
     public ProjectItem? SelectedProject
     {
@@ -221,12 +221,14 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
     private void Layout()
     {
         foreach (var name in new[] { nameof(ProjectsVisible), nameof(InspectorVisible), nameof(Narrow), nameof(Wide),
-                                     nameof(ListVisible), nameof(InspectorColumn), nameof(InspectorWidth), nameof(BoardVisible), nameof(InboxVisible), nameof(ChannelVisible), nameof(QuestionsVisible), nameof(ConnectionsVisible), nameof(TeamVisible), nameof(PlanVisible), nameof(DocsVisible), nameof(DataVisible), nameof(ReplayVisible) })
+                                     nameof(ListVisible), nameof(InspectorColumn), nameof(InspectorWidth), nameof(BoardVisible), nameof(InboxVisible), nameof(ChannelVisible), nameof(QuestionsVisible), nameof(ConnectionsVisible), nameof(TeamVisible), nameof(PlanVisible), nameof(DocsVisible), nameof(DataVisible), nameof(ReplayVisible), nameof(CodeVisible), nameof(GuideVisible) })
             Notify(name);
     }
 
     private void SetSelection(ProjectItem? value)
     {
+        // A different project: its composer is not this one's, so the old text, attachments and inspector go at once, before the new draft is read.
+        if (value != null && composerProject.Length > 0 && value.Id != composerProject) DetachComposer(force: true);
         selected = value;
         InvalidateHandoff();
         Tasks = [];
@@ -261,7 +263,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
         SetSelection(null);
         // A refresh keeps the project list so a switch made mid-refresh still has projects to land on.
         if (!sameFile) { Projects = []; Notify(nameof(Projects)); }
-        StatusText = "Opening database…";
+        workerDown = false; StatusText = "Opening database…";
         try
         {
             var projects = await Task.Run(() => new ProjectReader(file).Projects());

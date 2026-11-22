@@ -20,6 +20,8 @@ public sealed record AnswerRow(DocAnswer A)
     public string Basis => A.Status switch
     {
         "answered" => $"Answered by {A.Model} ({A.Destination}) from the passages below.",
+        "partial" => $"Answered by {A.Model}, but it also cited {string.Join(", ", A.InvalidRefs ?? [])}, which were not offered. Trust only the passages below.",
+        "invalid_citations" => $"Answered by {A.Model}, but it cited {string.Join(", ", A.InvalidRefs ?? [])}, which were not offered. Nothing here supports the answer.",
         "uncited" => $"Answered by {A.Model}, but it cited nothing. Treat it as unsupported.",
         _ => "No evidence in this project's documents. Nothing was sent to a model.",
     };
@@ -91,13 +93,14 @@ public sealed partial class HubViewModel
     /// <summary>
     /// A different workspace is opening: stop saving the composer anywhere until its own project is known, so text typed in the gap can never land in the previous workspace's draft.
     /// </summary>
-    private void DetachComposer()
+    private void DetachComposer(bool force = false)
     {
-        if (composerWorkspace == (workspaceKey ?? "") && composerProject.Length > 0 && selected != null) return; // a refresh of the same workspace keeps what is being typed
+        if (!force && composerWorkspace == (workspaceKey ?? "") && composerProject.Length > 0 && selected != null) return; // a refresh of the same workspace keeps what is being typed
         composerWorkspace = workspaceKey ?? "";
         composerProject = "";
         restoring = true;
         Attachments.Clear(); imageConfirms.Clear(); lastPreviews = [];
+        ClearInspector();
         InstructionText = ""; RecipientNeedsReselect = false; ComposerNote = "";
         restoring = false;
         Notify(nameof(InstructionText)); ComposerChanged(save: false);
@@ -113,6 +116,8 @@ public sealed partial class HubViewModel
         restoring = true;
         Attachments.Clear();
         imageConfirms.Clear();
+        lastPreviews = [];
+        ClearInspector();
         InstructionText = draft?.Text ?? "";
         RecipientNeedsReselect = false;
         ComposerNote = "";
@@ -132,6 +137,13 @@ public sealed partial class HubViewModel
         restoring = false;
         Notify(nameof(InstructionText)); Notify(nameof(RecipientIndex)); Notify(nameof(Attachments));
         ComposerChanged(save: false); // restoring is not an edit: nothing is written, so a draft read at the same moment is never torn
+    }
+
+    /// <summary>The inspector shows an attachment of the composer on screen and nothing else: a workspace or project change closes it, with its image, its text and its confirmations.</summary>
+    private void ClearInspector()
+    {
+        InspectedAttachment = null; InspectedBitmap = null;
+        Notify(nameof(InspectedBitmap)); Notify(nameof(ImageInspectText)); Notify(nameof(HasImageInspect));
     }
 
     public async Task<string?> AttachImageAsync(string name, byte[] bytes)
@@ -242,7 +254,7 @@ public sealed partial class HubViewModel
         ReplayPosition = index;
         var e = ReplayRows[index].E;
         var state = await (await Worker()).ReplayStateAsync(file, project.Id, e.Seq);
-        ReplayHeading = $"After event #{e.Seq} of {state.Latest}: {e.Summary} ({e.At})";
+        ReplayHeading = state.StopReason != null && e.Seq >= (state.StoppedAt ?? long.MaxValue) ? $"Replay stops after event #{state.Seq} of {state.Latest}. {state.StopReason}" : $"After event #{state.Seq} of {state.Latest}: {e.Summary} ({e.At})";
         ReplayLines = [.. state.Tasks.Select(t => $"{t.Title} · {t.Status.Replace('_', ' ')} · {t.Revisions} revision(s)" + (t.AcceptedRevision is { } r ? $" · accepted revision {r}" : "")),
             .. state.Notes, .. (state.StopReason is { } why ? new[] { why } : Array.Empty<string>())];
         Notify(nameof(ReplayPosition)); Notify(nameof(ReplayHeading)); Notify(nameof(ReplayLines));
@@ -426,13 +438,17 @@ public sealed partial class HubViewModel
         }));
         EraseWorkspaceCommand = new(_ => CanWrite && ConfirmErase != null && !AnyRunning, async _ =>
         {
-            if (!await ConfirmErase!("Erase this workspace's database, stored outputs and keys from this computer. Type ERASE to confirm.")) return;
+            string ws = path!; string? key = workspaceKey; // what the owner is asked about, fixed before the question
+            if (!await ConfirmErase!($"Erase “{workspaceName ?? Path.GetFileName(Path.GetDirectoryName(ws))}”: its database, stored outputs, keys, and this window's saved drafts and attachment copies. Type ERASE to confirm.")) return;
+            if (path != ws || workspaceKey != key) { ShowNotice("A different workspace is open now, so nothing was erased. Open the one you meant, then erase it.", "Dismiss", DismissNoticeCommand); return; }
             await Guarded(async () =>
             {
-                string ws = path!;
                 var r = await (await Worker()).EraseWorkspaceAsync(ws);
-                EditDrafts(workspaceKey, f => { f.Replies.Clear(); f.Reviews.Clear(); f.Composer.Clear(); });
-                SetData("Erased: " + string.Join(", ", r.Report.Removed) + ". Copies this cannot reach: " + string.Join(" ", r.Report.ExternalCopies));
+                (IReadOnlyList<string> Removed, IReadOnlyList<string> Failed) local = key != null && Drafts != null ? Drafts.Erase(key) : ([], []);
+                bool layout = key == null || Layouts?.Delete(key) != false;
+                SetData("Erased: " + string.Join(", ", r.Report.Removed) + ". This window's drafts and attachment copies for it: " + (local.Removed.Count == 0 && local.Failed.Count == 0 ? "none were kept" : $"{local.Removed.Count} removed")
+                    + (local.Failed.Count > 0 ? $"; COULD NOT REMOVE {string.Join(", ", local.Failed)}: delete them yourself from {DraftStore.DefaultFolder}" : "") + (layout ? "" : "; its saved layout could not be removed")
+                    + ". Copies this cannot reach: " + string.Join(" ", r.Report.ExternalCopies));
                 StopPolling();
                 path = null; Projects = []; Tasks = []; SetSelection(null); Notify(nameof(Projects)); Notify(nameof(IsWorkspace)); StatusText = "That workspace was erased.";
             });
@@ -488,6 +504,6 @@ public sealed partial class HubViewModel
         });
         commands = [.. commands, RemoveAttachmentCommand, InspectAttachmentCommand, ConfirmImagesCommand, AttachFileCommand, ShowDocsCommand, AddDocCommand, EditDocCommand, RemoveDocCommand, ForgetDocCommand, AskDocsCommand,
             OpenCitationCommand, ShowDataCommand, ExportWorkspaceCommand, RestoreWorkspaceCommand, EraseWorkspaceCommand, PreviewDiagnosticsCommand, SaveDiagnosticsCommand, EnterReplayCommand, LeaveReplayCommand,
-            ReplayStepCommand, ConfirmAttemptCommand, AbandonAttemptCommand, RetryUncertainCommand, RecordChargeCommand];
+            ReplayStepCommand, ConfirmAttemptCommand, AbandonAttemptCommand, RetryUncertainCommand, RecordChargeCommand, .. InitDay7(), .. InitDay8()];
     }
 }
