@@ -68,7 +68,7 @@ public sealed record AttemptRow(AttemptView A, string ConnectionLabel)
     public bool Uncertain => A.SentAt != null && (A.Status is "needs_reconciliation" or "interrupted" || (A.Status == "completed" && A.Cost == null && A.Provider != "ollama"));
     public bool CanResolve => Uncertain && A.Status != "confirmed";
     public bool CanAbandon => Uncertain && A.Status is "needs_reconciliation" or "interrupted";
-    public bool CanRecordCharge => A.Status == "completed" && A.Cost == null && A.Provider != "ollama" && A.SentAt != null;
+    public bool CanRecordCharge => A.Status is "completed" or "abandoned" && A.Cost == null && A.Provider != "ollama" && A.SentAt != null;
     public string Intended => $"Intended: send the {A.Role} a packet of about {(A.PacketText.Length + 3) / 4} tokens ({A.RequestedModel}) so it can " + (A.Role == "builder" ? "write a revision" : A.Role == "reviewer" ? "review a revision" : "answer") + ".";
     public string Receipt => !Uncertain ? "" : A.InputTokens is { } i ? $"Receipt so far: {i} tokens in, {A.OutputTokens} out" + (A.Cost is { } c ? $", cost {c:0.000000} {A.Currency}." : "; the charge is not reported.")
         : $"No receipt: the provider reported no usage. {(A.PartialText.Length > 0 ? $"{A.PartialText.Length} characters of partial output were kept." : "No output arrived.")}";
@@ -215,7 +215,7 @@ public sealed partial class HubViewModel
             string ws = path!, provider = newProvider == 0 ? "ollama" : "openrouter", endpoint = NewEndpoint.Trim(), label = NewLabel.Trim(), click = Guid.NewGuid().ToString("N");
             return Fail(() => Submit($"conn|{ws}|{click}", ws, async id => await (await Worker()).AddConnectionAsync(ws, id, provider, endpoint, label)));
         });
-        ProbeCommand = new(p => CanWrite && p is ConnectionRow, async p => await Guarded(async () => { await (await Worker()).ProbeConnectionAsync(path!, ((ConnectionRow)p!).Info.Id); await LoadTeamAsync(); }));
+        ProbeCommand = new(p => CanWrite && p is ConnectionRow, async p => await Guarded(async () => { try { await (await Worker()).ProbeConnectionAsync(path!, ((ConnectionRow)p!).Info.Id); } finally { await LoadTeamAsync(); } /* a failed probe is recorded, so the row must show it */ }));
         EnterKeyCommand = new(p => CanWrite && p is ConnectionRow { NeedsKey: true } && AskForKey != null, async p =>
         {
             var row = (ConnectionRow)p!;
@@ -311,7 +311,7 @@ public sealed partial class HubViewModel
     private async Task Guarded(Func<Task> work)
     {
         try { await work(); }
-        catch (WorkerException e) { ShowNotice(e.Message, "Dismiss", DismissNoticeCommand); }
+        catch (WorkerException e) { if (e.Error.Code is "worker_unavailable" or "worker_exited") { workerDown = true; NotifyEmpty(); } ShowNotice(e.Message, "Dismiss", DismissNoticeCommand); }
     }
 
     private Dictionary<string, string>? instructionBindings;

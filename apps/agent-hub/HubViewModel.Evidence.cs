@@ -48,7 +48,7 @@ public sealed partial class HubViewModel
     private void SetCenter(string mode)
     {
         center = mode;
-        foreach (var n in new[] { nameof(BoardVisible), nameof(InboxVisible), nameof(ChannelVisible), nameof(QuestionsVisible), nameof(ConnectionsVisible), nameof(TeamVisible), nameof(PlanVisible), nameof(DocsVisible), nameof(DataVisible), nameof(ReplayVisible) }) Notify(n);
+        foreach (var n in new[] { nameof(BoardVisible), nameof(InboxVisible), nameof(ChannelVisible), nameof(QuestionsVisible), nameof(ConnectionsVisible), nameof(TeamVisible), nameof(PlanVisible), nameof(DocsVisible), nameof(DataVisible), nameof(ReplayVisible), nameof(CodeVisible), nameof(FooterText), nameof(GuideVisible) }) Notify(n);
         SaveLayout();
         RaiseCommands();
     }

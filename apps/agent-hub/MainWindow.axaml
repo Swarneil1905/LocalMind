@@ -6,6 +6,7 @@
   <Window.Styles>
     <Style Selector="Border.pulse"><Style.Animations><Animation Duration="0:0:0.9" IterationCount="1"><KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.35"/></KeyFrame><KeyFrame Cue="100%"><Setter Property="Opacity" Value="1"/></KeyFrame></Animation></Style.Animations></Style>
   </Window.Styles>
+  <LayoutTransformControl x:Name="ScaleHost">
   <Grid RowDefinitions="Auto,*,Auto" Background="{DynamicResource Canvas}">
     <Menu x:Name="MainMenu" Background="{DynamicResource Pane}">
       <MenuItem Header="_File">
@@ -28,6 +29,8 @@
         <MenuItem x:Name="TeamItem" Header="_Team and budget" Command="{Binding ShowTeamCommand}"/>
         <MenuItem x:Name="PlanItem" Header="Pla_n and graph" Command="{Binding ShowPlanCommand}"/>
         <MenuItem Header="_Documents" Command="{Binding ShowDocsCommand}"/>
+        <MenuItem Header="_Code changes" Command="{Binding ShowCodeCommand}"/>
+        <MenuItem Header="_Guide and settings" Command="{Binding ShowGuideCommand}"/>
         <MenuItem Header="_Backup, restore and diagnostics" Command="{Binding ShowDataCommand}"/>
         <MenuItem Header="Replay _history" Command="{Binding EnterReplayCommand}"/>
         <Separator/>
@@ -148,6 +151,13 @@
               </ListBox>
             </Grid>
         </Grid>
+        <Border Grid.Row="3" Background="{DynamicResource Canvas}" IsVisible="{Binding BoardEmptyVisible}" Padding="0,24" VerticalAlignment="Top">
+          <StackPanel Spacing="10" MaxWidth="560" HorizontalAlignment="Left">
+            <TextBlock Text="{Binding BoardEmptyTitle}" FontSize="20" FontWeight="SemiBold" AutomationProperties.LiveSetting="Polite"/>
+            <TextBlock Text="{Binding BoardEmptyText}" TextWrapping="Wrap"/>
+            <Button Content="{Binding BoardEmptyActionLabel}" Command="{Binding BoardEmptyActionCommand}" HorizontalAlignment="Left"/>
+          </StackPanel>
+        </Border>
       </Grid>
 
       <Grid Grid.Column="1" Margin="{DynamicResource PanePadding}" MinWidth="{DynamicResource TaskMinWidth}" RowDefinitions="Auto,Auto,*" RowSpacing="10"
@@ -509,6 +519,120 @@
         </ScrollViewer>
       </Grid>
 
+      <Grid Grid.Column="1" Margin="{DynamicResource PanePadding}" MinWidth="{DynamicResource TaskMinWidth}" RowDefinitions="Auto,*" RowSpacing="10" IsVisible="{Binding CodeVisible}">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <TextBlock Text="Code changes" FontSize="24" FontWeight="SemiBold"/>
+          <Button Command="{Binding ShowBoardCommand}" Content="Back to board" VerticalAlignment="Center"/>
+          <Button Command="{Binding RefreshCodeCommand}" Content="Reload from the ledger" VerticalAlignment="Center"/>
+        </StackPanel>
+        <ScrollViewer Grid.Row="1">
+          <StackPanel Spacing="10">
+            <TextBlock Text="A runtime starts only inside the isolation boundary, with its own empty profile (your own sign-in and plugins are not used), in a private copy of the repository. Nothing reaches your repository until you approve the exact revision." TextWrapping="Wrap" Foreground="{DynamicResource Muted}"/>
+            <TextBlock Text="{Binding CodeStatus}" TextWrapping="Wrap" FontWeight="SemiBold" AutomationProperties.LiveSetting="Polite"/>
+            <TextBlock Text="Runtimes" FontWeight="SemiBold"/>
+            <TextBox Text="{Binding ClaudePath, Mode=TwoWay}" PlaceholderText="Claude Code executable (leave empty to find it on PATH)" AutomationProperties.Name="Claude Code executable"/>
+            <TextBox Text="{Binding CodexPath, Mode=TwoWay}" PlaceholderText="Codex executable (leave empty to find it on PATH or in the desktop app)" AutomationProperties.Name="Codex executable"/>
+            <Button Content="Discover runtimes" Command="{Binding DiscoverRuntimesCommand}" HorizontalAlignment="Left"/>
+            <SelectableTextBlock Text="{Binding ClaudeStatus}" TextWrapping="Wrap"/>
+            <SelectableTextBlock Text="{Binding CodexStatus}" TextWrapping="Wrap"/>
+            <TextBlock Text="Assign a task" FontWeight="SemiBold"/>
+            <TextBox Text="{Binding CodeRepo, Mode=TwoWay}" PlaceholderText="Folder of a git repository" AutomationProperties.Name="Repository folder"/>
+            <TextBox Text="{Binding CodeTitle, Mode=TwoWay}" PlaceholderText="Task title" AutomationProperties.Name="Code task title"/>
+            <TextBox Text="{Binding CodePrompt, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="70" PlaceholderText="What should change?" AutomationProperties.Name="Code task instructions"/>
+            <WrapPanel ItemSpacing="8" LineSpacing="8">
+              <ComboBox SelectedIndex="{Binding CodeRuntimePick, Mode=TwoWay}" AutomationProperties.Name="Runtime for the next run" MinWidth="140"><ComboBoxItem Content="Claude Code"/><ComboBoxItem Content="Codex"/></ComboBox>
+              <Button Content="Assign and run" Command="{Binding AssignCodeCommand}"/>
+              <Button Content="Stop the run" Command="{Binding StopCodeCommand}"/>
+            </WrapPanel>
+            <TextBlock Text="{Binding NextRunText}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+            <TextBlock Text="Checks" FontWeight="SemiBold"/>
+            <TextBox Text="{Binding CodeCheckReg, Mode=TwoWay}" PlaceholderText="Register a check as  name = program arguments  (run without a shell)" AutomationProperties.Name="Register a check"/>
+            <WrapPanel ItemSpacing="8" LineSpacing="8">
+              <Button Content="Register check" Command="{Binding RegisterCheckCommand}"/>
+              <ComboBox ItemsSource="{Binding CodeChecks}" SelectedIndex="{Binding CodeCheckPick, Mode=TwoWay}" AutomationProperties.Name="Registered check" MinWidth="220"/>
+              <Button Content="Run check on the selected task" Command="{Binding RunCodeCheckCommand}"/>
+            </WrapPanel>
+            <TextBlock Text="Tasks" FontWeight="SemiBold"/>
+            <ListBox ItemsSource="{Binding CodeTasks}" SelectedItem="{Binding SelectedCodeTask, Mode=TwoWay}" AutomationProperties.Name="Code tasks" MaxHeight="150">
+              <ListBox.ItemTemplate><DataTemplate x:DataType="vm:CodeTaskRow"><TextBlock Text="{Binding Label}" TextWrapping="Wrap"/></DataTemplate></ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock Text="The patch you are approving" FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding CodeIdentityText}" TextWrapping="Wrap"/>
+            <SelectableTextBlock Text="{Binding CodePatchText}" TextWrapping="Wrap" FontFamily="Consolas, Menlo, monospace" FontSize="11"/>
+            <SelectableTextBlock Text="{Binding CodeCheckText}" TextWrapping="Wrap"/>
+            <SelectableTextBlock Text="{Binding CodePreviewText}" TextWrapping="Wrap"/>
+            <TextBox Text="{Binding CodeRevisionText, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="50" PlaceholderText="Ask for a revision (uses the runtime chosen above)" AutomationProperties.Name="Revision request"/>
+            <WrapPanel ItemSpacing="8" LineSpacing="8">
+              <Button Content="Request revision" Command="{Binding ReviseCodeCommand}"/>
+              <Button Content="Approve this exact revision" Command="{Binding ApproveCodeCommand}"/>
+              <Button Content="Apply the approved revision" Command="{Binding ApplyCodeCommand}"/>
+              <Button Content="Commit these files locally (separate step)" Command="{Binding PublishCodeCommand}"/>
+              <Button Content="Cancel this task" Command="{Binding CancelCodeTaskCommand}"/>
+            </WrapPanel>
+            <TextBlock Text="{Binding CodeApprovalText}" TextWrapping="Wrap"/>
+            <SelectableTextBlock Text="{Binding CodeLedgerText}" TextWrapping="Wrap" FontFamily="Consolas, Menlo, monospace" FontSize="11"/>
+            <TextBlock Text="The code ledger is kept in this workspace's code folder, is included in export and erase, and is separate from project replay: replay shows tasks and decisions, not code changes." TextWrapping="Wrap" Foreground="{DynamicResource Muted}"/>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+
+      <Grid Grid.Column="1" Margin="{DynamicResource PanePadding}" MinWidth="{DynamicResource TaskMinWidth}" RowDefinitions="Auto,*" RowSpacing="10" IsVisible="{Binding GuideVisible}">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <TextBlock Text="Guide and settings" FontSize="24" FontWeight="SemiBold"/>
+          <Button Command="{Binding ShowBoardCommand}" Content="Back to board" VerticalAlignment="Center"/>
+        </StackPanel>
+        <ScrollViewer Grid.Row="1">
+          <StackPanel Spacing="10">
+            <TextBlock Text="{Binding DemoBanner}" TextWrapping="Wrap" FontWeight="SemiBold" IsVisible="{Binding IsDemo}"/>
+            <TextBlock Text="{Binding TutorialStatus}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+            <TextBlock Text="Your first task" FontWeight="SemiBold"/>
+            <ItemsControl ItemsSource="{Binding GuideSteps}">
+              <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:GuideStep"><TextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,2"/></DataTemplate></ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="Going live, later" FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding LiveDisclosureText}" TextWrapping="Wrap"/>
+            <Button Content="Set up a live provider…" Command="{Binding SetUpLiveCommand}" HorizontalAlignment="Left"/>
+            <TextBlock Text="Words used here" FontWeight="SemiBold"/>
+            <ItemsControl ItemsSource="{Binding VocabularyTerms}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="core:Term">
+                  <StackPanel Margin="0,4" Spacing="2">
+                    <TextBlock Text="{Binding Label}" FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding Means}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding Evidence}" TextWrapping="Wrap" Foreground="{DynamicResource Muted}"/>
+                    <TextBlock Text="{Binding Example}" TextWrapping="Wrap" Foreground="{DynamicResource Muted}"/>
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="Team recipes" FontWeight="SemiBold"/>
+            <TextBlock Text="A recipe is roles, model names and limits. It never carries keys, prices, consents, endpoints or file permissions. Paste one, preview it, edit it, then apply." TextWrapping="Wrap" Foreground="{DynamicResource Muted}"/>
+            <TextBox Text="{Binding RecipeText, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="90" FontFamily="Consolas, Menlo, monospace" FontSize="11" AutomationProperties.Name="Recipe text"/>
+            <WrapPanel ItemSpacing="8" LineSpacing="8">
+              <Button Content="Make a recipe from this team" Command="{Binding MakeRecipeCommand}"/>
+              <Button Content="Preview the recipe" Command="{Binding PreviewRecipeCommand}"/>
+              <Button Content="Apply the recipe" Command="{Binding ApplyRecipeCommand}"/>
+            </WrapPanel>
+            <SelectableTextBlock Text="{Binding RecipePreviewText}" TextWrapping="Wrap"/>
+            <TextBlock Text="Appearance" FontWeight="SemiBold"/>
+            <WrapPanel ItemSpacing="8" LineSpacing="8">
+              <ComboBox ItemsSource="{Binding ThemeNames}" SelectedIndex="{Binding ThemeChoice, Mode=TwoWay}" AutomationProperties.Name="Theme" MinWidth="160"/>
+              <ComboBox ItemsSource="{Binding ScaleNames}" SelectedIndex="{Binding ScaleChoice, Mode=TwoWay}" AutomationProperties.Name="Text size" MinWidth="110"/>
+            </WrapPanel>
+            <TextBlock Text="{Binding AppearanceNote}" TextWrapping="Wrap"/>
+            <TextBlock Text="Feedback" FontWeight="SemiBold"/>
+            <TextBlock Text="A report is saved as a file on this computer so you can read it before you send it anywhere. Nothing is sent by this window." TextWrapping="Wrap" Foreground="{DynamicResource Muted}"/>
+            <TextBox Text="{Binding BetaText, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="70" PlaceholderText="What happened, and what did you expect?" AutomationProperties.Name="Feedback text"/>
+            <TextBox Text="{Binding BetaRunId, Mode=TwoWay}" PlaceholderText="Run ID (filled from the selected task's latest run when there is one)" AutomationProperties.Name="Run ID"/>
+            <CheckBox IsChecked="{Binding BetaConsent, Mode=TwoWay}" Content="I agree to include this run's metadata-only diagnostics in the report when I share it"/>
+            <Button Content="Save the report on this computer" Command="{Binding SaveBetaReportCommand}" HorizontalAlignment="Left"/>
+            <TextBlock Text="{Binding BetaStatus}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+            <TextBlock Text="What the report will contain" FontWeight="SemiBold"/>
+            <SelectableTextBlock Text="{Binding BetaPreview}" TextWrapping="Wrap" FontFamily="Consolas, Menlo, monospace" FontSize="11"/>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+
       <Grid Grid.Column="1" Margin="{DynamicResource PanePadding}" MinWidth="{DynamicResource TaskMinWidth}" RowDefinitions="Auto,*" RowSpacing="10" IsVisible="{Binding DataVisible}">
         <StackPanel Orientation="Horizontal" Spacing="12">
           <TextBlock Text="Backup, restore and diagnostics" FontSize="24" FontWeight="SemiBold"/>
@@ -750,11 +874,29 @@
           </ScrollViewer>
         </Grid>
       </Border>
+      <Border Grid.Column="0" Grid.ColumnSpan="3" Background="{DynamicResource Canvas}" IsVisible="{Binding WelcomeVisible}" Padding="32">
+        <StackPanel Spacing="14" MaxWidth="640" HorizontalAlignment="Left">
+          <TextBlock Text="Welcome to Agent Hub" FontSize="28" FontWeight="SemiBold"/>
+          <TextBlock Text="{Binding WelcomeText}" TextWrapping="Wrap"/>
+          <WrapPanel ItemSpacing="8" LineSpacing="8">
+            <Button Content="Start the offline tutorial" Command="{Binding StartTutorialCommand}" IsDefault="True"/>
+            <Button Content="Open a workspace…" Command="{Binding OpenWorkspaceCommand}"/>
+            <Button Content="Create a workspace…" Command="{Binding NewWorkspaceCommand}"/>
+          </WrapPanel>
+          <StackPanel Spacing="6" IsVisible="{Binding WelcomeWorkerDown}">
+            <TextBlock Text="{Binding BoardEmptyTitle}" FontSize="18" FontWeight="SemiBold" AutomationProperties.LiveSetting="Assertive"/>
+            <TextBlock Text="{Binding BoardEmptyText}" TextWrapping="Wrap"/>
+            <Button Content="{Binding BoardEmptyActionLabel}" Command="{Binding BoardEmptyActionCommand}" HorizontalAlignment="Left"/>
+          </StackPanel>
+          <TextBlock Text="{Binding TutorialStatus}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+          <TextBlock Text="{Binding LiveDisclosureText}" TextWrapping="Wrap" Foreground="{DynamicResource Muted}"/>
+        </StackPanel>
+      </Border>
     </Grid>
 
     <Border Grid.Row="2" Background="{DynamicResource Pane}" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="12,4">
       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-        <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap"/>
+        <TextBlock Text="{Binding FooterText}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap"/>
         <TextBlock Grid.Column="1" Text="{Binding ModeLabel}" Foreground="{DynamicResource BadgeText}" FontWeight="SemiBold"/>
       </Grid>
     </Border>
@@ -780,4 +922,5 @@
       </Border>
     </Border>
   </Grid>
+  </LayoutTransformControl>
 </Window>
