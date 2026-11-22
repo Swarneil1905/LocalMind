@@ -151,7 +151,7 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
         else await OpenAsync(target);
     }
 
-    private void RaiseCommands() { foreach (var c in commands) c.Changed(); NotifyEmpty(); if (center == "guide") RefreshGuide(); }
+    private void RaiseCommands() { DropStaleRecipe(); foreach (var c in commands) c.Changed(); NotifyEmpty(); if (center == "guide") RefreshGuide(); }
 
     public ProjectItem? SelectedProject
     {
@@ -200,7 +200,8 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
     }
 
     // Layout state. Hiding the inspector or the project pane never touches the selection.
-    public bool ProjectsVisible => showProjects;
+    private bool tight;
+    public bool ProjectsVisible => showProjects && !tight;
     public bool InspectorVisible => showInspector;
     public bool Narrow => narrow;
     public bool Wide => !narrow;
@@ -211,6 +212,8 @@ public sealed partial class HubViewModel : INotifyPropertyChanged
     /// <summary>At narrow widths the inspector replaces the task list, so it starts closed and returns when the window widens.</summary>
     public void SetWidth(double width)
     {
+        bool nowTight = width > 0 && width < 720; // the project list (200) and the board (440 at least) no longer fit side by side
+        if (nowTight != tight) { tight = nowTight; Layout(); }
         if (width <= 0 || narrow == width < SplitWidth) return;
         narrow = !narrow;
         if (narrow) { inspectorBeforeNarrow = showInspector; showInspector = false; }

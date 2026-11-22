@@ -144,7 +144,16 @@ public sealed partial class HubViewModel
 
     // --- Recipes (AH58) ----------------------------------------------------------------------------------------------------------------
     private string recipeText = "";
-    public string RecipeText { get => recipeText; set { recipeText = value ?? ""; RaiseCommands(); } }
+    public string RecipeText { get => recipeText; set { recipeText = value ?? ""; DropStaleRecipe(); RaiseCommands(); } }
+    private (string Text, string Workspace, string Project)? recipeBound;
+    private bool RecipeIsCurrent => recipeBound is { } b && b.Text == recipeText && b.Workspace == path && b.Project == selected?.Id;
+    /// <summary>An edit, or a switch to another project, ends the preview: nothing may be applied until it is previewed again.</summary>
+    private void DropStaleRecipe()
+    {
+        if (recipePreview == null || RecipeIsCurrent) return;
+        recipePreview = null; recipeBound = null;
+        RecipePreviewText = "The recipe text or the project changed after the preview, so nothing can be applied. Select Preview the recipe again."; Notify(nameof(RecipePreviewText));
+    }
     public string RecipePreviewText { get; private set; } = "";
     private RecipePreview? recipePreview;
     public WorkspaceCommand MakeRecipeCommand { get; private set; } = null!;
@@ -153,7 +162,7 @@ public sealed partial class HubViewModel
 
     private void ShowRecipePreview(RecipePreview p)
     {
-        recipePreview = p;
+        recipePreview = p; recipeBound = (recipeText, path ?? "", selected?.Id ?? "");
         var lines = new List<string>();
         lines.AddRange(p.Problems.Select(x => "Problem: " + x));
         lines.AddRange(p.Dropped.Select(x => "Removed: " + x));
@@ -189,6 +198,17 @@ public sealed partial class HubViewModel
     /// <summary>The run this report is about: the newest attempt of the selected task, or whatever the tester typed.</summary>
     private string SuggestedRun => AttemptRows.LastOrDefault()?.A.Id ?? "";
     public string BetaPreview => Feedback.Render(Feedback.Build(BuildVersion, string.IsNullOrWhiteSpace(betaRun) ? SuggestedRun : betaRun, betaText, betaConsent, DiagnosticsPreview, DateTime.UtcNow));
+    /// <summary>Creates a file that did not exist, with a name that cannot repeat (time to the millisecond plus a random part); a collision tries another name instead of replacing anything.</summary>
+    public static string SaveNew(string folder, string text)
+    {
+        for (int i = 0; ; i++)
+        {
+            string file = System.IO.Path.Combine(folder, $"feedback-{DateTime.Now:yyyyMMdd-HHmmss-fff}-{Guid.NewGuid().ToString("N")[..6]}.json");
+            try { using var f = new FileStream(file, FileMode.CreateNew, FileAccess.Write); using var w = new StreamWriter(f, new System.Text.UTF8Encoding(false)); w.Write(text); return file; }
+            catch (IOException) when (i < 5 && File.Exists(file)) { }
+        }
+    }
+
     public WorkspaceCommand SaveBetaReportCommand { get; private set; } = null!;
     private void NotifyBeta() { Notify(nameof(BetaPreview)); RaiseCommands(); }
 
@@ -213,12 +233,34 @@ public sealed partial class HubViewModel
             ShowRecipePreview(Recipes.Preview(RecipeText, team));
         }));
         PreviewRecipeCommand = new(_ => IsWorkspace && RecipeText.Trim().Length > 0, _ => Guarded(async () => { await LoadTeamAsync(); if (team != null) ShowRecipePreview(Recipes.Preview(RecipeText, team)); }));
-        ApplyRecipeCommand = new(_ => CanWrite && recipePreview is { Recipe: not null, Problems.Count: 0 } p && p.Matches.Any(m => m.ConnectionId != null), _ => Guarded(async () =>
+        ApplyRecipeCommand = new(_ => CanWrite && RecipeIsCurrent && recipePreview is { Recipe: not null, Problems.Count: 0 } p && p.Matches.Any(m => m.ConnectionId != null), _ => Guarded(async () =>
         {
-            var p = recipePreview!; var r = p.Recipe!; string ws = path!, project = selected!.Id; var w = await Worker();
-            foreach (var m in p.Matches.Where(m => m.ConnectionId != null)) await w.AssignRoleAsync(ws, Cid(), project, m.Role, m.ConnectionId!, m.Model);
-            var cur = team!.Settings;
-            await w.SetProjectSettingsAsync(ws, Cid(), cur with { MaxSteps = r.MaxSteps, MaxSeconds = r.MaxSeconds, MaxToolCalls = r.MaxToolCalls, MaxOutputTokens = r.MaxOutputTokens, AutoReview = r.AutoReview, MaxConcurrency = r.MaxConcurrency });
+            var p = recipePreview!; var r = p.Recipe!; var (text, ws, project) = recipeBound!.Value; var w = await Worker();
+            await LoadTeamAsync();
+            if (!RecipeIsCurrent || team == null) return;
+            // The configuration this preview matched must still be there; if it is not, nothing is changed.
+            var gone = p.Matches.Where(m => m.ConnectionId != null && !team.Connections.Any(c => c.Id == m.ConnectionId && c.Models.Any(x => x.Id == m.Model && x.Available))).ToList();
+            if (gone.Count > 0) { RecipePreviewText = $"Nothing was changed. The connection for {string.Join(", ", gone.Select(g => g.Role))} is no longer there or no longer lists its model. Preview the recipe again."; Notify(nameof(RecipePreviewText)); recipePreview = null; recipeBound = null; RaiseCommands(); return; }
+            var before = team.Assignments.Where(a => p.Matches.Any(m => m.ConnectionId != null && m.Role == a.Role)).ToList();
+            var settingsBefore = team.Settings; var done = new List<string>();
+            try
+            {
+                foreach (var m in p.Matches.Where(m => m.ConnectionId != null)) { await w.AssignRoleAsync(ws, Cid(), project, m.Role, m.ConnectionId!, m.Model); done.Add(m.Role); }
+                await w.SetProjectSettingsAsync(ws, Cid(), team.Settings with { MaxSteps = r.MaxSteps, MaxSeconds = r.MaxSeconds, MaxToolCalls = r.MaxToolCalls, MaxOutputTokens = r.MaxOutputTokens, AutoReview = r.AutoReview, MaxConcurrency = r.MaxConcurrency });
+            }
+            catch (WorkerException e)
+            {
+                // Put back what was changed, so the team is either the recipe or what it was.
+                var kept = new List<string>(); var stuck = new List<string>();
+                foreach (var role in done)
+                {
+                    if (before.FirstOrDefault(a => a.Role == role) is { } old) { try { await w.AssignRoleAsync(ws, Cid(), project, role, old.ConnectionId, old.ModelId); kept.Add(role); } catch (WorkerException) { stuck.Add(role); } }
+                    else stuck.Add(role); // there was no earlier assignment to return to
+                }
+                try { await w.SetProjectSettingsAsync(ws, Cid(), settingsBefore); } catch (WorkerException) { }
+                RecipePreviewText = $"The recipe was not applied: {e.Message} " + (kept.Count > 0 ? $"Restored {string.Join(", ", kept)} to what it was. " : "") + (stuck.Count > 0 ? $"{string.Join(", ", stuck)} had no earlier model to return to and stays as the recipe set it; change it in Team." : "");
+                Notify(nameof(RecipePreviewText)); await LoadTeamAsync(); return;
+            }
             await LoadTeamAsync();
             RecipePreviewText = $"Applied {p.Matches.Count(m => m.ConnectionId != null)} role(s) and the limits. {p.Matches.Count(m => m.ConnectionId == null)} role(s) were left as they were.";
             Notify(nameof(RecipePreviewText));
@@ -228,8 +270,7 @@ public sealed partial class HubViewModel
             try
             {
                 Directory.CreateDirectory(BetaFolder);
-                string file = System.IO.Path.Combine(BetaFolder, $"feedback-{DateTime.Now:yyyyMMdd-HHmmss}.json");
-                File.WriteAllText(file, BetaPreview);
+                string file = SaveNew(BetaFolder, BetaPreview);
                 BetaStatus = $"Saved to {file}. Nothing was sent. Read it first; if you agree, attach that file to your message to the team.";
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { BetaStatus = $"The report could not be saved ({e.Message.TrimEnd('.')}). Choose another folder or free some space, then try again. Your text is still here."; }

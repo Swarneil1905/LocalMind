@@ -504,6 +504,6 @@ public sealed partial class HubViewModel
         });
         commands = [.. commands, RemoveAttachmentCommand, InspectAttachmentCommand, ConfirmImagesCommand, AttachFileCommand, ShowDocsCommand, AddDocCommand, EditDocCommand, RemoveDocCommand, ForgetDocCommand, AskDocsCommand,
             OpenCitationCommand, ShowDataCommand, ExportWorkspaceCommand, RestoreWorkspaceCommand, EraseWorkspaceCommand, PreviewDiagnosticsCommand, SaveDiagnosticsCommand, EnterReplayCommand, LeaveReplayCommand,
-            ReplayStepCommand, ConfirmAttemptCommand, AbandonAttemptCommand, RetryUncertainCommand, RecordChargeCommand, .. InitDay7(), .. InitDay8()];
+            ReplayStepCommand, ConfirmAttemptCommand, AbandonAttemptCommand, RetryUncertainCommand, RecordChargeCommand, .. InitDay7(), .. InitDay8(), .. InitDay9()];
     }
 }
